@@ -67,18 +67,11 @@ import {
   VIRTUAL_CANVAS_WIDTH,
   VIRTUAL_CANVAS_HEIGHT,
   DEFAULT_BASE_URL,
-  JIMENG_API_BASE_URL,
-  JIMENG_SESSION_ID,
-  DEFAULT_API_CONFIGS,
   RATIOS,
   GROK_VIDEO_RATIOS,
   VIDEO_RES_OPTIONS,
-  PROMPT_LIBRARY_KEY,
   GRID_PROMPT_TEXT,
   UPSCALE_PROMPT_TEXT,
-  STORYBOARD_PROMPT_TEXT,
-  CHARACTER_SHEET_PROMPT_TEXT,
-  MOOD_BOARD_PROMPT_TEXT,
   DELETED_MODEL_IDS,
   getRatiosForModel,
   RESOLUTIONS,
@@ -96,21 +89,24 @@ import {
   Modal,
   Lightbox
 } from './support.jsx';
+import { useLocalStorage } from './hooks/useLocalStorage.js';
+import { useApiConfigs } from './hooks/useApiConfigs.js';
+import { useHistory } from './hooks/useHistory.js';
+import { useChatSessions } from './hooks/useChatSessions.js';
+import { usePromptLibrary } from './hooks/usePromptLibrary.js';
+import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
+import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
+import { saveProject, loadProjectFromFile } from './services/projectService.js';
+import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
 
         function TapnowApp() {
-            const [theme, setTheme] = useState(() => {
-                try {
-                    return localStorage.getItem('tapnow_theme') || 'dark';
-                } catch (e) {
-                    return 'dark';
-                }
+            const [theme, setTheme] = useLocalStorage('tapnow_theme', 'dark', {
+                serialize: String,
+                deserialize: (value) => value || 'dark'
             });
 
 
             useEffect(() => {
-                try {
-                    localStorage.setItem('tapnow_theme', theme);
-                } catch (e) {}
                 const root = document.documentElement;
                 if (theme === 'dark') {
                     root.classList.add('theme-dark');
@@ -123,19 +119,10 @@ import {
                 }
             }, [theme]);
 
-            const [isPerformanceMode, setPerformanceMode] = useState(() => {
-                try {
-                    return localStorage.getItem('tapnow_performance_mode') === 'true';
-                } catch (e) {
-                    return false;
-                }
+            const [isPerformanceMode, setPerformanceMode] = useLocalStorage('tapnow_performance_mode', false, {
+                serialize: String,
+                deserialize: (value) => value === 'true'
             });
-            
-            useEffect(() => {
-                try {
-                    localStorage.setItem('tapnow_performance_mode', isPerformanceMode.toString());
-                } catch (e) {}
-            }, [isPerformanceMode]);
 
             const [nodes, setNodes] = useState([]);
             const [connections, setConnections] = useState([]);
@@ -150,111 +137,19 @@ import {
             const dragStartPosRef = useRef(new Map()); // nodeId -> { x, y }
             const [selectedNodeId, setSelectedNodeId] = useState(null);
 
-            const [apiConfigs, setApiConfigs] = useState(() => {
-                const saved = localStorage.getItem('tapnow_api_configs');
-                let configs = saved ? JSON.parse(saved) : DEFAULT_API_CONFIGS;
-                
-                // 确保 gpt-5.2 存在（如果不存在则添加）
-                const hasGpt52 = configs.some(c => c.id === 'gpt-5-2');
-                if (!hasGpt52) {
-                    // 找到 gpt-5-1 的位置，在它后面插入 gpt-5-2
-                    const gpt51Index = configs.findIndex(c => c.id === 'gpt-5-1');
-                    const insertIndex = gpt51Index >= 0 ? gpt51Index + 1 : configs.findIndex(c => c.type === 'Chat' && c.id === 'deepseek-v3');
-                    const finalIndex = insertIndex >= 0 ? insertIndex : configs.length;
-                    configs.splice(finalIndex, 0, { id: 'gpt-5-2', provider: 'GPT 5.2', modelName: 'gpt-5.2', type: 'Chat', key: '', url: DEFAULT_BASE_URL });
-                }
-                
-                // 过滤掉jimeng-4.5配置（如果存在）
-                configs = configs.filter(c => c.id !== 'jimeng-4.5');
-                
-                // 确保 sora-2-pro 存在（如果不存在则添加）
-                const hasSora2Pro = configs.some(c => c.id === 'sora-2-pro');
-                if (!hasSora2Pro) {
-                    // 找到 sora-2 的位置，在它后面插入 sora-2-pro
-                    const sora2Index = configs.findIndex(c => c.id === 'sora-2');
-                    const insertIndex = sora2Index >= 0 ? sora2Index + 1 : configs.findIndex(c => c.type === 'Video' && c.id === 'google-veo3');
-                    const finalIndex = insertIndex >= 0 ? insertIndex : configs.length;
-                    configs.splice(finalIndex, 0, { id: 'sora-2-pro', provider: 'Sora 2 Pro', modelName: 'sora-2-pro', type: 'Video', key: '', url: DEFAULT_BASE_URL, durations: ['15s', '25s'] });
-                }
-                
-                // 确保 gpt-image-1.5 存在（如果不存在则添加）
-                const hasGptImage15 = configs.some(c => c.id === 'gpt-image-1.5');
-                if (!hasGptImage15) {
-                    // 找到 gpt-image 的位置，在它后面插入 gpt-image-1.5
-                    const gptImageIndex = configs.findIndex(c => c.id === 'gpt-image');
-                    const insertIndex = gptImageIndex >= 0 ? gptImageIndex + 1 : configs.findIndex(c => c.type === 'Image' && c.id === 'flux-kontext');
-                    const finalIndex = insertIndex >= 0 ? insertIndex : configs.length;
-                    configs.splice(finalIndex, 0, { id: 'gpt-image-1.5', provider: 'GPT Image 1.5', modelName: 'gpt-image-1.5', type: 'Image', key: '', url: DEFAULT_BASE_URL });
-                }
-                
-                // 过滤掉已删除的模型配置
-                configs = configs.filter(c => !DELETED_MODEL_IDS.includes(c.id));
-                
-                // 从localStorage读取保存的Session ID
-                // 第一次打开时如果没有保存的Session ID，使用空字符串（需要用户输入）
-                // 如果有保存的Session ID，则使用保存的值
-                const savedSessionId = localStorage.getItem('tapnow_jimeng_session_id');
-                const sessionIdToUse = savedSessionId || ''; // 如果没有保存的，使用空字符串，让用户输入
-                
-                // 确保即梦模型存在（如果不存在则添加）
-                const hasJimeng45 = configs.some(c => c.id === 'jimeng-4.5');
-                const hasJimeng41 = configs.some(c => c.id === 'jimeng-4.1');
-                const hasJimeng31 = configs.some(c => c.id === 'jimeng-3.1');
-                
-                if (!hasJimeng45 || !hasJimeng41 || !hasJimeng31) {
-                    // 找到即梦模型在默认配置中的位置（在Midjourney之后）
-                    const mjIndex = configs.findIndex(c => c.id === 'mj-v6');
-                    const insertIndex = mjIndex >= 0 ? mjIndex + 1 : configs.length;
-                    
-                    if (!hasJimeng45) {
-                        configs.splice(insertIndex, 0, { id: 'jimeng-4.5', provider: 'Jimeng 4.5', modelName: 'jimeng-4.5', type: 'Image', key: sessionIdToUse, url: JIMENG_API_BASE_URL });
-                    }
-                    if (!hasJimeng41) {
-                        const jimeng45Index = configs.findIndex(c => c.id === 'jimeng-4.5');
-                        const nextIndex = jimeng45Index >= 0 ? jimeng45Index + 1 : insertIndex;
-                        configs.splice(nextIndex, 0, { id: 'jimeng-4.1', provider: 'Jimeng 4.1', modelName: 'jimeng-4.1', type: 'Image', key: sessionIdToUse, url: JIMENG_API_BASE_URL });
-                    }
-                    if (!hasJimeng31) {
-                        const jimeng41Index = configs.findIndex(c => c.id === 'jimeng-4.1');
-                        const nextIndex = jimeng41Index >= 0 ? jimeng41Index + 1 : insertIndex + 1;
-                        configs.splice(nextIndex, 0, { id: 'jimeng-3.1', provider: 'Jimeng 3.1', modelName: 'jimeng-3.1', type: 'Image', key: sessionIdToUse, url: JIMENG_API_BASE_URL });
-                    }
-                } else {
-                    // 如果模型已存在，更新所有jimeng模型的Session ID
-                    // 如果有保存的Session ID，使用保存的值；如果没有，使用空字符串（让用户输入）
-                    configs = configs.map(c => 
-                        (c.id.includes('jimeng') || c.provider?.includes('Jimeng'))
-                            ? { ...c, key: sessionIdToUse }
-                            : c
-                    );
-                }
-                
-                // 确保 Grok-3 Video 模型存在（兼容旧的本地存储配置）
-                const hasGrok3 = configs.some(c => c.id === 'grok-3');
-                if (!hasGrok3) {
-                    const firstVideoIndex = configs.findIndex(c => c.type === 'Video');
-                    const insertIndex = firstVideoIndex >= 0 ? firstVideoIndex : configs.length;
-                    configs.splice(insertIndex, 0, { id: 'grok-3', provider: 'Grok3 Video', modelName: 'grok-video-3', type: 'Video', key: '', url: 'https://ai.t8star.cn', durations: ['8s', '5s'] });
-                }
-                
-                return configs;
-            });
+            const [apiConfigs, setApiConfigs] = useApiConfigs();
             const [globalApiKey, setGlobalApiKey] = useState(() => localStorage.getItem('tapnow_global_key') || '');
             
             // 即梦图生图使用本地文件设置（默认true，强制使用本地文件而不是URL）
-            const [jimengUseLocalFile, setJimengUseLocalFile] = useState(() => {
-                const saved = localStorage.getItem('tapnow_jimeng_use_local_file');
-                return saved !== null ? saved === 'true' : true; // 默认true
+            const [jimengUseLocalFile, setJimengUseLocalFile] = useLocalStorage('tapnow_jimeng_use_local_file', true, {
+                serialize: String,
+                deserialize: (value) => value !== null ? value === 'true' : true
             });
 
             // 项目名称状态
-            const [projectName, setProjectName] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('tapnow_project_name');
-                    return saved || '未命名项目';
-                } catch (e) {
-                    return '未命名项目';
-                }
+            const [projectName, setProjectName] = useLocalStorage('tapnow_project_name', '未命名项目', {
+                serialize: String,
+                deserialize: (value) => value || '未命名项目'
             });
             const [isEditingProjectName, setIsEditingProjectName] = useState(false);
             const projectNameInputRef = useRef(null);
@@ -267,80 +162,41 @@ import {
                 type: 'import' // 'import' | 'export'
             });
 
-            const [history, setHistory] = useState(() => {
-                try {
-                const saved = localStorage.getItem('tapnow_history');
-                    if (!saved) return [];
-                    const parsed = JSON.parse(saved);
-                    // 检查是否有需要重新切割的Midjourney图片
-                    return parsed.map(item => {
-                        if (item.mjNeedsSplit && item.mjOriginalUrl && item.apiConfig?.modelId?.includes('mj')) {
-                            // 标记需要重新切割，但不立即切割（避免阻塞初始化）
-                            return { ...item, url: item.mjOriginalUrl, mjImages: null, mjNeedsSplit: true };
-                        }
-                        return item;
-                    });
-                } catch (e) {
-                    console.error('加载历史记录失败:', e);
-                    return [];
-                }
-            });
-            
-            const [chatSessions, setChatSessions] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('tapnow_chat_sessions');
-                    return saved ? JSON.parse(saved) : [{ id: 'default', title: '新对话', messages: [] }];
-                } catch (e) {
-                    return [{ id: 'default', title: '新对话', messages: [] }];
-                }
-            });
-            const [currentChatId, setCurrentChatId] = useState('default');
-            const [chatInput, setChatInput] = useState('');
-            const [isChatOpen, setIsChatOpen] = useState(false);
-            const [chatWidth, setChatWidth] = useState(400); 
-            const [chatFiles, setChatFiles] = useState([]); 
-            const [chatModel, setChatModel] = useState('gemini-3-pro');
-            const [isChatSending, setIsChatSending] = useState(false);
+            const [history, setHistory] = useHistory();
+            const {
+                chatSessions,
+                setChatSessions,
+                currentChatId,
+                setCurrentChatId,
+                currentSession,
+                chatInput,
+                setChatInput,
+                isChatOpen,
+                setIsChatOpen,
+                chatWidth,
+                setChatWidth,
+                chatFiles,
+                setChatFiles,
+                chatModel,
+                setChatModel,
+                isChatSending,
+                setIsChatSending,
+                chatSessionDropdownOpen,
+                setChatSessionDropdownOpen,
+            } = useChatSessions();
 
             const [lightboxItem, setLightboxItem] = useState(null);
 
-            const [promptLibrary, setPromptLibrary] = useState(() => {
-                try {
-                    const saved = localStorage.getItem(PROMPT_LIBRARY_KEY);
-                    const parsed = saved ? JSON.parse(saved) : [];
-                    const defaults = [
-                        { id: 'grid-default', name: '九宫格分镜脚本', prompt: GRID_PROMPT_TEXT },
-                        { id: 'upscale-default', name: '高清放大', prompt: UPSCALE_PROMPT_TEXT },
-                        { id: 'moodboard-default', name: '情绪版', prompt: MOOD_BOARD_PROMPT_TEXT },
-                        { id: 'storyboard-default', name: '【分镜版】', prompt: STORYBOARD_PROMPT_TEXT },
-                        { id: 'character-sheet-default', name: '【角色板】', prompt: CHARACTER_SHEET_PROMPT_TEXT }
-                    ];
-                    // 确保默认项存在且不重复
-                    const existingIds = new Set((parsed || []).map(p => p.id));
-                    const merged = [...parsed];
-                    defaults.forEach(def => {
-                        const hasSameName = merged.some(p => p.name === def.name);
-                        if (!existingIds.has(def.id) && !hasSameName) merged.unshift(def);
-                    });
-                    return merged;
-                } catch (e) {
-                    return [
-                        { id: 'grid-default', name: '九宫格分镜脚本', prompt: GRID_PROMPT_TEXT },
-                        { id: 'upscale-default', name: '高清放大', prompt: UPSCALE_PROMPT_TEXT },
-                        { id: 'moodboard-default', name: '情绪版', prompt: MOOD_BOARD_PROMPT_TEXT },
-                        { id: 'storyboard-default', name: '【分镜版】', prompt: STORYBOARD_PROMPT_TEXT },
-                        { id: 'character-sheet-default', name: '【角色板】', prompt: CHARACTER_SHEET_PROMPT_TEXT }
-                    ];
-                }
-            });
-            const [promptLibraryForm, setPromptLibraryForm] = useState({ name: '', prompt: '' });
-            const [promptLibraryCollapsed, setPromptLibraryCollapsed] = useState(false);
-            const [promptLibraryEditorOpen, setPromptLibraryEditorOpen] = useState(false);
-            useEffect(() => {
-                try {
-                    localStorage.setItem(PROMPT_LIBRARY_KEY, JSON.stringify(promptLibrary));
-                } catch (e) {}
-            }, [promptLibrary]);
+            const {
+                promptLibrary,
+                setPromptLibrary,
+                promptLibraryForm,
+                setPromptLibraryForm,
+                promptLibraryCollapsed,
+                setPromptLibraryCollapsed,
+                promptLibraryEditorOpen,
+                setPromptLibraryEditorOpen,
+            } = usePromptLibrary();
 
             // State management
             const [isPanning, setIsPanning] = useState(false);
@@ -370,15 +226,7 @@ import {
             const [settingsOpen, setSettingsOpen] = useState(false);
             const [historyOpen, setHistoryOpen] = useState(false);
             const [charactersOpen, setCharactersOpen] = useState(false);
-            const [characterLibrary, setCharacterLibrary] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('tapnow_characters');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) {
-                    console.error('加载角色库失败:', e);
-                    return [];
-                }
-            });
+            const [characterLibrary, setCharacterLibrary] = useCharacterLibrary();
             const [createCharacterOpen, setCreateCharacterOpen] = useState(false);
             const [createCharacterVideoSourceType, setCreateCharacterVideoSourceType] = useState('url');
             const [createCharacterVideoUrl, setCreateCharacterVideoUrl] = useState('');
@@ -392,7 +240,6 @@ import {
             const [characterReferenceBarExpanded, setCharacterReferenceBarExpanded] = useState({});
             const [batchModalOpen, setBatchModalOpen] = useState(false);
             const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
-            const [chatSessionDropdownOpen, setChatSessionDropdownOpen] = useState(false);
             const [activeTool, setActiveTool] = useState('select');
             const [activeDropdown, setActiveDropdown] = useState(null);
             const [apiTesting, setApiTesting] = useState(null);
@@ -401,49 +248,35 @@ import {
             const [nodeTimers, setNodeTimers] = useState({});
 
             // 历史保存文件夹记忆
-            const [savedFolderHistory, setSavedFolderHistory] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('tapnow_saved_folder_history');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) {
-                    return [];
-                }
-            });
+            const [savedFolderHistory, setSavedFolderHistory] = useLocalStorage('tapnow_saved_folder_history', []);
             
             // 框选节点右键菜单
             const [selectionContextMenu, setSelectionContextMenu] = useState({ visible: false, x: 0, y: 0 });
 
             // 性能模式：历史记录使用缩略图显示
             // 'off' = 关闭, 'normal' = 普通(150px/0.6), 'ultra' = 极致(80px/0.3)
-            const [historyPerformanceMode, setHistoryPerformanceMode] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('tapnow_history_performance_mode');
-                    // 兼容旧版本布尔值
-                    if (saved === 'true') return 'normal';
-                    if (saved === 'false') return 'off';
-                    return saved || 'normal'; // 默认普通性能模式
-                } catch (e) {
-                    return 'normal';
+            const [historyPerformanceMode, setHistoryPerformanceMode] = useLocalStorage('tapnow_history_performance_mode', 'normal', {
+                serialize: String,
+                deserialize: (value) => {
+                    if (value === 'true') return 'normal';
+                    if (value === 'false') return 'off';
+                    return value || 'normal';
                 }
             });
             
-            // 本地缓存服务器状态
-            const [localCacheServerConnected, setLocalCacheServerConnected] = useState(false);
-            const localCacheServerUrl = 'http://127.0.0.1:9527';
-            
-            // 本地缓存服务器配置
-            const [localServerConfig, setLocalServerConfig] = useState({
-                imageSavePath: '',
-                videoSavePath: '',
-                convertPngToJpg: true,
-                jpgQuality: 95
+            const {
+                localCacheServerConnected,
+                localServerConfig,
+                setLocalServerConfig,
+                localCacheSettingsOpen,
+                setLocalCacheSettingsOpen,
+                updateLocalServerConfig,
+            } = useLocalCacheServer({
+                history,
+                setHistory,
+                characterLibrary,
+                setCharacterLibrary,
             });
-            
-            // 本地缓存设置面板开关
-            const [localCacheSettingsOpen, setLocalCacheSettingsOpen] = useState(false);
-            
-            // 缩略图缓存 Map: id -> thumbnailUrl
-            const thumbnailCacheRef = useRef(new Map());
 
             const canvasRef = useRef(null);
             const lastMousePos = useRef({ x: 0, y: 0 });
@@ -460,19 +293,6 @@ import {
             const multiNodeDragStartPos = useRef(null); // 多节点拖动起始位置，用于防止累积误差
             const lastZoomRef = useRef(null); // 跟踪上次的 zoom 值，用于检测缩放切换
 
-            useEffect(() => { 
-                // 保存时过滤掉jimeng-4.5配置
-                const filteredConfigs = apiConfigs.filter(c => c.id !== 'jimeng-4.5');
-                localStorage.setItem('tapnow_api_configs', JSON.stringify(filteredConfigs)); 
-            }, [apiConfigs]);
-            
-            // 保存历史文件夹到localStorage
-            useEffect(() => {
-                try {
-                    localStorage.setItem('tapnow_saved_folder_history', JSON.stringify(savedFolderHistory));
-                } catch (e) {}
-            }, [savedFolderHistory]);
-            
             // 添加文件夹到历史记录的函数
             const addFolderToHistory = useCallback((folder) => {
                 if (!folder || folder.trim() === '') return;
@@ -481,11 +301,6 @@ import {
                     return [folder, ...filtered].slice(0, 10); // 最多保存10个
                 });
             }, []);
-            
-            // 保存性能模式设置
-            useEffect(() => {
-                localStorage.setItem('tapnow_history_performance_mode', String(historyPerformanceMode));
-            }, [historyPerformanceMode]);
             
             // 性能模式变化时，为历史记录生成缩略图
             useEffect(() => {
@@ -563,225 +378,6 @@ import {
                 return () => clearTimeout(timer);
             }, [historyPerformanceMode, history.length]);
             
-            // 检查本地缓存服务器连接状态并获取配置
-            useEffect(() => {
-                const checkLocalCacheServer = async () => {
-                    try {
-                        const res = await fetch(`${localCacheServerUrl}/ping`, { method: 'GET' });
-                        if (res.ok) {
-                            const data = await res.json();
-                            setLocalCacheServerConnected(true);
-                            // 更新服务器配置
-                            setLocalServerConfig(prev => ({
-                                ...prev,
-                                imageSavePath: data.image_save_path || '',
-                                videoSavePath: data.video_save_path || '',
-                                convertPngToJpg: data.convert_png_to_jpg !== false,
-                                pilAvailable: data.pil_available || false
-                            }));
-                            console.log('[缓存] 本地缓存服务器已连接', data);
-                        } else {
-                            setLocalCacheServerConnected(false);
-                        }
-                    } catch (e) {
-                        setLocalCacheServerConnected(false);
-                    }
-                };
-                checkLocalCacheServer();
-                // 每30秒检查一次
-                const interval = setInterval(checkLocalCacheServer, 30000);
-                return () => clearInterval(interval);
-            }, []);
-            
-            // 更新本地服务器配置
-            const updateLocalServerConfig = useCallback(async (newConfig) => {
-                if (!localCacheServerConnected) return false;
-                try {
-                    const res = await fetch(`${localCacheServerUrl}/config`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(newConfig)
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.success) {
-                            setLocalServerConfig(prev => ({
-                                ...prev,
-                                imageSavePath: data.config.image_save_path || '',
-                                videoSavePath: data.config.video_save_path || '',
-                                convertPngToJpg: data.config.convert_png_to_jpg !== false,
-                                jpgQuality: data.config.jpg_quality || 95
-                            }));
-                            return true;
-                        }
-                    }
-                } catch (e) {
-                    console.error('[缓存] 更新配置失败:', e);
-                }
-                return false;
-            }, [localCacheServerConnected]);
-            
-            // 生成缩略图的函数（用于性能模式）
-            // quality: 'normal' = 150px/0.6质量, 'ultra' = 80px/0.3质量（极致丝滑）
-            const generateThumbnail = useCallback(async (imageUrl, quality = 'normal') => {
-                const config = quality === 'ultra' 
-                    ? { maxSize: 80, jpegQuality: 0.3 }  // 极致性能模式
-                    : { maxSize: 150, jpegQuality: 0.6 }; // 普通性能模式
-                return new Promise((resolve) => {
-                    try {
-                        const img = new Image();
-                        img.crossOrigin = 'anonymous';
-                        img.onload = () => {
-                            const canvas = document.createElement('canvas');
-                            let w = img.naturalWidth;
-                            let h = img.naturalHeight;
-                            // 按比例缩放
-                            if (w > h) {
-                                if (w > config.maxSize) { h = h * config.maxSize / w; w = config.maxSize; }
-                            } else {
-                                if (h > config.maxSize) { w = w * config.maxSize / h; h = config.maxSize; }
-                            }
-                            canvas.width = w;
-                            canvas.height = h;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, w, h);
-                            // 使用JPEG压缩
-                            resolve(canvas.toDataURL('image/jpeg', config.jpegQuality));
-                        };
-                        img.onerror = () => resolve(null);
-                        img.src = imageUrl;
-                    } catch (e) {
-                        resolve(null);
-                    }
-                });
-            }, []);
-            
-            // 保存缩略图到本地缓存
-            const saveThumbnailToLocal = useCallback(async (itemId, thumbnailDataUrl, category = 'history') => {
-                if (!localCacheServerConnected || !thumbnailDataUrl) return null;
-                try {
-                    const res = await fetch(`${localCacheServerUrl}/save-thumbnail`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: itemId, content: thumbnailDataUrl, category })
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.success) {
-                            return data.url;
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[缓存] 保存缩略图失败:', e);
-                }
-                return null;
-            }, [localCacheServerConnected]);
-            
-            // 从URL中提取文件名（不含扩展名）
-            const getFilenameFromUrl = useCallback((url) => {
-                if (!url) return null;
-                try {
-                    // 去除查询参数
-                    const urlWithoutQuery = url.split('?')[0];
-                    // 获取最后一个路径部分
-                    const parts = urlWithoutQuery.split('/');
-                    const filename = parts[parts.length - 1];
-                    // 去除扩展名
-                    const nameWithoutExt = filename.replace(/\.[^.]+$/, '');
-                    return nameWithoutExt || null;
-                } catch (e) {
-                    return null;
-                }
-            }, []);
-            
-            // 保存原图到本地缓存（用于角色库）
-            const saveImageToLocalCache = useCallback(async (itemId, imageUrl, category = 'characters') => {
-                if (!localCacheServerConnected) return null;
-                try {
-                    // 从URL中提取文件名，如果失败则使用itemId
-                    const filenameFromUrl = getFilenameFromUrl(imageUrl);
-                    const saveId = filenameFromUrl || itemId;
-                    
-                    // 将图片转换为 base64
-                    let content = imageUrl;
-                    if (!imageUrl.startsWith('data:')) {
-                        const res = await fetch(imageUrl);
-                        const blob = await res.blob();
-                        content = await new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result);
-                            reader.readAsDataURL(blob);
-                        });
-                    }
-                    
-                    const res = await fetch(`${localCacheServerUrl}/save-cache`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: saveId, content, category, ext: '.jpg' })
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.success) {
-                            console.log('[缓存] 图片已缓存到本地:', data.url, '路径:', data.path);
-                            return { url: data.url, path: data.path };
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[缓存] 保存图片缓存失败:', e);
-                }
-                return null;
-            }, [localCacheServerConnected, getFilenameFromUrl]);
-            
-            // 保存视频到本地缓存
-            const saveVideoToLocalCache = useCallback(async (itemId, videoUrl, category = 'history') => {
-                if (!localCacheServerConnected) return null;
-                try {
-                    // 从URL中提取文件名，如果失败则使用itemId
-                    const filenameFromUrl = getFilenameFromUrl(videoUrl);
-                    const saveId = filenameFromUrl || itemId;
-                    
-                    console.log('[缓存] 开始缓存视频:', saveId, '(原ID:', itemId, ')');
-                    // 获取视频数据并转换为 base64
-                    const res = await fetch(videoUrl);
-                    const blob = await res.blob();
-                    console.log('[缓存] 视频大小:', (blob.size / 1024 / 1024).toFixed(2), 'MB');
-                    const content = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.readAsDataURL(blob);
-                    });
-                    
-                    const saveRes = await fetch(`${localCacheServerUrl}/save-cache`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: saveId, content, category, ext: '.mp4', type: 'video' })
-                    });
-                    if (saveRes.ok) {
-                        const data = await saveRes.json();
-                        if (data.success) {
-                            console.log('[缓存] 视频已缓存到本地:', data.url, '路径:', data.path);
-                            return { url: data.url, path: data.path };
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[缓存] 保存视频缓存失败:', e);
-                }
-                return null;
-            }, [localCacheServerConnected, getFilenameFromUrl]);
-            
-            // 检查本地缓存是否存在
-            const checkLocalCache = useCallback(async (itemId, category = 'history') => {
-                if (!localCacheServerConnected) return null;
-                try {
-                    const url = `${localCacheServerUrl}/file/.tapnow_cache/${category}/${itemId}.jpg`;
-                    const res = await fetch(url, { method: 'HEAD' });
-                    if (res.ok) {
-                        return url;
-                    }
-                } catch (e) {}
-                return null;
-            }, [localCacheServerConnected]);
-            
             // 全局 Delete 键删除节点
             useEffect(() => {
                 const handleDeleteKey = (e) => {
@@ -813,102 +409,10 @@ import {
                     window.removeEventListener('keydown', handleDeleteKey);
                 };
             }, []);
-            // 保存角色库到 localStorage（使用防抖优化）
-            const debouncedSaveCharacters = useMemo(() => debounce((charactersToSave) => {
-                try {
-                    localStorage.setItem('tapnow_characters', JSON.stringify(charactersToSave));
-                } catch (e) {
-                    console.error('保存角色库失败:', e);
-                }
-            }, 500), []);
-
-            useEffect(() => {
-                debouncedSaveCharacters(characterLibrary);
-            }, [characterLibrary, debouncedSaveCharacters]);
-            
-            // 角色库本地缓存：当角色库变化时，缓存图片到本地
-            useEffect(() => {
-                if (!localCacheServerConnected) return;
-                
-                const cacheCharacterImages = async () => {
-                    for (const char of characterLibrary) {
-                        // 检查是否已有本地缓存
-                        if (char.localCacheUrl) continue;
-                        
-                        // 检查图片URL是否有效
-                        if (!char.imageUrl || char.imageUrl.startsWith('blob:')) continue;
-                        
-                        try {
-                            // 尝试缓存到本地
-                            const result = await saveImageToLocalCache(char.id, char.imageUrl, 'characters');
-                            if (result) {
-                                // 更新角色库中的本地缓存URL和文件路径
-                                setCharacterLibrary(prev => prev.map(c => 
-                                    c.id === char.id ? { ...c, localCacheUrl: result.url, localFilePath: result.path } : c
-                                ));
-                            }
-                        } catch (e) {
-                            console.warn('[角色库缓存] 缓存失败:', char.name, e);
-                        }
-                    }
-                };
-                
-                // 延迟执行，避免频繁调用
-                const timer = setTimeout(cacheCharacterImages, 2000);
-                return () => clearTimeout(timer);
-            }, [characterLibrary.length, localCacheServerConnected, saveImageToLocalCache]);
-
             // 当视频 URL 改变时清除错误提示
             useEffect(() => {
                 setCreateCharacterVideoError(null);
             }, [createCharacterVideoUrl, createCharacterSelectedTaskId, createCharacterVideoSourceType]);
-
-            // localStorage 写入防抖函数
-            const debouncedSaveHistory = useMemo(() => debounce((historyToSave) => {
-                try {
-                    localStorage.setItem('tapnow_history', JSON.stringify(historyToSave));
-                } catch (e) {
-                    console.error('保存历史记录失败（可能超出存储配额）:', e);
-                    // 如果存储失败，尝试减少数据量
-                    try {
-                        const reduced = historyToSave.map(item => ({
-                            id: item.id,
-                            type: item.type,
-                            url: item.url,
-                            prompt: item.prompt?.substring(0, 200) || '',
-                            time: item.time,
-                            status: item.status,
-                            modelName: item.modelName,
-                            width: item.width,
-                            height: item.height,
-                            ratio: item.ratio,
-                            mjImages: item.mjImages,
-                            selectedMjImageIndex: item.selectedMjImageIndex,
-                            mjRatio: item.mjRatio,
-                            mjNeedsSplit: item.mjNeedsSplit,
-                            mjImageInfo: item.mjImageInfo
-                        }));
-                        localStorage.setItem('tapnow_history', JSON.stringify(reduced));
-                    } catch (e2) {
-                        console.error('减少数据后保存也失败:', e2);
-                        try {
-                            // 最小化保存：只保留必要字段
-                            const minimal = historyToSave.map(item => ({
-                                id: item.id,
-                                type: item.type,
-                                url: item.url,
-                                prompt: item.prompt?.substring(0, 100) || '',
-                                time: item.time,
-                                status: item.status,
-                                modelName: item.modelName
-                            }));
-                            debouncedSaveHistory(minimal);
-                        } catch (e3) {
-                            console.error('最小化保存也失败:', e3);
-                        }
-                    }
-                }
-            }, 1000), []);
 
             const debouncedSaveGlobalKey = useMemo(() => debounce((key) => {
                 localStorage.setItem('tapnow_global_key', key);
@@ -916,215 +420,6 @@ import {
 
             useEffect(() => { debouncedSaveGlobalKey(globalApiKey); }, [globalApiKey, debouncedSaveGlobalKey]);
             
-            // 优化localStorage存储，处理配额超限问题
-            useEffect(() => {
-                try {
-                    // 只存储必要的元数据，不存储完整的base64图片和长URL
-                    const historyToSave = history.map(item => {
-                        const saved = { ...item };
-                        // 如果是Midjourney切割后的图片，只保存标记和原图URL，不保存完整的base64数组
-                        if (item.mjImages && item.mjImages.length === 4) {
-                            // 保存切割标记和原图URL，切割后的图片在需要时重新生成
-                            saved.mjImages = null; // 不保存base64数组
-                            saved.mjNeedsSplit = true; // 标记需要重新切割
-                            saved.mjOriginalUrl = item.mjOriginalUrl || item.url; // 保存原图URL
-                        }
-                        // 如果URL是data URL且太长，只保存前100个字符作为标记
-                        if (item.url && item.url.startsWith('data:') && item.url.length > 5000) {
-                            saved.url = item.url.substring(0, 100) + '...'; // 只保存前100个字符
-                        }
-                        // 移除不必要的字段，减少存储大小
-                        delete saved.mjImageInfo; // 不保存图片信息
-                        return saved;
-                    });
-                    debouncedSaveHistory(historyToSave);
-                } catch (e) {
-                    console.error('保存历史记录失败（可能超出存储配额）:', e);
-                    // 如果存储失败，尝试清理旧数据，只保留最近20条
-                    try {
-                        const reduced = history.slice(0, 20).map(item => {
-                            const saved = { ...item };
-                            // 移除所有可能很大的字段
-                            if (saved.url && saved.url.startsWith('data:')) {
-                                saved.url = saved.url.substring(0, 100) + '...';
-                            }
-                            if (saved.mjImages) saved.mjImages = null;
-                            if (saved.mjImageInfo) delete saved.mjImageInfo;
-                            return saved;
-                        });
-                        debouncedSaveHistory(reduced);
-                    } catch (e2) {
-                        console.error('清理后仍无法保存:', e2);
-                        // 最后尝试：只保存最基本的字段
-                        try {
-                            const minimal = history.slice(0, 10).map(item => ({
-                                id: item.id,
-                                type: item.type,
-                                prompt: item.prompt?.substring(0, 100),
-                                time: item.time,
-                                status: item.status,
-                                modelName: item.modelName
-                            }));
-                            debouncedSaveHistory(minimal);
-                        } catch (e3) {
-                            console.error('最小化保存也失败:', e3);
-                        }
-                    }
-                }
-            }, [history, debouncedSaveHistory]);
-            
-            // 跟踪已尝试缓存的项目ID，避免重复尝试
-            const triedCacheIdsRef = useRef(new Set());
-            
-            // 历史记录本地缓存：当历史记录变化时，缓存图片到本地
-            useEffect(() => {
-                if (!localCacheServerConnected) return;
-                
-                const cacheHistoryImages = async () => {
-                    for (const item of history) {
-                        // 只处理已完成的图片
-                        if (item.status !== 'completed' || item.type !== 'image') continue;
-                        
-                        // 检查是否已有本地缓存
-                        if (item.localCacheUrl) continue;
-                        
-                        // 检查是否已尝试过缓存（避免重复尝试失败的项目）
-                        if (triedCacheIdsRef.current.has(item.id)) continue;
-                        
-                        // 立即标记为已尝试，避免重复检查
-                        triedCacheIdsRef.current.add(item.id);
-                        
-                        // 检查图片URL是否有效（优先使用url，其次使用originalUrl或mjOriginalUrl）
-                        const imageUrl = item.url || item.originalUrl || item.mjOriginalUrl;
-                        
-                        // 从URL中提取文件名，检查本地是否已有缓存
-                        const filenameFromUrl = imageUrl ? getFilenameFromUrl(imageUrl) : null;
-                        // 根据配置确定基础路径
-                        const baseDir = localServerConfig.imageSavePath ? 'history' : '.tapnow_cache/history';
-                        // 尝试检查 jpg 和 png 两种格式，同时检查 filenameFromUrl 和 item.id 两种文件名
-                        let foundLocal = false;
-                        const filenamesToCheck = [filenameFromUrl, item.id].filter(Boolean);
-                        for (const filename of filenamesToCheck) {
-                            if (foundLocal) break;
-                            for (const ext of ['.jpg', '.png']) {
-                                try {
-                                    const basePath = `${baseDir}/${filename}${ext}`;
-                                    const checkUrl = `${localCacheServerUrl}/file/${basePath}`;
-                                    const checkRes = await fetch(checkUrl, { method: 'HEAD' });
-                                    if (checkRes.ok) {
-                                        // 本地已有缓存，直接更新记录
-                                        console.log('[历史缓存] 发现已有本地缓存:', filename + ext);
-                                        setHistory(prev => prev.map(h => 
-                                            h.id === item.id ? { ...h, localCacheUrl: checkUrl, localFilePath: basePath } : h
-                                        ));
-                                        foundLocal = true;
-                                        break;
-                                    }
-                                } catch (e) {}
-                            }
-                        }
-                        if (foundLocal) continue;
-                        
-                        // 如果没有有效的URL，跳过下载
-                        if (!imageUrl || imageUrl.startsWith('blob:') || imageUrl.includes('...')) continue;
-                        
-                        try {
-                            // 尝试缓存到本地
-                            const result = await saveImageToLocalCache(item.id, imageUrl, 'history');
-                            if (result) {
-                                // 更新历史记录中的本地缓存URL和文件路径
-                                setHistory(prev => prev.map(h => 
-                                    h.id === item.id ? { ...h, localCacheUrl: result.url, localFilePath: result.path } : h
-                                ));
-                            }
-                        } catch (e) {
-                            console.warn('[历史缓存] 缓存失败:', item.id, e);
-                        }
-                    }
-                };
-                
-                // 延迟执行，避免频繁调用
-                const timer = setTimeout(cacheHistoryImages, 3000);
-                return () => clearTimeout(timer);
-            }, [history.length, localCacheServerConnected, saveImageToLocalCache, getFilenameFromUrl, localServerConfig.imageSavePath]);
-            
-            // 历史记录本地缓存：当历史记录变化时，缓存视频到本地
-            useEffect(() => {
-                if (!localCacheServerConnected) return;
-                
-                const cacheHistoryVideos = async () => {
-                    for (const item of history) {
-                        // 只处理已完成的视频
-                        if (item.status !== 'completed' || item.type !== 'video') continue;
-                        
-                        // 检查是否已有本地缓存
-                        if (item.localCacheUrl) continue;
-                        
-                        // 检查是否已尝试过缓存（避免重复尝试失败的项目）
-                        if (triedCacheIdsRef.current.has(item.id)) continue;
-                        
-                        // 立即标记为已尝试，避免重复检查
-                        triedCacheIdsRef.current.add(item.id);
-                        
-                        // 检查视频URL是否有效（优先使用url，其次使用originalUrl）
-                        const videoUrl = item.url || item.originalUrl;
-                        
-                        // 跳过已经是本地缓存的URL
-                        if (videoUrl && (videoUrl.includes('localhost:') || videoUrl.includes('127.0.0.1:'))) continue;
-                        
-                        // 从URL中提取文件名，检查本地是否已有缓存
-                        const filenameFromUrl = videoUrl ? getFilenameFromUrl(videoUrl) : null;
-                        // 同时检查 filenameFromUrl 和 item.id 两种文件名
-                        const filenamesToCheck = [filenameFromUrl, item.id].filter(Boolean);
-                        let foundLocalVideo = false;
-                        for (const filename of filenamesToCheck) {
-                            if (foundLocalVideo) break;
-                            try {
-                                // 根据配置确定检查路径：如果设置了videoSavePath则使用它，否则使用默认的.tapnow_cache
-                                const basePath = localServerConfig.videoSavePath 
-                                    ? `history/${filename}.mp4`
-                                    : `.tapnow_cache/history/${filename}.mp4`;
-                                const checkUrl = `${localCacheServerUrl}/file/${basePath}`;
-                                const checkRes = await fetch(checkUrl, { method: 'HEAD' });
-                                if (checkRes.ok) {
-                                    // 本地已有缓存，直接更新记录
-                                    console.log('[历史缓存] 发现已有本地视频缓存:', filename);
-                                    setHistory(prev => prev.map(h => 
-                                        h.id === item.id ? { ...h, localCacheUrl: checkUrl, localFilePath: basePath } : h
-                                    ));
-                                    foundLocalVideo = true;
-                                }
-                            } catch (e) {}
-                        }
-                        if (foundLocalVideo) continue;
-                        
-                        // 如果没有有效的URL，跳过下载
-                        if (!videoUrl || videoUrl.startsWith('blob:') || videoUrl.includes('...')) continue;
-                        
-                        try {
-                            // 尝试缓存到本地
-                            const result = await saveVideoToLocalCache(item.id, videoUrl, 'history');
-                            if (result) {
-                                // 更新历史记录中的本地缓存URL和文件路径
-                                setHistory(prev => prev.map(h => 
-                                    h.id === item.id ? { ...h, localCacheUrl: result.url, localFilePath: result.path } : h
-                                ));
-                            }
-                        } catch (e) {
-                            console.warn('[历史缓存] 视频缓存失败:', item.id, e);
-                        }
-                    }
-                };
-                
-                // 延迟执行，避免频繁调用（视频较大，延迟更长）
-                const timer = setTimeout(cacheHistoryVideos, 5000);
-                return () => clearTimeout(timer);
-            }, [history.length, localCacheServerConnected, saveVideoToLocalCache, getFilenameFromUrl, localServerConfig.videoSavePath]);
-            
-            const debouncedSaveChatSessions = useMemo(() => debounce((sessions) => {
-                try { localStorage.setItem('tapnow_chat_sessions', JSON.stringify(sessions)); } catch (e) {}
-            }, 1000), []);
-            useEffect(() => { debouncedSaveChatSessions(chatSessions); }, [chatSessions, debouncedSaveChatSessions]);
             useEffect(() => { 
                 nodesRef.current = nodes; 
                 selectedNodeIdRef.current = selectedNodeId;
@@ -2677,8 +1972,6 @@ import {
                 const config = apiConfigsMap.get(modelId);
                 return (config?.key || globalApiKey) ? 'bg-zinc-400' : 'bg-zinc-700';
             };
-
-            const currentSession = useMemo(() => chatSessions.find(s => s.id === currentChatId) || chatSessions[0], [chatSessions, currentChatId]);
 
             const scrollToBottom = () => {
                 chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -6779,322 +6072,22 @@ import {
                 }
             };
 
-            // 获取东八区时间戳（用于项目数据）
-            const getCSTTimestamp = () => {
-                const now = new Date();
-                // 获取UTC时间并加上8小时（东八区）
-                const cstTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-                return cstTime.toISOString();
-            };
-
-            // 获取东八区时间戳（用于文件名）
-            const getCSTFilenameTimestamp = () => {
-                const now = new Date();
-                const cstTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-                const year = cstTime.getUTCFullYear();
-                const month = String(cstTime.getUTCMonth() + 1).padStart(2, '0');
-                const day = String(cstTime.getUTCDate()).padStart(2, '0');
-                const hours = String(cstTime.getUTCHours()).padStart(2, '0');
-                const minutes = String(cstTime.getUTCMinutes()).padStart(2, '0');
-                const seconds = String(cstTime.getUTCSeconds()).padStart(2, '0');
-                return `${year}-${month}-${day}T${hours}-${minutes}-${seconds}`;
-            };
-
             // 功能5：保存项目到JSON文件（流式写入，支持超大文件）
             const handleSaveProject = async () => {
                 try {
-                    // 兼容性检查：优先使用 File System Access API
-                    if (!window.showSaveFilePicker) {
-                        // 降级到旧的 Blob 下载方式（仅适用于小文件）
-                        const shouldProceed = confirm('您的浏览器不支持流式保存大文件。\n\n如果项目包含大量图片/视频（>500MB），建议使用 Chrome 或 Edge 浏览器导出。\n\n是否继续使用传统方式保存？（可能导致内存溢出）');
-                        if (!shouldProceed) return;
-                        
-                        // 执行旧的保存逻辑（仅作为降级方案）
-                        const replacer = (key, value) => {
-                            if (value === undefined) return null;
-                            return value;
-                        };
-                        const nodesToSave = JSON.parse(JSON.stringify(nodes, replacer));
-                        const convertBlobUrlsToDataUrls = async (obj) => {
-                            if (obj === null || obj === undefined) return obj;
-                            if (typeof obj === 'string' && obj.startsWith('blob:')) {
-                                try {
-                                    const blob = await getBlobFromUrl(obj);
-                                    const dataUrl = await blobToDataURL(blob);
-                                    return dataUrl;
-                                } catch (error) {
-                                    console.error('转换 Blob URL 失败:', error);
-                                    return obj;
-                                }
-                            }
-                            if (Array.isArray(obj)) {
-                                return await Promise.all(obj.map(item => convertBlobUrlsToDataUrls(item)));
-                            }
-                            if (typeof obj === 'object') {
-                                const converted = {};
-                                for (const key in obj) {
-                                    if (obj.hasOwnProperty(key)) {
-                                        converted[key] = await convertBlobUrlsToDataUrls(obj[key]);
-                                    }
-                                }
-                                return converted;
-                            }
-                            return obj;
-                        };
-                        const nodesWithDataUrls = await convertBlobUrlsToDataUrls(nodesToSave);
-                        const characterLibraryToSave = JSON.parse(JSON.stringify(characterLibrary, replacer));
-                        const characterLibraryWithDataUrls = await convertBlobUrlsToDataUrls(characterLibraryToSave);
-                        const projectData = {
-                            version: '2.5.7',
-                            projectName,
-                            nodes: nodesWithDataUrls,
-                            connections,
-                            view,
-                            history,
-                            chatSessions,
-                            characterLibrary: characterLibraryWithDataUrls,
-                            timestamp: getCSTTimestamp()
-                        };
-                        const jsonStr = JSON.stringify(projectData, replacer, 2);
-                        const blob = new Blob([jsonStr], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        const timestamp = getCSTFilenameTimestamp();
-                        const filename = `${projectName || '未命名项目'}_${timestamp}.json`;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                        alert('项目保存成功！');
-                        return;
-                    }
-
-                    // 使用 File System Access API 流式写入
-                    const timestamp = getCSTFilenameTimestamp();
-                    const handle = await window.showSaveFilePicker({
-                        suggestedName: `${projectName || '未命名项目'}_${timestamp}.json`,
-                        types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
+                    const saved = await saveProject({
+                        projectName,
+                        nodes,
+                        connections,
+                        view,
+                        history,
+                        chatSessions,
+                        characterLibrary
                     });
-                    const writable = await handle.createWritable();
-
-                    // replacer 函数：将 undefined 转换为 null
-                    const replacer = (key, value) => {
-                        if (value === undefined) return null;
-                        return value;
-                    };
-
-                    // 辅助函数：转换单个节点的 Blob URL 字段
-                    const convertNodeBlobUrls = async (node) => {
-                        const nodeCopy = { ...node };
-                        
-                        // 转换 content
-                        if (nodeCopy.content && typeof nodeCopy.content === 'string' && nodeCopy.content.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(nodeCopy.content);
-                                const mime = isVideoUrl(nodeCopy.content) ? 'video/mp4' : 'image/png';
-                                nodeCopy.content = `data:${mime};base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换节点 content 失败:', e);
-                            }
-                        }
-                        
-                        // 转换 maskContent
-                        if (nodeCopy.maskContent && typeof nodeCopy.maskContent === 'string' && nodeCopy.maskContent.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(nodeCopy.maskContent);
-                                nodeCopy.maskContent = `data:image/png;base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换节点 maskContent 失败:', e);
-                            }
-                        }
-                        
-                        // 转换 selectedKeyframes
-                        if (Array.isArray(nodeCopy.selectedKeyframes)) {
-                            for (let i = 0; i < nodeCopy.selectedKeyframes.length; i++) {
-                                const frame = nodeCopy.selectedKeyframes[i];
-                                if (frame && frame.url && typeof frame.url === 'string' && frame.url.startsWith('blob:')) {
-                                    try {
-                                        const b64 = await getBase64FromUrl(frame.url);
-                                        frame.url = `data:image/png;base64,${b64}`;
-                                    } catch (e) {
-                                        console.error('转换关键帧失败:', e);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // 转换 frames
-                        if (Array.isArray(nodeCopy.frames)) {
-                            for (let i = 0; i < nodeCopy.frames.length; i++) {
-                                const frame = nodeCopy.frames[i];
-                                if (frame && frame.url && typeof frame.url === 'string' && frame.url.startsWith('blob:')) {
-                                    try {
-                                        const b64 = await getBase64FromUrl(frame.url);
-                                        frame.url = `data:image/png;base64,${b64}`;
-                                    } catch (e) {
-                                        console.error('转换帧失败:', e);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        return nodeCopy;
-                    };
-
-                    // 辅助函数：转换历史记录项的 Blob URL
-                    const convertHistoryItemBlobUrls = async (item) => {
-                        const itemCopy = { ...item };
-                        
-                        // 转换 url
-                        if (itemCopy.url && typeof itemCopy.url === 'string' && itemCopy.url.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(itemCopy.url);
-                                const mime = itemCopy.type === 'video' ? 'video/mp4' : 'image/png';
-                                itemCopy.url = `data:${mime};base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换历史记录 url 失败:', e);
-                            }
-                        }
-                        
-                        // 转换 mjOriginalUrl
-                        if (itemCopy.mjOriginalUrl && typeof itemCopy.mjOriginalUrl === 'string' && itemCopy.mjOriginalUrl.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(itemCopy.mjOriginalUrl);
-                                itemCopy.mjOriginalUrl = `data:image/png;base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换 mjOriginalUrl 失败:', e);
-                            }
-                        }
-                        
-                        // 转换 mjImages 数组
-                        if (Array.isArray(itemCopy.mjImages)) {
-                            for (let i = 0; i < itemCopy.mjImages.length; i++) {
-                                const imgUrl = itemCopy.mjImages[i];
-                                if (imgUrl && typeof imgUrl === 'string' && imgUrl.startsWith('blob:')) {
-                                    try {
-                                        const b64 = await getBase64FromUrl(imgUrl);
-                                        itemCopy.mjImages[i] = `data:image/png;base64,${b64}`;
-                                    } catch (e) {
-                                        console.error('转换 mjImages 失败:', e);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        return itemCopy;
-                    };
-
-                    // 辅助函数：转换角色库项的 Blob URL
-                    const convertCharacterBlobUrls = async (character) => {
-                        const charCopy = { ...character };
-                        
-                        // 转换 avatar
-                        if (charCopy.avatar && typeof charCopy.avatar === 'string' && charCopy.avatar.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(charCopy.avatar);
-                                charCopy.avatar = `data:image/png;base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换角色 avatar 失败:', e);
-                            }
-                        }
-                        
-                        // 转换 profile_picture_url
-                        if (charCopy.profile_picture_url && typeof charCopy.profile_picture_url === 'string' && charCopy.profile_picture_url.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(charCopy.profile_picture_url);
-                                charCopy.profile_picture_url = `data:image/png;base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换角色 profile_picture_url 失败:', e);
-                            }
-                        }
-                        
-                        return charCopy;
-                    };
-
-                    // 1. 写入 JSON 头部
-                    await writable.write(`{\n  "version": "2.5.7",\n  "projectName": ${JSON.stringify(projectName || '')},\n  "nodes": [\n`);
-
-                    // 2. 流式写入节点（逐个处理，释放内存）
-                    for (let i = 0; i < nodes.length; i++) {
-                        const node = nodes[i];
-                        const nodeToSave = await convertNodeBlobUrls(node);
-                        
-                        // 使用 replacer 处理 undefined 值
-                        const nodeJson = JSON.stringify(nodeToSave, replacer, 2);
-                        // 为每个节点添加缩进（除了第一个）
-                        const indentedNodeJson = i === 0 
-                            ? nodeJson.split('\n').join('\n    ')
-                            : '    ' + nodeJson.split('\n').join('\n    ');
-                        
-                        await writable.write(indentedNodeJson);
-                        if (i < nodes.length - 1) {
-                            await writable.write(',\n');
-                        } else {
-                            await writable.write('\n');
-                        }
-                        
-                        // 注意：每次循环迭代都会创建新的作用域，变量会自动被 GC 回收
-                    }
-
-                    // 3. 写入连接和视图
-                    await writable.write(`  ],\n  "connections": ${JSON.stringify(connections, replacer, 2)},\n  "view": ${JSON.stringify(view, replacer, 2)},\n  "history": [\n`);
-
-                    // 4. 流式写入历史记录（通常是最大的部分）
-                    for (let i = 0; i < history.length; i++) {
-                        const item = history[i];
-                        const itemToSave = await convertHistoryItemBlobUrls(item);
-                        
-                        const itemJson = JSON.stringify(itemToSave, replacer, 2);
-                        const indentedItemJson = i === 0 
-                            ? itemJson.split('\n').join('\n    ')
-                            : '    ' + itemJson.split('\n').join('\n    ');
-                        
-                        await writable.write(indentedItemJson);
-                        if (i < history.length - 1) {
-                            await writable.write(',\n');
-                        } else {
-                            await writable.write('\n');
-                        }
-                        
-                        // 注意：每次循环迭代都会创建新的作用域，变量会自动被 GC 回收
-                    }
-
-                    // 5. 写入角色库（流式处理）
-                    await writable.write(`  ],\n  "chatSessions": ${JSON.stringify(chatSessions, replacer, 2)},\n  "characterLibrary": [\n`);
-                    
-                    for (let i = 0; i < characterLibrary.length; i++) {
-                        const character = characterLibrary[i];
-                        const charToSave = await convertCharacterBlobUrls(character);
-                        
-                        const charJson = JSON.stringify(charToSave, replacer, 2);
-                        const indentedCharJson = i === 0 
-                            ? charJson.split('\n').join('\n    ')
-                            : '    ' + charJson.split('\n').join('\n    ');
-                        
-                        await writable.write(indentedCharJson);
-                        if (i < characterLibrary.length - 1) {
-                            await writable.write(',\n');
-                        } else {
-                            await writable.write('\n');
-                        }
-                        
-                        // 注意：每次循环迭代都会创建新的作用域，变量会自动被 GC 回收
-                    }
-
-                    // 6. 写入尾部
-                    await writable.write(`  ],\n  "timestamp": ${JSON.stringify(getCSTTimestamp())}\n}`);
-                    
-                    // 关闭流
-                    await writable.close();
-                    alert('项目保存成功！');
+                    if (saved) alert('项目保存成功！');
                 } catch (error) {
                     console.error('保存项目失败:', error);
-                    if (error.name === 'AbortError') {
-                        // 用户取消了保存
-                        return;
-                    }
+                    if (error.name === 'AbortError') return;
                     alert('保存失败: ' + (error.message || '未知错误'));
                 }
             };
@@ -7102,184 +6095,21 @@ import {
             // 保存选中的工作流（框选节点后右键保存）
             const handleSaveSelectedWorkflow = async () => {
                 try {
-                    // 关闭右键菜单
                     setSelectionContextMenu({ visible: false, x: 0, y: 0 });
-                    
-                    // 获取选中的节点
+
                     const selectedIds = selectedNodeIds.size > 0 ? selectedNodeIds : (selectedNodeId ? new Set([selectedNodeId]) : new Set());
                     if (selectedIds.size === 0) {
                         alert('请先选择要保存的节点');
                         return;
                     }
-                    
-                    // 获取选中的节点数据
+
                     const selectedNodes = nodes.filter(n => selectedIds.has(n.id));
-                    
-                    // 获取选中节点之间的连接
                     const selectedConnections = connections.filter(
                         conn => selectedIds.has(conn.from) && selectedIds.has(conn.to)
                     );
-                    
-                    // 兼容性检查：优先使用 File System Access API
-                    if (!window.showSaveFilePicker) {
-                        const shouldProceed = confirm('您的浏览器不支持流式保存大文件。\n\n是否继续使用传统方式保存？');
-                        if (!shouldProceed) return;
-                        
-                        // 降级保存逻辑
-                        const replacer = (key, value) => value === undefined ? null : value;
-                        const nodesToSave = JSON.parse(JSON.stringify(selectedNodes, replacer));
-                        
-                        // 转换 Blob URL 为 Data URL
-                        const convertBlobUrlsToDataUrls = async (obj) => {
-                            if (obj === null || obj === undefined) return obj;
-                            if (typeof obj === 'string' && obj.startsWith('blob:')) {
-                                try {
-                                    const blob = await getBlobFromUrl(obj);
-                                    const dataUrl = await blobToDataURL(blob);
-                                    return dataUrl;
-                                } catch (error) {
-                                    console.error('转换 Blob URL 失败:', error);
-                                    return obj;
-                                }
-                            }
-                            if (Array.isArray(obj)) {
-                                return await Promise.all(obj.map(item => convertBlobUrlsToDataUrls(item)));
-                            }
-                            if (typeof obj === 'object') {
-                                const converted = {};
-                                for (const key in obj) {
-                                    if (obj.hasOwnProperty(key)) {
-                                        converted[key] = await convertBlobUrlsToDataUrls(obj[key]);
-                                    }
-                                }
-                                return converted;
-                            }
-                            return obj;
-                        };
-                        
-                        const nodesWithDataUrls = await convertBlobUrlsToDataUrls(nodesToSave);
-                        const workflowData = {
-                            version: '2.8',
-                            type: 'workflow',
-                            nodes: nodesWithDataUrls,
-                            connections: selectedConnections,
-                            timestamp: getCSTTimestamp()
-                        };
-                        
-                        const jsonStr = JSON.stringify(workflowData, replacer, 2);
-                        const blob = new Blob([jsonStr], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        const timestamp = getCSTFilenameTimestamp();
-                        a.download = `工作流_${timestamp}.json`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                        alert('工作流保存成功！');
-                        return;
-                    }
-                    
-                    // 使用 File System Access API 流式写入
-                    const timestamp = getCSTFilenameTimestamp();
-                    const handle = await window.showSaveFilePicker({
-                        suggestedName: `工作流_${timestamp}.json`,
-                        types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
-                    });
-                    const writable = await handle.createWritable();
-                    
-                    const replacer = (key, value) => value === undefined ? null : value;
-                    
-                    // 转换节点的 Blob URL
-                    const convertNodeBlobUrls = async (node) => {
-                        const nodeCopy = { ...node };
-                        
-                        if (nodeCopy.content && typeof nodeCopy.content === 'string' && nodeCopy.content.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(nodeCopy.content);
-                                const mime = isVideoUrl(nodeCopy.content) ? 'video/mp4' : 'image/png';
-                                nodeCopy.content = `data:${mime};base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换节点 content 失败:', e);
-                            }
-                        }
-                        
-                        if (nodeCopy.maskContent && typeof nodeCopy.maskContent === 'string' && nodeCopy.maskContent.startsWith('blob:')) {
-                            try {
-                                const b64 = await getBase64FromUrl(nodeCopy.maskContent);
-                                nodeCopy.maskContent = `data:image/png;base64,${b64}`;
-                            } catch (e) {
-                                console.error('转换节点 maskContent 失败:', e);
-                            }
-                        }
-                        
-                        if (Array.isArray(nodeCopy.selectedKeyframes)) {
-                            for (let i = 0; i < nodeCopy.selectedKeyframes.length; i++) {
-                                const frame = nodeCopy.selectedKeyframes[i];
-                                if (frame && frame.url && typeof frame.url === 'string' && frame.url.startsWith('blob:')) {
-                                    try {
-                                        const b64 = await getBase64FromUrl(frame.url);
-                                        frame.url = `data:image/png;base64,${b64}`;
-                                    } catch (e) {
-                                        console.error('转换关键帧失败:', e);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if (Array.isArray(nodeCopy.frames)) {
-                            for (let i = 0; i < nodeCopy.frames.length; i++) {
-                                const frame = nodeCopy.frames[i];
-                                if (frame && frame.url && typeof frame.url === 'string' && frame.url.startsWith('blob:')) {
-                                    try {
-                                        const b64 = await getBase64FromUrl(frame.url);
-                                        frame.url = `data:image/png;base64,${b64}`;
-                                    } catch (e) {
-                                        console.error('转换帧失败:', e);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if (Array.isArray(nodeCopy.previewMjImages)) {
-                            for (let i = 0; i < nodeCopy.previewMjImages.length; i++) {
-                                const imgUrl = nodeCopy.previewMjImages[i];
-                                if (imgUrl && typeof imgUrl === 'string' && imgUrl.startsWith('blob:')) {
-                                    try {
-                                        const b64 = await getBase64FromUrl(imgUrl);
-                                        nodeCopy.previewMjImages[i] = `data:image/png;base64,${b64}`;
-                                    } catch (e) {
-                                        console.error('转换预览图片失败:', e);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        return nodeCopy;
-                    };
-                    
-                    // 写入头部
-                    await writable.write(`{\n  "version": "2.8",\n  "type": "workflow",\n  "nodes": [\n`);
-                    
-                    // 逐个写入节点
-                    for (let i = 0; i < selectedNodes.length; i++) {
-                        const convertedNode = await convertNodeBlobUrls(selectedNodes[i]);
-                        const nodeJson = JSON.stringify(convertedNode, replacer, 4);
-                        const indentedJson = nodeJson.split('\n').map(line => '    ' + line).join('\n');
-                        await writable.write(indentedJson);
-                        if (i < selectedNodes.length - 1) {
-                            await writable.write(',\n');
-                        } else {
-                            await writable.write('\n');
-                        }
-                    }
-                    
-                    // 写入连接和尾部
-                    await writable.write(`  ],\n  "connections": ${JSON.stringify(selectedConnections, replacer, 2)},\n  "timestamp": ${JSON.stringify(getCSTTimestamp())}\n}`);
-                    
-                    await writable.close();
-                    alert('工作流保存成功！');
+
+                    const saved = await saveSelectedWorkflow({ selectedNodes, selectedConnections });
+                    if (saved) alert('工作流保存成功！');
                 } catch (error) {
                     console.error('保存工作流失败:', error);
                     if (error.name === 'AbortError') return;
@@ -7313,135 +6143,20 @@ import {
                     if (!file) return;
 
                     try {
-                        const text = await file.text();
-                        const data = JSON.parse(text);
-                        
-                        // 检查是否是工作流文件
-                        if (data.type !== 'workflow') {
-                            alert('这不是一个有效的工作流文件。\n\n请使用"保存当前选取工作流"功能导出的文件。');
-                            return;
-                        }
-                        
-                        if (!data.nodes || data.nodes.length === 0) {
-                            alert('工作流文件中没有节点数据');
-                            return;
-                        }
-                        
-                        // 尝试获取本地库文件列表
-                        let localFiles = [];
-                        const localServerUrl = 'http://localhost:9527';
-                        try {
-                            const localFilesRes = await fetch(`${localServerUrl}/list-files`);
-                            if (localFilesRes.ok) {
-                                const localFilesData = await localFilesRes.json();
-                                if (localFilesData.success && localFilesData.files) {
-                                    localFiles = localFilesData.files;
-                                    console.log(`[导入工作流] 本地库已连接，找到 ${localFiles.length} 个文件`);
-                                }
-                            }
-                        } catch (err) {
-                            console.log('[导入工作流] 本地服务器未连接');
-                        }
-                        
-                        // 根据文件大小匹配本地文件
-                        const findLocalFileBySize = (dataUrl) => {
-                            if (!localFiles.length) return null;
-                            try {
-                                const base64 = dataUrl.split(',')[1];
-                                if (!base64) return null;
-                                const estimatedSize = Math.floor(base64.length * 0.75);
-                                const tolerance = estimatedSize * 0.05;
-                                const match = localFiles.find(f => Math.abs(f.size - estimatedSize) < tolerance);
-                                if (match) {
-                                    return `${localServerUrl}/file/${encodeURIComponent(match.rel_path)}`;
-                                }
-                            } catch (err) {}
-                            return null;
-                        };
-                        
-                        // 转换节点中的 Base64 为 Blob URL 或本地文件 URL
-                        const convertNodeUrls = async (node) => {
-                            const stack = [node];
-                            while (stack.length > 0) {
-                                const current = stack.pop();
-                                if (!current || typeof current !== 'object') continue;
-                                
-                                for (const key in current) {
-                                    const val = current[key];
-                                    if (typeof val === 'string' && (val.startsWith('data:image/') || val.startsWith('data:video/'))) {
-                                        try {
-                                            // 优先尝试从本地库匹配
-                                            const localUrl = findLocalFileBySize(val);
-                                            if (localUrl) {
-                                                const testRes = await fetch(localUrl, { method: 'HEAD' });
-                                                if (testRes.ok) {
-                                                    current[key] = localUrl;
-                                                    console.log(`[导入工作流] 使用本地文件`);
-                                                    continue;
-                                                }
-                                            }
-                                            // 转换为 Blob URL
-                                            const res = await fetch(val);
-                                            const blob = await res.blob();
-                                            current[key] = URL.createObjectURL(blob);
-                                        } catch (err) {}
-                                    } else if (typeof val === 'object' && val !== null) {
-                                        stack.push(val);
-                                    }
-                                }
-                            }
-                            return node;
-                        };
-                        
-                        // 生成新的节点ID映射（避免ID冲突）
-                        const idMap = new Map();
-                        data.nodes.forEach(node => {
-                            idMap.set(node.id, `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
-                        });
-                        
-                        // 计算导入位置（视图中心）
                         const canvasElement = canvasRef.current;
-                        let importX = 100, importY = 100;
+                        let importPosition = { x: 100, y: 100 };
                         if (canvasElement) {
                             const rect = canvasElement.getBoundingClientRect();
                             const centerX = rect.width / 2;
                             const centerY = rect.height / 2;
-                            const worldPos = screenToWorld(centerX + rect.left, centerY + rect.top);
-                            importX = worldPos.x;
-                            importY = worldPos.y;
+                            importPosition = screenToWorld(centerX + rect.left, centerY + rect.top);
                         }
-                        
-                        // 计算原始节点的边界框
-                        let minX = Infinity, minY = Infinity;
-                        data.nodes.forEach(node => {
-                            if (node.x < minX) minX = node.x;
-                            if (node.y < minY) minY = node.y;
-                        });
-                        
-                        // 转换并添加节点
-                        const newNodes = [];
-                        for (const node of data.nodes) {
-                            const convertedNode = await convertNodeUrls({ ...node });
-                            convertedNode.id = idMap.get(node.id);
-                            convertedNode.x = node.x - minX + importX;
-                            convertedNode.y = node.y - minY + importY;
-                            newNodes.push(convertedNode);
-                        }
-                        
-                        // 转换连接
-                        const newConnections = (data.connections || []).map(conn => ({
-                            ...conn,
-                            from: idMap.get(conn.from),
-                            to: idMap.get(conn.to)
-                        })).filter(conn => conn.from && conn.to);
-                        
-                        // 添加到画布
+
+                        const { newNodes, newConnections } = await importWorkflowFromFile({ file, importPosition });
                         setNodes(prev => [...prev, ...newNodes]);
                         setConnections(prev => [...prev, ...newConnections]);
-                        
-                        // 选中导入的节点
                         setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
-                        
+
                         alert(`工作流导入成功！\n\n导入了 ${newNodes.length} 个节点和 ${newConnections.length} 个连接。`);
                     } catch (error) {
                         console.error('导入工作流失败:', error);
@@ -7460,222 +6175,30 @@ import {
                     const file = e.target.files[0];
                     if (!file) return;
 
-                    // 初始化进度
                     setProgressState({ visible: true, progress: 0, status: 'INITIALIZING...', type: 'import' });
 
-                    const tempState = {
-                        nodes: [], history: [], connections: [], 
-                        chatSessions: [], characterLibrary: [], 
-                        projectName: '', view: null
-                    };
-                    
-                    let currentSection = null; 
-                    let buffer = '';
-                    let objectBuffer = ''; 
-                    let braceCount = 0; 
-                    let inObject = false;
-                    let bytesRead = 0;
-                    const totalBytes = file.size;
-
-                    // --- 尝试获取本地库文件列表（用于优先使用本地文件）---
-                    let localFiles = [];
-                    let localServerUrl = 'http://localhost:9527';
                     try {
-                        const localFilesRes = await fetch(`${localServerUrl}/list-files`);
-                        if (localFilesRes.ok) {
-                            const localFilesData = await localFilesRes.json();
-                            if (localFilesData.success && localFilesData.files) {
-                                localFiles = localFilesData.files;
-                                console.log(`[导入] 本地库已连接，找到 ${localFiles.length} 个文件`);
+                        const tempState = await loadProjectFromFile({
+                            file,
+                            onProgress: ({ progress, status }) => {
+                                setProgressState(prev => ({ ...prev, progress, status }));
                             }
-                        }
-                    } catch (e) {
-                        console.log('[导入] 本地服务器未连接，将使用原始数据');
-                    }
+                        });
 
-                    // 根据文件大小匹配本地文件的辅助函数
-                    const findLocalFileBySize = (dataUrl) => {
-                        if (!localFiles.length) return null;
-                        try {
-                            // 从 data URL 计算大小（Base64 解码后的大小）
-                            const base64 = dataUrl.split(',')[1];
-                            if (!base64) return null;
-                            const estimatedSize = Math.floor(base64.length * 0.75); // Base64 编码后大小约为原始的 4/3
-                            
-                            // 查找大小相近的文件（允许 5% 误差）
-                            const tolerance = estimatedSize * 0.05;
-                            const match = localFiles.find(f => 
-                                Math.abs(f.size - estimatedSize) < tolerance
-                            );
-                            if (match) {
-                                return `${localServerUrl}/file/${encodeURIComponent(match.rel_path)}`;
-                            }
-                        } catch (e) {
-                            // 匹配失败，返回 null
-                        }
-                        return null;
-                    };
-
-                    // --- 关键辅助函数：原地转换对象中的 Base64 为 Blob URL ---
-                    // 优先使用本地库文件，否则转换为 Blob URL
-                    const convertItemImmediately = async (item) => {
-                        // 递归遍历对象，找到所有 data:image 开头的字符串并转换
-                        const stack = [item];
-                        while (stack.length > 0) {
-                            const current = stack.pop();
-                            if (!current || typeof current !== 'object') continue;
-
-                            for (const key in current) {
-                                const val = current[key];
-                                if (typeof val === 'string' && (val.startsWith('data:image/') || val.startsWith('data:video/'))) {
-                                    try {
-                                        // 优先尝试从本地库匹配
-                                        const localUrl = findLocalFileBySize(val);
-                                        if (localUrl) {
-                                            // 验证本地文件是否可访问
-                                            const testRes = await fetch(localUrl, { method: 'HEAD' });
-                                            if (testRes.ok) {
-                                                current[key] = localUrl;
-                                                console.log(`[导入] 使用本地文件: ${localUrl}`);
-                                                continue;
-                                            }
-                                        }
-                                        
-                                        // 本地文件不可用，转换为 Blob URL
-                                        const res = await fetch(val);
-                                        const blob = await res.blob();
-                                        current[key] = URL.createObjectURL(blob);
-                                    } catch (err) {
-                                        // 转换失败则保持原样，防止丢失数据
-                                    }
-                                } else if (typeof val === 'object' && val !== null) {
-                                    stack.push(val);
-                                }
-                            }
-                        }
-                        return item;
-                    };
-
-                    try {
-                        const stream = file.stream().pipeThrough(new TextDecoderStream());
-                        const reader = stream.getReader();
-                        
-                        while (true) {
-                            const { value, done } = await reader.read();
-                            if (done) break;
-
-                            // 更新进度条 (每读取 5MB 更新一次 UI，避免频繁渲染卡顿)
-                            bytesRead += value.length;
-                            if (Math.random() > 0.95) {
-                                const percent = Math.min(99, (bytesRead / totalBytes) * 100);
-                                setProgressState(prev => ({ 
-                                    ...prev, 
-                                    progress: percent, 
-                                    status: `PROCESSING ${(bytesRead/1024/1024).toFixed(0)}MB` 
-                                }));
-                            }
-
-                            buffer += value;
-                            
-                            // 逐行解析
-                            while (true) {
-                                const newlineIndex = buffer.indexOf('\n');
-                                if (newlineIndex === -1) break; 
-                                
-                                const line = buffer.substring(0, newlineIndex);
-                                buffer = buffer.substring(newlineIndex + 1);
-                                const trimmedLine = line.trim();
-                                if (!trimmedLine) continue;
-                                
-                                // 状态机检测
-                                if (trimmedLine.includes('"nodes": [')) { currentSection = 'nodes'; continue; }
-                                if (trimmedLine.includes('"history": [')) { currentSection = 'history'; continue; }
-                                if (trimmedLine.includes('"connections": [')) { currentSection = 'connections'; continue; }
-                                if (trimmedLine.includes('"chatSessions": [')) { currentSection = 'chatSessions'; continue; }
-                                if (trimmedLine.includes('"characterLibrary": [')) { currentSection = 'characterLibrary'; continue; }
-                                
-                                // 结束符检测
-                                if ((trimmedLine === '],' || trimmedLine === ']') && braceCount === 0) {
-                                    currentSection = null;
-                                    objectBuffer = '';
-                                    inObject = false;
-                                    continue;
-                                }
-
-                                // 简单字段解析
-                                if (!currentSection) {
-                                    if (trimmedLine.startsWith('"projectName":')) {
-                                        try { const m = trimmedLine.match(/"projectName":\s*(.+)/); if(m) tempState.projectName = JSON.parse(m[1].replace(/,$/, '')); } catch(e){}
-                                    }
-                                    if (trimmedLine.startsWith('"view":')) {
-                                        // view 通常很短，这里做个简单处理，实际可能需要多行逻辑，但为了性能暂略
-                                        try { const m = trimmedLine.match(/"view":\s*(.+)/); if(m && m[1].endsWith('}')) tempState.view = JSON.parse(m[1].replace(/,$/, '')); } catch(e){}
-                                    }
-                                    continue;
-                                }
-
-                                // 对象累积
-                                if (currentSection) {
-                                    for (let char of line) {
-                                        if (char === '{') { braceCount++; inObject = true; }
-                                        if (char === '}') { braceCount--; }
-                                    }
-                                    objectBuffer += line + '\n';
-
-                                    if (inObject && braceCount === 0) {
-                                        let jsonStr = objectBuffer.trim();
-                                        if (jsonStr.endsWith(',')) jsonStr = jsonStr.slice(0, -1);
-
-                                        try {
-                                            const item = JSON.parse(jsonStr);
-                                            
-                                            // === 核心优化点 ===
-                                            // 立即转换，防止 Base64 堆积在内存中
-                                            if (currentSection === 'nodes' || currentSection === 'history' || currentSection === 'characterLibrary') {
-                                                await convertItemImmediately(item);
-                                            }
-
-                                            // 转换后再存入数组
-                                            if (currentSection === 'nodes' && item.id) {
-                                                if (!item.settings) item.settings = {};
-                                                tempState.nodes.push(item);
-                                            } else if (currentSection === 'history') {
-                                                tempState.history.push(item);
-                                            } else if (currentSection === 'connections') {
-                                                tempState.connections.push(item);
-                                            } else if (currentSection === 'chatSessions') {
-                                                tempState.chatSessions.push(item);
-                                            } else if (currentSection === 'characterLibrary') {
-                                                tempState.characterLibrary.push(item);
-                                            }
-                                        } catch (parseErr) {
-                                            // 忽略解析错误，继续处理下一个
-                                        }
-                                        objectBuffer = '';
-                                        inObject = false;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // 完成
                         setProgressState(prev => ({ ...prev, progress: 100, status: 'FINALIZING...' }));
-                        
-                        // 批量更新 State
+
                         setTimeout(() => {
                             if (tempState.projectName) setProjectName(tempState.projectName);
                             if (tempState.view) setView(tempState.view);
                             if (tempState.connections.length > 0) setConnections(tempState.connections);
                             if (tempState.chatSessions.length > 0) setChatSessions(tempState.chatSessions);
                             if (tempState.characterLibrary.length > 0) setCharacterLibrary(tempState.characterLibrary);
-                            
                             if (tempState.nodes.length > 0) setNodes(tempState.nodes);
                             if (tempState.history.length > 0) setHistory(tempState.history);
 
                             setProgressState(prev => ({ ...prev, visible: false }));
                             alert(`加载成功！\n${tempState.nodes.length} 个节点`);
                         }, 200);
-
                     } catch (error) {
                         console.error('加载失败:', error);
                         setProgressState(prev => ({ ...prev, visible: false }));
