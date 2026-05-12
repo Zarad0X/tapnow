@@ -1,0 +1,159 @@
+/* 全局字体渲染优化 */
+* {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* 画布容器渲染优化 */
+#canvas-bg {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+
+/* 画布内容容器优化 */
+#canvas-bg > div[style*="transform"] {
+    transform: translateZ(0);
+    will-change: transform;
+}
+
+/* 节点容器优化 */
+.node-wrapper {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    contain: layout style;
+    will-change: transform, left, top;
+}
+
+/* 节点内图片渲染优化 - 使用高质量渲染 */
+.node-wrapper img,
+.node-wrapper video {
+    image-rendering: auto;
+    image-rendering: -webkit-optimize-contrast;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    pointer-events: none;
+}
+
+/* 连接线优化 */
+svg {
+    shape-rendering: geometricPrecision;
+    text-rendering: optimizeLegibility;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    will-change: transform;
+}
+.connection-group {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    will-change: transform;
+}
+
+/* 高性能模式：当节点数量超过阈值时自动启用 */
+.perf-mode .node-wrapper {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    border-radius: 0 !important;
+    transition: none !important;
+}
+.perf-mode .connection-group {
+    opacity: 1 !important;
+}
+
+/* 交互时动态降级：拖拽或缩放时降低渲染质量 */
+.interacting .node-wrapper img {
+    image-rendering: pixelated;
+}
+/* 交互时禁用节点内部指针事件/选择，减少 hover 计算和选中文本造成的抖动 */
+.interacting .node-wrapper,
+.interacting .node-wrapper * {
+    pointer-events: none !important;
+    user-select: none !important;
+}
+.interacting .connection-group {
+    display: none;
+    pointer-events: none;
+}
+
+/* 视口外节点的媒体降载：保留骨架 DOM，仅隐藏 img/video 以降低 GPU 复合压力 */
+.node-wrapper.media-offscreen img,
+.node-wrapper.media-offscreen video {
+    display: none !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #52525b; }
+.resize-handle { cursor: nwse-resize; opacity: 0; transition: opacity 0.2s; }
+.node-wrapper:hover .resize-handle { opacity: 1; }
+
+/* 连接点样式 */
+.connector { position: absolute; top: 50%; transform: translateY(-50%); width: 0.9rem; height: 0.9rem; background-color: #27272a; border: 1px solid #71717a; color: #a1a1aa; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: crosshair; transition: all 0.2s; z-index: 30; opacity: 0; pointer-events: auto; }
+.node-wrapper:hover .connector { opacity: 1; }
+.connector:hover, .connector.active { background-color: #d4d4d8; border-color: #fff; transform: translateY(-50%) scale(1.2); opacity: 1; color: #000; }
+.connector-right { right: -0.45rem; }
+
+/* 输入点样式 */
+.input-point { position: absolute; top: 50%; transform: translateY(-50%); left: -0.25rem; width: 0.5rem; height: 0.5rem; background-color: #52525b; border-radius: 50%; border: 1px solid #18181b; transition: all 0.2s; z-index: 20; cursor: crosshair; }
+.node-wrapper:hover .input-point { background-color: #a1a1aa; }
+.input-point.connected { background-color: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
+.input-point.active { background-color: #60a5fa; border-color: #fff; transform: translateY(-50%) scale(1.3); box-shadow: 0 0 8px #60a5fa; }
+
+/* Lightbox & Overlay */
+.lightbox-overlay { background-color: rgba(0, 0, 0, 0.95); backdrop-filter: blur(5px); }
+
+/* Stack Items */
+.thumb-stack-item {
+     transition: transform 0.2s, z-index 0.2s;
+}
+.thumb-stack-item:hover {
+    transform: scale(1.1) translateY(-2px);
+    z-index: 10 !important;
+    border-color: #60a5fa;
+}
+
+/* 连接线删除按钮 */
+.connection-delete {
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: auto; /* 关键：确保鼠标能交互 */
+}
+/* 当鼠标悬停在整个连接组（包含粗透明线）时显示 */
+.connection-group:hover .connection-delete {
+    opacity: 1;
+}
+
+/* 拖放区域样式 */
+.drop-zone {
+    border: 2px dashed transparent;
+    transition: all 0.3s;
+}
+.drop-zone.drag-over {
+    border-color: #60a5fa;
+    background-color: rgba(96, 165, 250, 0.1);
+}
+
+/* Markdown Styles for Chat */
+.markdown-body { font-size: 13px; line-height: 1.5; color: #e4e4e7; word-wrap: break-word; user-select: text !important; cursor: text; }
+.markdown-body * { user-select: text !important; cursor: text; }
+.markdown-body pre { background: #27272a; padding: 10px; border-radius: 6px; overflow-x: auto; margin: 8px 0; white-space: pre-wrap; word-wrap: break-word; user-select: text !important; cursor: text; }
+.markdown-body code { font-family: monospace; background: #3f3f46; padding: 2px 4px; border-radius: 4px; font-size: 12px; user-select: text !important; cursor: text; }
+.markdown-body pre code { background: transparent; padding: 0; color: #a1a1aa; user-select: text !important; cursor: text; }
+.markdown-body p { margin-bottom: 8px; user-select: text !important; cursor: text; }
+.markdown-body ul, .markdown-body ol { margin-left: 20px; margin-bottom: 8px; list-style: disc; user-select: text !important; cursor: text; }
+.markdown-body li { user-select: text !important; cursor: text; }
+.markdown-body video { max-width: 100%; border-radius: 0.5rem; margin-top: 0.5rem; }
+.markdown-body table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.markdown-body table th, .markdown-body table td { border: 1px solid #3f3f46; padding: 8px 12px; text-align: left; }
+.markdown-body table th { background-color: #3f3f46; font-weight: 600; }
+.markdown-body table tr:nth-child(even) { background-color: #27272a; }
+.theme-light .markdown-body table th, .theme-light .markdown-body table td { border-color: #d4d4d8; }
+.theme-light .markdown-body table th { background-color: #e4e4e7; }
+.theme-light .markdown-body table tr:nth-child(even) { background-color: #f4f4f5; }
+.theme-light .markdown-body { color: #18181b; }
+.theme-light .markdown-body pre { background: #f4f4f5; color: #18181b; }
+.theme-light .markdown-body code { background: #e4e4e7; color: #18181b; }
+.theme-light .markdown-body pre code { color: #18181b; }

@@ -1,0 +1,19 @@
+.DS_Store
+
+# Do not keep bundled helper archives in the source repository.
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+
+# Local runtime outputs.
+tmp/
+logs/
+dist/
+node_modules/
+.vite/
+
+# Browser/local app artifacts.
+*.log
+*.tmp
