@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-title Tapnow Studio 本地接收器
+title tapnow 本地接收器
 echo.
 echo ========================================
-echo   Tapnow Studio 本地接收器
+echo   tapnow 本地接收器
 echo ========================================
 echo.
 

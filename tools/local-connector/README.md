@@ -3,7 +3,7 @@
 This helper lets the browser app save generated media to local disk.
 
 It starts a small HTTP server bound to `127.0.0.1`, defaulting to port `9527`.
-Tapnow Studio uses it for:
+tapnow uses it for:
 
 - local cache checks
 - image/video save workflows
@@ -20,7 +20,7 @@ python3 tools/local-connector/tapnow-local-server.py
 Default save directory:
 
 ```text
-~/Downloads/TapnowStudio
+~/Downloads/tapnow
 ```
 
 You can choose a test directory while experimenting:

@@ -1,1632 +1,101 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tapnow Studio</title>
-    
-    <!-- 1. Resource Preconnect & DNS Prefetch -->
-    <link rel="preconnect" href="https://cdn.tailwindcss.com">
-    <link rel="preconnect" href="https://unpkg.com">
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
-    <link rel="dns-prefetch" href="https://ai.comfly.chat">
-    <link rel="dns-prefetch" href="https://api.midjourney.com">
-
-    <!-- 2. Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 3. React & ReactDOM (Defer loading) -->
-    <script defer crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script defer crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- 4. Babel (Defer loading) -->
-    <script defer src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- 5. Lucide Icons (Defer loading) -->
-    <script defer src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- 6. Marked (Defer loading) -->
-    <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
-    <style>
-        body { margin: 0; padding: 0; background-color: #09090b; }
-        /* Prevent selection during drag - applied to canvas only mostly */
-        .select-none { user-select: none; }
-        /* Allow selection in chat */
-        .select-text { user-select: text; }
-        
-        /* Loader animation fallback */
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .animate-spin { animation: spin 1s linear infinite; }
-        
-        /* Artistic Minimalist Loader - V2 with Credits */
-        .art-loader-container {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #09090b;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center; /* 垂直居中 */
-            z-index: 9999;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            color: #e4e4e7;
-        }
-
-        /* 将中间动画打包，确保它稍微偏上一点，给底部留空间 */
-        .art-center-group {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            transform: translateY(-20px); /* 视觉微调 */
-        }
-
-        .art-visual {
-            position: relative;
-            width: 60px;
-            height: 60px;
-            margin-bottom: 30px;
-        }
-
-        .art-ring-outer {
-            position: absolute; inset: 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            animation: art-breathe 4s ease-in-out infinite;
-        }
-
-        .art-ring-inner {
-            position: absolute; inset: 0;
-            border-radius: 50%;
-            border: 1px solid transparent;
-            border-top-color: #fff;
-            border-left-color: rgba(255,255,255,0.3);
-            opacity: 0.8;
-            animation: art-spin 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-        }
-
-        .art-dot {
-            position: absolute; top: 50%; left: 50%;
-            width: 4px; height: 4px;
-            background-color: #fff;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 0 10px rgba(255,255,255,0.5);
-        }
-
-        .art-title {
-            font-size: 12px; font-weight: 300;
-            text-transform: uppercase;
-            letter-spacing: 0.3em;
-            opacity: 0.9; margin-bottom: 8px;
-        }
-
-        .art-status {
-            font-family: 'Courier New', monospace;
-            font-size: 10px; color: #71717a;
-            letter-spacing: 0.1em;
-            animation: art-pulse 2s ease-in-out infinite;
-        }
-
-        /* --- 底部署名区域样式 --- */
-        .art-footer {
-            position: absolute;
-            bottom: 40px; /* 距离底部 */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            gap: 12px;
-            opacity: 0; /* 初始隐藏 */
-            animation: art-fade-up 1s ease-out 0.5s forwards; /* 延迟淡入 */
-        }
-
-        .footer-author {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .footer-author .label {
-            font-size: 9px;
-            color: #52525b;
-            text-transform: uppercase;
-            letter-spacing: 0.2em;
-        }
-
-        .footer-author .name {
-            font-size: 14px;
-            font-weight: 500;
-            letter-spacing: 0.5em; /* 名字字间距拉大，极显逼格 */
-            color: #fff;
-            text-indent: 0.5em; /* 修正字间距带来的视觉中心偏移 */
-        }
-
-        .footer-divider {
-            width: 20px;
-            height: 1px;
-            background-color: #27272a;
-        }
-
-        .footer-thanks {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .footer-thanks .label {
-            font-size: 8px;
-            color: #3f3f46;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-        }
-
-        .footer-thanks .content {
-            font-size: 10px;
-            color: #71717a;
-            font-family: 'Courier New', monospace; /* 致谢使用代码字体 */
-        }
-
-        .footer-thanks .highlight {
-            color: #a1a1aa;
-            font-weight: 600;
-        }
-
-        /* 动画定义 */
-        @keyframes art-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes art-breathe { 0%, 100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.1); opacity: 0.2; } }
-        @keyframes art-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.8; } }
-        @keyframes art-fade-up { 
-            from { opacity: 0; transform: translateY(10px); } 
-            to { opacity: 1; transform: translateY(0); } 
-        }
-    </style>
-</head>
-<body>
-    <div id="root">
-        <div class="art-loader-container">
-            <div class="art-center-group">
-                <div class="art-visual">
-                    <div class="art-ring-outer"></div>
-                    <div class="art-ring-inner"></div>
-                    <div class="art-dot"></div>
-                </div>
-                <div class="art-content">
-                    <div class="art-title">Tapnow Studio</div>
-                    <div class="art-status">Loading Resources</div>
-                </div>
-            </div>
-
-            <div class="art-footer">
-                <div class="footer-author">
-                    <span class="label">Created by</span>
-                    <span class="name">桥豆麻衣酱</span>
-                </div>
-                <div class="footer-divider"></div>
-                <div class="footer-thanks">
-                    <span class="label">Special Thanks</span>
-                    <span class="content">
-                        <span class="highlight">@MrWhte-s</span> for Maintenance & Suggestions
-                    </span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script type="text/babel" data-presets="env,react">
-        // 全局屏蔽滚轮事件相关的控制台错误（在 React 渲染之前设置）
-        (function() {
-            const originalError = console.error;
-            const originalWarn = console.warn;
-            const originalLog = console.log;
-            
-            const shouldFilter = (args) => {
-                // 检查所有参数，包括字符串、对象、错误等
-                for (let arg of args) {
-                    let msg = '';
-                    if (typeof arg === 'string') {
-                        msg = arg;
-                    } else if (arg && typeof arg === 'object') {
-                        // 检查错误对象的 message 属性
-                        if (arg.message) msg = arg.message;
-                        else if (arg.toString) msg = arg.toString();
-                        else msg = JSON.stringify(arg);
-                    } else if (arg != null) {
-                        msg = String(arg);
-                    }
-                    
-                    // 精确匹配 passive 事件监听器相关的错误
-                    if (msg.includes('Unable to preventDefault inside passive event listener') ||
-                        msg.includes('passive event listener invocation') ||
-                        (msg.includes('preventDefault') && msg.includes('passive'))) {
-                        return true;
-                    }
-                }
-                return false;
-            };
-            
-            console.error = function(...args) {
-                if (shouldFilter(args)) return;
-                originalError.apply(console, args);
-            };
-            
-            console.warn = function(...args) {
-                if (shouldFilter(args)) return;
-                originalWarn.apply(console, args);
-            };
-            
-            console.log = function(...args) {
-                if (shouldFilter(args)) return;
-                originalLog.apply(console, args);
-            };
-        })();
-
-        const { useState, useRef, useEffect, useCallback, useMemo, memo } = React;
-
-        // --- ICON SYSTEM ADAPTER (Optimized with memo) ---
-        const IconWrapper = React.memo(({ name, size = 24, className = "", ...props }) => {
-            const iconData = lucide.icons[name];
-            if (!iconData) return null;
-            
-            return React.createElement('svg', {
-                xmlns: "http://www.w3.org/2000/svg",
-                width: size,
-                height: size,
-                viewBox: "0 0 24 24",
-                fill: "none",
-                stroke: "currentColor",
-                strokeWidth: 2,
-                strokeLinecap: "round",
-                strokeLinejoin: "round",
-                className: `lucide lucide-${name} ${className}`,
-                ...props
-            }, ...iconData.map(([tag, attrs]) => React.createElement(tag, attrs)));
-        });
-
-        const Plus = (p) => <IconWrapper name="Plus" {...p} />;
-        const ImageIcon = (p) => <IconWrapper name="Image" {...p} />;
-        const Video = (p) => <IconWrapper name="Video" {...p} />;
-        const Settings = (p) => <IconWrapper name="Settings" {...p} />;
-        const X = (p) => <IconWrapper name="X" {...p} />;
-        const Play = (p) => <IconWrapper name="Play" {...p} />;
-        const Layers = (p) => <IconWrapper name="Layers" {...p} />;
-        const MousePointer2 = (p) => <IconWrapper name="MousePointer2" {...p} />;
-        const Wand2 = (p) => <IconWrapper name="Wand2" {...p} />;
-        const Loader2 = (p) => <IconWrapper name="Loader2" {...p} />;
-        const LinkIcon = (p) => <IconWrapper name="Link" {...p} />;
-        const History = (p) => <IconWrapper name="History" {...p} />;
-        const ImagePlus = (p) => <IconWrapper name="ImagePlus" {...p} />;
-        const Trash2 = (p) => <IconWrapper name="Trash2" {...p} />;
-        const CheckCircle2 = (p) => <IconWrapper name="CheckCircle2" {...p} />;
-        const Unlink = (p) => <IconWrapper name="Unlink" {...p} />;
-        const CopyPlus = (p) => <IconWrapper name="CopyPlus" {...p} />;
-        const ArrowRightSquare = (p) => <IconWrapper name="ArrowRightSquare" {...p} />;
-        const MessageSquare = (p) => <IconWrapper name="MessageSquare" {...p} />;
-        const Send = (p) => <IconWrapper name="Send" {...p} />;
-        const Paperclip = (p) => <IconWrapper name="Paperclip" {...p} />;
-        const FileText = (p) => <IconWrapper name="FileText" {...p} />;
-        const FileAudio = (p) => <IconWrapper name="FileAudio" {...p} />;
-        const FileVideo = (p) => <IconWrapper name="FileVideo" {...p} />;
-        const FileImage = (p) => <IconWrapper name="FileImage" {...p} />;
-        const ChevronRight = (p) => <IconWrapper name="ChevronRight" {...p} />;
-        const ChevronLeft = (p) => <IconWrapper name="ChevronLeft" {...p} />;
-        const MoreHorizontal = (p) => <IconWrapper name="MoreHorizontal" {...p} />;
-        const Bot = (p) => <IconWrapper name="Bot" {...p} />;
-        const User = (p) => <IconWrapper name="User" {...p} />;
-        const Users = (p) => <IconWrapper name="Users" {...p} />;
-        const GripVertical = (p) => <IconWrapper name="GripVertical" {...p} />;
-        const Forward = (p) => <IconWrapper name="Forward" {...p} />;
-        const RefreshCw = (p) => <IconWrapper name="RefreshCw" {...p} />;
-        const Split = (p) => <IconWrapper name="Split" {...p} />;
-        const Maximize2 = (p) => <IconWrapper name="Maximize2" {...p} />;
-        const Sun = (p) => <IconWrapper name="Sun" {...p} />;
-        const Moon = (p) => <IconWrapper name="Moon" {...p} />;
-        const FileSearch = (p) => <IconWrapper name="FileSearch" {...p} />;
-        const Sparkles = (p) => <IconWrapper name="Sparkles" {...p} />;
-        const Mic = (p) => <IconWrapper name="Mic" {...p} />;
-        const Mic2 = (p) => <IconWrapper name="Mic2" {...p} />;
-        const Camera = (p) => <IconWrapper name="Camera" {...p} />;
-        const Code = (p) => <IconWrapper name="Code" {...p} />;
-        const ClipboardCopy = (p) => <IconWrapper name="ClipboardCopy" {...p} />;
-        const Edit = (p) => <IconWrapper name="Edit" {...p} />;
-        const LayoutGrid = (p) => <IconWrapper name="LayoutGrid" {...p} />;
-        const Check = (p) => <IconWrapper name="Check" {...p} />;
-        const CheckSquare = (p) => <IconWrapper name="CheckSquare" {...p} />;
-        const Eye = (p) => <IconWrapper name="Eye" {...p} />;
-        const Scissors = (p) => <IconWrapper name="Scissors" {...p} />;
-        const Layout = (p) => <IconWrapper name="Layout" {...p} />;
-        const Download = (p) => <IconWrapper name="Download" {...p} />;
-        const Save = (p) => <IconWrapper name="Save" {...p} />;
-        const FolderOpen = (p) => <IconWrapper name="FolderOpen" {...p} />;
-        const Brush = (p) => <IconWrapper name="Brush" {...p} />;
-        const Undo2 = (p) => <IconWrapper name="Undo2" {...p} />;
-        const Eraser = (p) => <IconWrapper name="Eraser" {...p} />;
-
-        // --- MaskVisualFeedback 组件：蒙版视觉反馈层 ---
-        const MaskVisualFeedback = ({ canvasRef, isDrawing }) => {
-            const [maskUrl, setMaskUrl] = useState('');
-            const rafRef = useRef(null);
-            
-            const updateMask = useCallback(() => {
-                if (canvasRef.current) {
-                    setMaskUrl(canvasRef.current.toDataURL());
-                }
-            }, [canvasRef]);
-            
-            // 初始更新
-            useEffect(() => {
-                if (!canvasRef.current) return;
-                updateMask();
-            }, [canvasRef, updateMask]);
-            
-            // 仅在绘制时使用 requestAnimationFrame 更新
-            useEffect(() => {
-                if (!isDrawing) {
-                    // 绘制结束时更新一次
-                    updateMask();
-                    return;
-                }
-                
-                // 绘制中：使用 requestAnimationFrame 更新
-                const animate = () => {
-                    updateMask();
-                    if (isDrawing) {
-                        rafRef.current = requestAnimationFrame(animate);
-                    }
-                };
-                
-                rafRef.current = requestAnimationFrame(animate);
-                
-                return () => {
-                    if (rafRef.current) {
-                        cancelAnimationFrame(rafRef.current);
-                    }
-                };
-            }, [isDrawing, updateMask]);
-            
-            if (!maskUrl) return null;
-            
-            return (
-                <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                        background: 'rgba(255, 0, 0, 0.3)',
-                        mixBlendMode: 'multiply',
-                        WebkitMaskImage: `url(${maskUrl})`,
-                        maskImage: `url(${maskUrl})`,
-                        WebkitMaskSize: '100% 100%',
-                        maskSize: '100% 100%',
-                        WebkitMaskRepeat: 'no-repeat',
-                        maskRepeat: 'no-repeat',
-                    }}
-                />
-            );
-        };
-
-        // --- LazyBase64Image 组件：将 Base64 转换为 Blob URL 的智能图片组件 ---
-        const LazyBase64Image = ({ src, className, alt, onError, onLoad, ...props }) => {
-            const [blobUrl, setBlobUrl] = useState(null);
-            const [error, setError] = useState(false);
-            const blobUrlRef = useRef(null);
-
-            useEffect(() => {
-                // 如果已经是 Blob URL 或 HTTP URL，直接使用
-                if (!src || src.startsWith('blob:') || src.startsWith('http://') || src.startsWith('https://')) {
-                    setBlobUrl(src);
-                    return;
-                }
-
-                // 如果是 Base64 Data URL，转换为 Blob URL
-                if (src.startsWith('data:')) {
-                    const convertToBlobUrl = async () => {
-                        try {
-                            const res = await fetch(src);
-                            const blob = await res.blob();
-                            const url = URL.createObjectURL(blob);
-                            blobUrlRef.current = url;
-                            setBlobUrl(url);
-                        } catch (err) {
-                            console.error('Base64转Blob失败', err);
-                            setError(true);
-                            setBlobUrl(src); // 失败时使用原始数据
-                        }
-                    };
-                    convertToBlobUrl();
-                } else {
-                    setBlobUrl(src);
-                }
-
-                // 清理函数：组件卸载时释放 Blob URL
-                return () => {
-                    if (blobUrlRef.current && blobUrlRef.current.startsWith('blob:')) {
-                        URL.revokeObjectURL(blobUrlRef.current);
-                        blobUrlRef.current = null;
-                    }
-                };
-            }, [src]);
-
-            if (error && !blobUrl) {
-                return null;
-            }
-
-            return (
-                <img
-                    src={blobUrl || src}
-                    className={className}
-                    alt={alt}
-                    onError={onError}
-                    onLoad={onLoad}
-                    {...props}
-                />
-            );
-        };
-
-        // --- 极简艺术进度条组件 (Centered & Artistic) ---
-        const ArtisticProgress = ({ visible, progress, status, type }) => {
-            if (!visible) return null;
-
-            return (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-300 pointer-events-none select-none">
-                    <div className="relative bg-[#09090b]/90 border border-white/10 rounded-2xl p-8 shadow-2xl flex flex-col items-center min-w-[300px] backdrop-blur-xl">
-                        {/* 装饰性光晕 */}
-                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-20 h-20 bg-blue-500/20 blur-[50px] rounded-full pointer-events-none" />
-                        
-                        {/* 标题与百分比 */}
-                        <div className="flex flex-col items-center gap-1 mb-6 z-10">
-                            <span className="font-mono text-[10px] tracking-[0.3em] uppercase text-zinc-500">
-                                {type === 'import' ? 'DATA INGESTION' : 'SYSTEM ARCHIVING'}
-                            </span>
-                            <div className="text-4xl font-bold text-zinc-200 tracking-tighter font-sans">
-                                {progress.toFixed(0)}<span className="text-sm text-zinc-500 ml-1">%</span>
-                            </div>
-                        </div>
-
-                        {/* 进度条轨道 */}
-                        <div className="relative w-full h-[2px] bg-zinc-800 rounded-full overflow-hidden mb-4">
-                            <div 
-                                className="absolute top-0 left-0 h-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-100 ease-linear"
-                                style={{ width: `${progress}%` }}
-                            />
-                        </div>
-
-                        {/* 状态文本 */}
-                        <span className="text-[10px] font-mono text-zinc-400 tracking-widest uppercase animate-pulse">
-                            {status}
-                        </span>
-                    </div>
-                </div>
-            );
-        };
-
-        // --- HistoryItem 组件：历史记录项，使用 React.memo 优化 ---
-        const HistoryItem = memo(({ 
-            item, 
-            theme, 
-            lightboxItem, 
-            onDelete, 
-            onClick, 
-            onContextMenu, 
-            onImageClick, 
-            onImageContextMenu,
-            onRefresh,
-            Loader2,
-            Trash2,
-            RefreshCw
-        }) => {
-            return (
-                <div
-                    className={`group rounded-lg overflow-hidden border relative cursor-pointer hover:border-blue-500/50 transition-colors ${
-                        theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
-                    }`}
-                    style={{
-                        contentVisibility: 'auto',
-                        containIntrinsicSize: '1px 300px'
-                    }}
-                    onClick={onClick}
-                    onContextMenu={onContextMenu}
-                >
-                    <div className={`bg-black relative ${
-                        ((item.mjImages && (item.mjImages.length === 4 || item.mjImages.length > 1)) || (item.mjNeedsSplit && item.apiConfig?.modelId?.includes('mj')))
-                            ? (() => {
-                                const ratio = item.mjRatio || '1:1';
-                                if (ratio === '16:9') return 'aspect-video';
-                                if (ratio === '9:16') return 'aspect-[9/16]';
-                                if (ratio === '4:3') return 'aspect-[4/3]';
-                                if (ratio === '3:4') return 'aspect-[3/4]';
-                                if (ratio === '21:9') return 'aspect-[21/9]';
-                                return 'aspect-square';
-                            })()
-                            : 'aspect-video'
-                    }`}>
-                        {item.status === 'completed' ? (
-                            item.mjImages && (item.mjImages.length === 4 || item.mjImages.length > 1) ? (
-                                <div className={`w-full h-full grid gap-0.5 p-0.5 ${item.mjImages.length === 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
-                                    {item.mjImages.map((imgUrl, idx) => {
-                                        const imgInfo = item.mjImageInfo && item.mjImageInfo[idx];
-                                        return (
-                                            <div
-                                                key={idx}
-                                                onClick={(e) => onImageClick && onImageClick(e, item, imgUrl, idx)}
-                                                onContextMenu={(e) => onImageContextMenu && onImageContextMenu(e, item, imgUrl, idx)}
-                                                className={`relative w-full h-full cursor-pointer border-2 transition-all overflow-hidden ${
-                                                    item.selectedMjImageIndex === idx && lightboxItem && lightboxItem.id === item.id
-                                                        ? 'border-blue-500 scale-95'
-                                                        : 'border-transparent hover:border-blue-500/50'
-                                                }`}
-                                            >
-                                                <LazyBase64Image
-                                                    src={imgUrl}
-                                                    loading="lazy"
-                                                    className="w-full h-full object-contain"
-                                                    alt={`生成图 ${idx + 1}`}
-                                                    onError={(e) => {
-                                                        console.error(`图片 ${idx + 1} 加载失败`);
-                                                        e.target.style.display = 'none';
-                                                    }}
-                                                />
-                                                {item.selectedMjImageIndex === idx && lightboxItem && lightboxItem.id === item.id && (
-                                                    <div className="absolute top-1 right-1 w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center z-10">
-                                                        <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                        </svg>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                item.type === 'image' ? (
-                                    <LazyBase64Image
-                                        src={item.url || item.mjOriginalUrl}
-                                        loading="lazy"
-                                        className="w-full h-full object-cover"
-                                        alt={item.prompt || '生成的图片'}
-                                        onError={(e) => {
-                                            console.error('图片加载失败:', item.url || item.mjOriginalUrl);
-                                            e.target.style.display = 'none';
-                                        }}
-                                    />
-                                ) : (
-                                    <video
-                                        src={item.url}
-                                        className="w-full h-full object-cover"
-                                        muted
-                                        loop
-                                        playsInline
-                                        onError={(e) => {
-                                            console.error('视频加载失败:', item.url);
-                                        }}
-                                    />
-                                )
-                            )
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                                <Loader2 className="animate-spin text-zinc-600" />
-                            </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
-                            <div className="h-full bg-blue-500 transition-all" style={{ width: `${item.progress}%` }}></div>
-                        </div>
-                    </div>
-                    <div className="p-2">
-                        <div className="flex justify-between items-start gap-2">
-                            <p
-                                className={`text-[10px] line-clamp-1 flex-1 ${
-                                    theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'
-                                }`}
-                            >
-                                {item.prompt}
-                            </p>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onDelete && onDelete(item.id); }}
-                                className={`shrink-0 p-0.5 mr-1 ${
-                                    theme === 'dark'
-                                        ? 'text-zinc-500 hover:text-red-500'
-                                        : 'text-zinc-400 hover:text-red-500'
-                                }`}
-                                title="删除"
-                            >
-                                <Trash2 size={12} />
-                            </button>
-                            {item.type === 'video' && (item.status === 'generating' || item.status === 'failed') && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onRefresh && onRefresh(item);
-                                    }}
-                                    className={`shrink-0 p-0.5 ${
-                                        theme === 'dark'
-                                            ? 'text-zinc-500 hover:text-white'
-                                            : 'text-zinc-400 hover:text-zinc-900'
-                                    }`}
-                                    title="刷新状态"
-                                >
-                                    <RefreshCw size={12} />
-                                </button>
-                            )}
-                        </div>
-                        {item.status === 'failed' && item.errorMsg && (
-                            <p className="text-[9px] text-red-500 mt-1 break-words whitespace-pre-wrap">
-                                {item.errorMsg.split('\n').map((line, idx) => (
-                                    <span key={idx}>
-                                        {line}
-                                        {idx < item.errorMsg.split('\n').length - 1 && <br />}
-                                    </span>
-                                ))}
-                            </p>
-                        )}
-                        {item.status === 'generating' && (
-                            <p className="text-[9px] text-blue-500 mt-1">
-                                {item.errorMsg || '生成中...'}
-                            </p>
-                        )}
-                    </div>
-                    <div className="flex items-center justify-between px-3 py-2 text-[11px]">
-                        <div className="flex flex-col">
-                            <span className={theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}>
-                                {item.prompt?.slice(0, 40) || 'Untitled'}
-                                {item.prompt && item.prompt.length > 40 ? '…' : ''}
-                            </span>
-                            <span className={theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}>
-                                {item.time} · {item.modelName}
-                                {typeof item.durationMs === 'number' && item.durationMs > 0 && (
-                                    <> · 用时 {(item.durationMs / 1000).toFixed(1)}s</>
-                                )}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            );
-        }, (prevProps, nextProps) => {
-            // 自定义对比函数：只检查关键属性变化
-            return (
-                prevProps.item === nextProps.item &&
-                prevProps.theme === nextProps.theme &&
-                prevProps.lightboxItem?.id === nextProps.lightboxItem?.id
-            );
-        });
-
-        // --- MaskEditor 组件：图片标注/局部重绘 ---
-        const MaskEditor = ({ nodeId, imageUrl, imageDimensions, isActive, onClose, onSave, theme, view, maskContent, onUpdateNode }) => {
-            const canvasRef = useRef(null);
-            const ctxRef = useRef(null);
-            const [brushSize, setBrushSize] = useState(30);
-            const [isDrawing, setIsDrawing] = useState(false);
-            const [history, setHistory] = useState([]);
-            const [historyIndex, setHistoryIndex] = useState(-1);
-            const maxHistory = 10;
-
-            // 初始化 Canvas
-            useEffect(() => {
-                if (!isActive || !canvasRef.current || !imageDimensions) return;
-                
-                const canvas = canvasRef.current;
-                const ctx = canvas.getContext('2d');
-                ctxRef.current = ctx;
-                
-                // 设置 Canvas 尺寸为图片原始分辨率
-                canvas.width = imageDimensions.w;
-                canvas.height = imageDimensions.h;
-                
-                // 清空画布（透明背景）
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                // 如果有保存的蒙版，恢复它
-                if (maskContent) {
-                    const img = new Image();
-                    img.onload = () => {
-                        ctx.drawImage(img, 0, 0);
-                        saveToHistory();
-                    };
-                    img.src = maskContent;
-                } else {
-                    saveToHistory();
-                }
-            }, [isActive, imageDimensions, nodeId, maskContent]);
-
-            // 保存当前状态到历史记录
-            const saveToHistory = () => {
-                if (!canvasRef.current || !ctxRef.current) return;
-                const canvas = canvasRef.current;
-                const ctx = ctxRef.current;
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const newHistory = history.slice(0, historyIndex + 1);
-                newHistory.push(imageData);
-                if (newHistory.length > maxHistory) {
-                    newHistory.shift();
-                }
-                setHistory(newHistory);
-                setHistoryIndex(newHistory.length - 1);
-            };
-
-            // 获取鼠标在 Canvas 上的真实像素坐标
-            const getCanvasCoordinates = (e) => {
-                if (!canvasRef.current) return null;
-                const canvas = canvasRef.current;
-                const rect = canvas.getBoundingClientRect();
-                
-                // 使用 getBoundingClientRect 获取 Canvas 在视口中的绝对位置
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                
-                // 计算缩放比例（图片原始尺寸 / DOM 显示尺寸）
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                
-                // 映射回真实像素坐标
-                return {
-                    x: Math.round(x * scaleX),
-                    y: Math.round(y * scaleY)
-                };
-            };
-
-            // 绘制函数
-            const draw = (e) => {
-                if (!isDrawing || !canvasRef.current || !ctxRef.current) return;
-                const coords = getCanvasCoordinates(e);
-                if (!coords) return;
-                
-                const ctx = ctxRef.current;
-                
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.fillStyle = '#FFFFFF'; // 白色（蒙版标准格式）
-                ctx.beginPath();
-                ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
-                ctx.fill();
-            };
-
-            // 鼠标事件处理
-            const handleMouseDown = (e) => {
-                if (e.button !== 0) return; // 只处理左键
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDrawing(true);
-                saveToHistory();
-                draw(e);
-            };
-
-            const handleMouseMove = (e) => {
-                if (!isDrawing) return;
-                e.preventDefault();
-                e.stopPropagation();
-                draw(e);
-            };
-
-            const handleMouseUp = (e) => {
-                if (!isDrawing) return;
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDrawing(false);
-                saveToHistory();
-            };
-
-            // 撤销
-            const handleUndo = () => {
-                if (historyIndex <= 0 || !canvasRef.current || !ctxRef.current) return;
-                const newIndex = historyIndex - 1;
-                setHistoryIndex(newIndex);
-                const ctx = ctxRef.current;
-                ctx.putImageData(history[newIndex], 0, 0);
-            };
-
-            // 清空
-            const handleClear = () => {
-                if (!canvasRef.current || !ctxRef.current) return;
-                const ctx = ctxRef.current;
-                ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-                saveToHistory();
-            };
-
-            // 保存蒙版
-            const handleSave = () => {
-                if (!canvasRef.current) return;
-                const canvas = canvasRef.current;
-                const maskDataUrl = canvas.toDataURL('image/png');
-                
-                // 更新节点状态
-                if (onUpdateNode) {
-                    onUpdateNode(nodeId, { maskContent: maskDataUrl, isMasking: false });
-                }
-                
-                if (onSave) onSave(maskDataUrl);
-                if (onClose) onClose();
-            };
-
-            // 键盘快捷键：Ctrl+Z 撤销
-            useEffect(() => {
-                if (!isActive) return;
-                const handleKeyDown = (e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleUndo();
-                    }
-                };
-                window.addEventListener('keydown', handleKeyDown);
-                return () => window.removeEventListener('keydown', handleKeyDown);
-            }, [isActive, historyIndex, history]);
-
-            if (!isActive || !imageUrl || !imageDimensions) return null;
-
-            return (
-                <div 
-                    className="absolute inset-0 z-50 pointer-events-auto"
-                    style={{ 
-                        mixBlendMode: 'normal',
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onMouseMove={(e) => e.stopPropagation()}
-                    onMouseUp={(e) => e.stopPropagation()}
-                >
-                    {/* Canvas 层：用于绘制蒙版 */}
-                    <canvas
-                        ref={canvasRef}
-                        className="absolute inset-0 w-full h-full"
-                        style={{
-                            opacity: 0.5,
-                            mixBlendMode: 'multiply',
-                            cursor: 'crosshair',
-                            pointerEvents: 'auto',
-                            imageRendering: 'pixelated'
-                        }}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={handleMouseUp}
-                    />
-                    
-                    {/* 视觉反馈层：半透明红色覆盖 - 使用 Canvas 作为 mask */}
-                    <MaskVisualFeedback canvasRef={canvasRef} isDrawing={isDrawing} />
-                    
-                    {/* 工具栏 - 底部居中悬浮 */}
-                    <div
-                        className={`absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-row items-center gap-4 p-2 rounded-full border backdrop-blur-md shadow-xl ${
-                            theme === 'dark'
-                                ? 'bg-zinc-900/90 border-zinc-700 text-zinc-200'
-                                : 'bg-white/90 border-zinc-300 text-zinc-800'
-                        }`}
-                        onMouseDown={(e) => e.stopPropagation()}
-                    >
-                        {/* 笔刷粗细 */}
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-medium whitespace-nowrap">笔刷</span>
-                            <input
-                                type="range"
-                                min="10"
-                                max="100"
-                                value={brushSize}
-                                onChange={(e) => setBrushSize(Number(e.target.value))}
-                                className="w-20"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-[10px] w-8 text-right whitespace-nowrap">{brushSize}px</span>
-                        </div>
-                        
-                        {/* 按钮组 */}
-                        <div className="flex items-center gap-1">
-                            <button
-                                onClick={handleUndo}
-                                disabled={historyIndex <= 0}
-                                className={`p-1.5 rounded-full transition-colors ${
-                                    theme === 'dark'
-                                        ? 'hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed'
-                                        : 'hover:bg-zinc-100 disabled:opacity-50 disabled:cursor-not-allowed'
-                                }`}
-                                title="撤销 (Ctrl+Z)"
-                            >
-                                <Undo2 size={14} />
-                            </button>
-                            <button
-                                onClick={handleClear}
-                                className={`p-1.5 rounded-full transition-colors ${
-                                    theme === 'dark'
-                                        ? 'hover:bg-zinc-800'
-                                        : 'hover:bg-zinc-100'
-                                }`}
-                                title="清空"
-                            >
-                                <Eraser size={14} />
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                className="p-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-                                title="保存/完成"
-                            >
-                                <Check size={14} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        // --- 自定义样式 ---
-        const styles = `
-        /* 全局字体渲染优化 */
-        * {
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            text-rendering: optimizeLegibility;
-        }
-        
-        /* 画布容器渲染优化 */
-        #canvas-bg {
-            transform: translateZ(0);
-            backface-visibility: hidden;
-            perspective: 1000px;
-        }
-        
-        /* 画布内容容器优化 */
-        #canvas-bg > div[style*="transform"] {
-            transform: translateZ(0);
-            will-change: transform;
-        }
-        
-        /* 节点容器优化 */
-        .node-wrapper {
-            transform: translateZ(0);
-            backface-visibility: hidden;
-            contain: layout style;
-            will-change: transform, left, top;
-        }
-        
-        /* 节点内图片渲染优化 - 使用高质量渲染 */
-        .node-wrapper img,
-        .node-wrapper video {
-            image-rendering: auto;
-            image-rendering: -webkit-optimize-contrast;
-            transform: translateZ(0);
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-            pointer-events: none;
-        }
-        
-        /* 连接线优化 */
-        svg {
-            shape-rendering: geometricPrecision;
-            text-rendering: optimizeLegibility;
-        }
-        
-        /* 高性能模式：当节点数量超过阈值时自动启用 */
-        .perf-mode .node-wrapper {
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            border-radius: 0 !important;
-            transition: none !important;
-        }
-        .perf-mode .connection-group {
-            opacity: 1 !important;
-        }
-        
-        /* 交互时动态降级：拖拽或缩放时降低渲染质量 */
-        .interacting .node-wrapper img {
-            image-rendering: pixelated;
-        }
-        .interacting .connection-group {
-            display: none;
-            pointer-events: none;
-        }
-        
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #52525b; }
-        .resize-handle { cursor: nwse-resize; opacity: 0; transition: opacity 0.2s; }
-        .node-wrapper:hover .resize-handle { opacity: 1; }
-        
-        /* 连接点样式 */
-        .connector { position: absolute; top: 50%; transform: translateY(-50%); width: 0.9rem; height: 0.9rem; background-color: #27272a; border: 1px solid #71717a; color: #a1a1aa; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: crosshair; transition: all 0.2s; z-index: 30; opacity: 0; pointer-events: auto; }
-        .node-wrapper:hover .connector { opacity: 1; }
-        .connector:hover, .connector.active { background-color: #d4d4d8; border-color: #fff; transform: translateY(-50%) scale(1.2); opacity: 1; color: #000; }
-        .connector-right { right: -0.45rem; }
-        
-        /* 输入点样式 */
-        .input-point { position: absolute; top: 50%; transform: translateY(-50%); left: -0.25rem; width: 0.5rem; height: 0.5rem; background-color: #52525b; border-radius: 50%; border: 1px solid #18181b; transition: all 0.2s; z-index: 20; cursor: crosshair; }
-        .node-wrapper:hover .input-point { background-color: #a1a1aa; }
-        .input-point.connected { background-color: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
-        .input-point.active { background-color: #60a5fa; border-color: #fff; transform: translateY(-50%) scale(1.3); box-shadow: 0 0 8px #60a5fa; }
-
-        /* Lightbox & Overlay */
-        .lightbox-overlay { background-color: rgba(0, 0, 0, 0.95); backdrop-filter: blur(5px); }
-        
-        /* Stack Items */
-        .thumb-stack-item {
-             transition: transform 0.2s, z-index 0.2s;
-        }
-        .thumb-stack-item:hover {
-            transform: scale(1.1) translateY(-2px);
-            z-index: 10 !important;
-            border-color: #60a5fa;
-        }
-
-        /* 连接线删除按钮 */
-        .connection-delete {
-            opacity: 0;
-            transition: opacity 0.2s;
-            pointer-events: auto; /* 关键：确保鼠标能交互 */
-        }
-        /* 当鼠标悬停在整个连接组（包含粗透明线）时显示 */
-        .connection-group:hover .connection-delete {
-            opacity: 1;
-        }
-
-        /* 拖放区域样式 */
-        .drop-zone {
-            border: 2px dashed transparent;
-            transition: all 0.3s;
-        }
-        .drop-zone.drag-over {
-            border-color: #60a5fa;
-            background-color: rgba(96, 165, 250, 0.1);
-        }
-
-        /* Markdown Styles for Chat */
-        .markdown-body { font-size: 13px; line-height: 1.5; color: #e4e4e7; word-wrap: break-word; user-select: text !important; cursor: text; }
-        .markdown-body * { user-select: text !important; cursor: text; }
-        .markdown-body pre { background: #27272a; padding: 10px; border-radius: 6px; overflow-x: auto; margin: 8px 0; white-space: pre-wrap; word-wrap: break-word; user-select: text !important; cursor: text; }
-        .markdown-body code { font-family: monospace; background: #3f3f46; padding: 2px 4px; border-radius: 4px; font-size: 12px; user-select: text !important; cursor: text; }
-        .markdown-body pre code { background: transparent; padding: 0; color: #a1a1aa; user-select: text !important; cursor: text; }
-        .markdown-body p { margin-bottom: 8px; user-select: text !important; cursor: text; }
-        .markdown-body ul, .markdown-body ol { margin-left: 20px; margin-bottom: 8px; list-style: disc; user-select: text !important; cursor: text; }
-        .markdown-body li { user-select: text !important; cursor: text; }
-        .markdown-body video { max-width: 100%; border-radius: 0.5rem; margin-top: 0.5rem; }
-        .markdown-body table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-        .markdown-body table th, .markdown-body table td { border: 1px solid #3f3f46; padding: 8px 12px; text-align: left; }
-        .markdown-body table th { background-color: #3f3f46; font-weight: 600; }
-        .markdown-body table tr:nth-child(even) { background-color: #27272a; }
-        .theme-light .markdown-body table th, .theme-light .markdown-body table td { border-color: #d4d4d8; }
-        .theme-light .markdown-body table th { background-color: #e4e4e7; }
-        .theme-light .markdown-body table tr:nth-child(even) { background-color: #f4f4f5; }
-        .theme-light .markdown-body { color: #18181b; }
-        .theme-light .markdown-body pre { background: #f4f4f5; color: #18181b; }
-        .theme-light .markdown-body code { background: #e4e4e7; color: #18181b; }
-        .theme-light .markdown-body pre code { color: #18181b; }
-        `;
-
-        // --- 虚拟画布尺寸 ---
-        const VIRTUAL_CANVAS_WIDTH = 4000;
-        const VIRTUAL_CANVAS_HEIGHT = 4000;
-
-        // --- 默认配置 ---
-        const DEFAULT_BASE_URL = 'https://ai.comfly.chat';
-        
-        // 即梦API配置（代理地址，默认本地5100端口）
-        const JIMENG_API_BASE_URL = 'http://localhost:5100';
-        const JIMENG_SESSION_ID = '7a16459fbd65d9c87b4ea44d3318f5fa';
-
-        const DEFAULT_API_CONFIGS = [
-            // Chat Models
-            { id: 'gemini-3-pro', provider: 'Gemini 3 Pro', modelName: 'gemini-3-pro-preview', type: 'Chat', key: '', url: DEFAULT_BASE_URL },
-            { id: 'gpt-5-1', provider: 'GPT 5.1', modelName: 'gpt-5.1', type: 'Chat', key: '', url: DEFAULT_BASE_URL },
-            { id: 'gpt-5-2', provider: 'GPT 5.2', modelName: 'gpt-5.2', type: 'Chat', key: '', url: DEFAULT_BASE_URL },
-            { id: 'deepseek-v3', provider: 'DeepSeek V3', modelName: 'deepseek-v3-1-250821', type: 'Chat', key: '', url: DEFAULT_BASE_URL },
-            { id: 'gpt-4o', provider: 'GPT-4o', modelName: 'gpt-4o', type: 'Chat', key: '', url: DEFAULT_BASE_URL },
-            
-            // Image Models
-            { id: 'nano-banana', provider: 'Nano Banana', modelName: 'nano-banana', type: 'Image', key: '', url: DEFAULT_BASE_URL },
-            { id: 'nano-banana-2', provider: 'Nano Banana 2', modelName: 'nano-banana-2', type: 'Image', key: '', url: DEFAULT_BASE_URL },
-            { id: 'gpt-image', provider: 'GPT-4o Image', modelName: 'gpt-4o-image', type: 'Image', key: '', url: DEFAULT_BASE_URL },
-            { id: 'flux-kontext', provider: 'Flux Kontext', modelName: 'flux-kontext-pro', type: 'Image', key: '', url: DEFAULT_BASE_URL },
-            { id: 'mj-v6', provider: 'Midjourney', modelName: 'MJ V6', type: 'Image', key: '', url: 'https://api.midjourney.com' },
-            // 即梦模型（使用sessionid作为key，首次打开时为空，需要用户输入）
-            { id: 'jimeng-4.5', provider: 'Jimeng 4.5', modelName: 'jimeng-4.5', type: 'Image', key: '', url: JIMENG_API_BASE_URL },
-            { id: 'jimeng-4.1', provider: 'Jimeng 4.1', modelName: 'jimeng-4.1', type: 'Image', key: '', url: JIMENG_API_BASE_URL },
-            { id: 'jimeng-3.1', provider: 'Jimeng 3.1', modelName: 'jimeng-3.1', type: 'Image', key: '', url: JIMENG_API_BASE_URL },
-            
-            // Video Models
-            { id: 'sora-2', provider: 'Sora 2', modelName: 'sora-2', type: 'Video', key: '', url: DEFAULT_BASE_URL, durations: ['5s', '10s', '15s'] },
-            { id: 'sora-2-pro', provider: 'Sora 2 Pro', modelName: 'sora-2-pro', type: 'Video', key: '', url: DEFAULT_BASE_URL, durations: ['15s', '25s'] },
-            { id: 'google-veo3', provider: 'Google Veo 3', modelName: 'veo3.1-components', type: 'Video', key: '', url: 'https://ai.t8star.cn', durations: ['8s'] },
-            { id: 'grok-3', provider: 'Grok3 Video', modelName: 'grok-video-3', type: 'Video', key: '', url: 'https://ai.t8star.cn', durations: ['8s', '5s'] },
-        ];
-
-        const RATIOS = ['Auto', '1:1', '16:9', '9:16', '4:3', '3:4', '21:9', '3:2', '2:3'];
-        const GROK_VIDEO_RATIOS = ['3:2', '2:3', '1:1'];
-        const VIDEO_RES_OPTIONS = ['1080P', '720P'];
-        const PROMPT_LIBRARY_KEY = 'tapnow_prompt_library';
-        const GRID_PROMPT_TEXT = `基于我上传的这张参考图，生成一张九宫格（3x3 grid）布局的分镜脚本。请严格保持角色与参考图一致（Keep character strictly consistent），但在9个格子中展示该角色不同的动作、表情和拍摄角度（如正面、侧面、背面、特写等）。要求风格高度统一，形成一张完整的角色动态表（Character Sheet）。`;
-        const UPSCALE_PROMPT_TEXT = `请对参考图片进行无损高清放大（Upscale）。请严格保持原图的构图、色彩、光影和所有细节元素不变，不要进行任何创造性的重绘或添加新内容。仅专注于提升分辨率、锐化边缘（Sharpening）和去除噪点（Denoising），实现像素级的高清修复。Best quality, 8k, masterpiece, highres, ultra detailed, sharp focus, image restoration, upscale, faithful to original.`;
-        const STORYBOARD_PROMPT_TEXT = `you are a veteran Hollywood storyboard artist with years of experience. You have the ability to accurately analyze character features and scene characteristics based on images. Provide me with the most suitable camera angles and storyboards. Strictly base this on the uploaded character and scene images, while maintaining a consistent visual style.
-
-MANDATORY LAYOUT: Create a precise 3x3 GRID containing exactly 9 distinct panels.
-
-- The output image MUST be a single image divided into a 3 (rows) by 3 (columns) matrix.
-- There must be EXACTLY 3 horizontal rows and 3 vertical columns.
-- Each panel must be completely separated by a thin, distinct, solid black line.
-- DO NOT create a collage. DO NOT overlap images. DO NOT create random sizes. 
-- The grid structure must be perfectly aligned for slicing.
-
-Subject Content: "[在此处填充你对故事的描述]"
-
-Styling Instructions:
-- Each panel shows the SAME subject/scene from a DIFFERENT angle (e.g., Front, Side, Back, Action, Close-up).
-- Maintain perfect consistency of the character/object across all panels.
-- Cinematic lighting, high fidelity, 8k resolution.
-
-Negative Constraints:
-- No text, no captions, no UI elements.
-- No watermarks.
-- No broken grid lines.`;
-
-        const CHARACTER_SHEET_PROMPT_TEXT = `(strictly mimic source image art style:1.5), (same visual style:1.4),
-score_9, score_8_up, masterpiece, best quality, (character sheet:1.4), (reference sheet:1.3), (consistent art style:1.3), matching visual style, 
-
-[Structure & General Annotations]:
-multiple views, full body central figure, clean background, 
-(heavy annotation:1.4), (text labels with arrows:1.3), handwriting, data readout,
-
-[SPECIAL CHARACTER DESCRIPTION AREA]:
-(prominent character profile text box:1.6), (dedicated biography section:1.5), large descriptive text block,
-[在此处填写特殊角色说明，例如：姓名、种族、背景故事等],
-
-[Clothing Breakdown]:
-(clothing breakdown:1.5), (outfit decomposition:1.4), garment analysis, (floating apparel:1.3), 
-displaying outerwear, displaying upper body garment, displaying lower body garment, 
-
-[Footwear Focus]:
-(detailed footwear display:1.5), (floating shoes:1.4), shoe design breakdown, focus on shoes, 
-
-[Inventory & Details]:
-(inventory knolling:1.2), open container, personal accessories, organized items display, expression panels`;
-
-        const MOOD_BOARD_PROMPT_TEXT = `# Directive: Create a "Rich Narrative Mood Board" (8-Grid Layout)
-
-## 1. PROJECT INPUT 
-
-**A. [Story & Concept / 故事与核心想法]**
-> [跟据自身内容书写]
-
-**B. [Key Symbols / 核心意象 (Optional)]**
-> [深度理解参考图，自行创作]
-
-**C. [Color Preferences / 色彩倾向 (Optional)]**
-> [深度理解参考图，自行创作]
-
-**D. [Reference Images / 参考图]**
-> (See attached images / 请读取我上传的图片)
-
----
-
-## 2. Role Definition
-Act as a **Senior Art Director**. Synthesize the Input above into a single, cohesive, high-density **Visual Mood Board** using a complex **8-Panel Asymmetrical Grid Layout**.
-
-## 3. Layout Mapping (Strict Adherence)
-You must design a visual composition that tells the story through **8 distinct panels** within one image. **Do not** generate random grids. Map the content exactly as follows:
-
-* **Panel 1 (The World):** A wide, cinematic establishing shot of the environment (based on Input A).
-* **Panel 2 (The Protagonist):** A portrait close-up (based on reference images), focusing on micro-expressions.
-* **Panel 3 (The Metaphor):** An **abstract symbolic object** representing the core theme (based on Input B).
-* **Panel 4 (The Palette):** A graphical **Color Palette Strip** showcasing 5 specific colors extracted from the scene.
-* **Panel 5 (The Texture):** Extreme macro close-up of a material surface (e.g., rust, skin, fabric) to add tactile richness.
-* **Panel 6 (The Motion):** A motion-blurred or long-exposure shot representing time/chaos.
-* **Panel 7 (The Detail):** A focused shot of a specific prop or accessory relevant to the plot.
-* **Panel 8 (The AI Art Interpretation - CRITICAL):** This is your **free creative space**. Generate an artistic, surreal, or abstract re-interpretation of the story's emotion. **Do not just copy the inputs.** Create a "Vibe Image" (e.g., Double Exposure, Oil Painting style, or abstract geometry) that captures the *soul* of the narrative.
-
-## 4. Execution Requirements
-* **Composition Style:** High-end Editorial / Magazine Layout. Clean, thin white borders.
-* **Visual Unity:** All panels must share the same lighting conditions and color grading logic (Unified Aesthetic).
-* **Task:** Provide the **Final English Image Prompt** that explicitly describes this 8-grid layout, ensuring Panel 8 stands out as an artistic variation.`;
-        // 已删除的模型ID列表（用于过滤）
-        const DELETED_MODEL_IDS = [
-            'gemini-image',
-            'qwen-image', 
-            'doubao-seedream',
-            'jimeng', // Jimeng Video
-            'hailuo-02',
-            'kling-v1-6',
-            'wan-2.5'
-        ];
-
-        const getRatiosForModel = (modelId) => {
-            if (!modelId) return RATIOS;
-            if (modelId.includes('grok')) return GROK_VIDEO_RATIOS;
-            return RATIOS;
-        };
-        const RESOLUTIONS = ['Auto', '1K', '2K', '4K'];
-        // 根据模型返回不同的分辨率选项
-        const getResolutionsForModel = (modelId) => {
-            if (!modelId) return RESOLUTIONS;
-            // jimeng-4.5模型只显示2K和4K两个选项
-            if (modelId.includes('jimeng-4.5')) return ['2K', '4K'];
-            return RESOLUTIONS;
-        }; 
-        // Midjourney版本列表
-        const MJ_VERSIONS = [
-            { label: 'MJ V7', value: '--v 7' },
-            { label: 'MJ V6.1', value: '--v 6.1' },
-            { label: 'MJ V6', value: '--v 6' },
-            { label: 'MJ V5.2', value: '--v 5.2' },
-            { label: 'MJ V5.1', value: '--v 5.1' },
-            { label: 'Niji V6', value: '--niji 6' },
-            { label: 'Niji V5', value: '--niji 5' },
-            { label: 'Niji V4', value: '--niji 4' }
-        ]; 
-
-        // --- 辅助：计算真实分辨率 ---
-        const calculateResolution = (ratio, baseResolution) => {
-            let baseW = 1024;
-            let baseH = 1024;
-            
-            if (baseResolution === '1080P') { baseW = 1920; baseH = 1080; }
-            else if (baseResolution === '720P') { baseW = 1280; baseH = 720; }
-            else if (baseResolution === '2K') { baseW = 2048; baseH = 2048; }
-            else if (baseResolution === '4K') { baseW = 3840; baseH = 2160; }
-
-            if (ratio === 'Auto') {
-                return { str: `${baseW}x${baseH}`, w: baseW, h: baseH };
-            }
-
-            const [rW, rH] = ratio.split(':').map(Number);
-            if (!rW || !rH) return { str: '1024x1024', w: 1024, h: 1024 };
-
-            let targetW;
-            let targetH;
-
-            if (Math.abs(rW - rH) < 0.1) {
-                targetW = baseW; targetH = baseH;
-            } else if (rW > rH) {
-                targetW = (baseResolution === 'Auto' || baseResolution === '1K') ? 1280 : baseW;
-                targetH = Math.round(targetW * (rH / rW));
-            } else {
-                targetH = (baseResolution === 'Auto' || baseResolution === '1K') ? 1280 : baseW;
-                targetW = Math.round(targetH * (rW / rH));
-            }
-
-            targetW = Math.round(targetW / 16) * 16;
-            targetH = Math.round(targetH / 16) * 16;
-
-            return { str: `${targetW}x${targetH}`, w: targetW, h: targetH };
-        };
-
-        const getModelParams = (modelId, ratio, resolution) => {
-            const { str, w, h } = calculateResolution(ratio, resolution);
-            if (modelId.includes('minimax')) {
-                return { sizeStr: resolution === '4K' ? '1080p' : '720p', w, h };
-            }
-            if (modelId.includes('jimeng') || modelId.includes('veo')) {
-                return { sizeStr: ratio, w, h };
-            }
-            if (modelId.includes('grok')) {
-                // Grok 接口需要传 aspect_ratio，size 传比例字符串即可
-                return { sizeStr: ratio, w, h };
-            }
-            return { sizeStr: str, w, h };
-        };
-
-        // --- Helper: Get Image Dimensions ---
-        const getImageDimensions = (src) => {
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-                img.onerror = () => reject(new Error("Failed to load image"));
-                img.src = src;
-            });
-        };
-        
-        // --- Helper: Check if URL is video ---
-        const isVideoUrl = (url) => {
-            if (!url) return false;
-            if (url.startsWith('data:video')) return true;
-            if (url.includes('force_video_display=true')) return true;
-            const ext = url.split('.').pop().split('?')[0].toLowerCase();
-            return ['mp4', 'webm', 'ogg', 'mov'].includes(ext);
-        };
-
-        // --- Helper: Load Video Metadata ---
-        const getVideoMetadata = (src) => {
-            return new Promise((resolve, reject) => {
-                const video = document.createElement('video');
-                video.preload = 'metadata';
-                video.muted = true;
-                video.playsInline = true;
-                video.onloadedmetadata = () => {
-                    resolve({
-                        duration: Number(video.duration) || 0,
-                        w: video.videoWidth || 0,
-                        h: video.videoHeight || 0,
-                    });
-                };
-                video.onerror = () => reject(new Error('视频加载失败'));
-                video.src = src;
-            });
-        };
-
-        // --- Helper: Extract Key Frames from video using <video> + <canvas> ---
-        const extractKeyFrames = (src, { fps = 2 } = {}) => {
-            return new Promise((resolve, reject) => {
-                const video = document.createElement('video');
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                video.muted = true;
-                video.playsInline = true;
-                video.crossOrigin = 'anonymous';
-                video.src = src;
-                const frames = [];
-
-                const handleError = () => reject(new Error('视频抽帧失败'));
-                video.onerror = handleError;
-
-                video.onloadedmetadata = () => {
-                    const duration = Number(video.duration) || 0;
-                    if (!duration || !isFinite(duration)) {
-                        reject(new Error('无法读取视频时长'));
-                        return;
-                    }
-                    canvas.width = video.videoWidth || 1280;
-                    canvas.height = video.videoHeight || 720;
-                    const interval = 1 / Math.max(0.1, fps);
-                    let current = 0;
-
-                    const captureFrame = () => {
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        frames.push({
-                            time: Number(current.toFixed(2)),
-                            url: canvas.toDataURL('image/jpeg', 0.82),
-                        });
-                        current += interval;
-                        if (current <= duration) {
-                            video.currentTime = Math.min(current, duration);
-                        } else {
-                            resolve(frames);
-                        }
-                    };
-
-                    video.onseeked = captureFrame;
-                    // 启动首次抽帧
-                    video.currentTime = 0;
-                };
-            });
-        };
-
-        // --- Component: ImageCompareView (Beautified & Optimized) ---
-        const ImageCompareView = React.memo(({ img1, img2 }) => {
-            const [pos, setPos] = useState(50);
-            const containerRef = useRef(null);
-            const [isHovering, setIsHovering] = useState(false);
-            const requestRef = useRef();
-
-            const handleMove = useCallback((e) => {
-                if (!containerRef.current) return;
-                
-                // 使用 requestAnimationFrame 优化性能
-                if (requestRef.current) return;
-                
-                requestRef.current = requestAnimationFrame(() => {
-                    if (!containerRef.current) return;
-                    const rect = containerRef.current.getBoundingClientRect();
-                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-                    setPos((x / rect.width) * 100);
-                    requestRef.current = null;
-                });
-            }, []);
-
-            useEffect(() => {
-                return () => {
-                    if (requestRef.current) {
-                        cancelAnimationFrame(requestRef.current);
-                    }
-                };
-            }, []);
-
-            const displayImg1 = img1;
-            const displayImg2 = img2 || img1; 
-
-            if (!displayImg1) return (
-                <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 bg-zinc-900/50 rounded-lg border border-zinc-800 border-dashed pointer-events-none">
-                    <Split size={24} className="mb-2 opacity-50" />
-                    <span className="text-xs font-medium">连接图片以对比</span>
-                </div>
-            );
-
-            return (
-                <div 
-                    ref={containerRef}
-                    className="relative w-full h-full cursor-col-resize overflow-hidden group rounded-lg select-none shadow-2xl border border-zinc-800 bg-[#09090b]"
-                    onMouseMove={handleMove}
-                    onTouchMove={handleMove}
-                    onMouseEnter={() => setIsHovering(true)}
-                    onMouseLeave={() => setIsHovering(false)}
-                >
-                    {/* Checkered Background */}
-                    <div className="absolute inset-0 opacity-20 pointer-events-none" 
-                         style={{ 
-                             backgroundImage: 'conic-gradient(#333 90deg, transparent 90deg), conic-gradient(transparent 90deg, #333 90deg)', 
-                             backgroundSize: '20px 20px', 
-                             backgroundPosition: '0 0, 10px 10px' 
-                         }} 
-                    />
-                    <img src={displayImg1} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none" draggable={false} />
-                    <div 
-                        className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none select-none"
-                        style={{ clipPath: `inset(0 0 0 ${pos}%)` }} 
-                    >
-                        <img src={displayImg2} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
-                    </div>
-                    <div 
-                        className="absolute top-0 bottom-0 w-0.5 bg-white/80 shadow-[0_0_10px_rgba(0,0,0,0.5)] pointer-events-none"
-                        style={{ left: `${pos}%` }}
-                    >
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-white rounded-full shadow-lg flex items-center justify-center text-black">
-                            <Split size={12} className="rotate-90" />
-                        </div>
-                    </div>
-                    <div className={`absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-medium px-2 py-0.5 rounded border border-white/10 transition-opacity duration-200 pointer-events-none ${isHovering ? 'opacity-100' : 'opacity-60'}`}>
-                        原始
-                    </div>
-                    <div className={`absolute bottom-2 right-2 bg-blue-600/80 text-white text-[10px] font-medium px-2 py-0.5 rounded border border-white/10 transition-opacity duration-200 pointer-events-none ${isHovering ? 'opacity-100' : 'opacity-60'}`}>
-                        生成
-                    </div>
-                </div>
-            );
-        });
-
-        // --- 辅助组件 ---
-        const Button = React.memo(({ children, onClick, className = '', variant = 'primary', icon: Icon, disabled = false, title = '' }) => {
-            const baseStyle = 'flex items-center justify-center px-3 py-1.5 rounded-lg transition-all duration-200 font-medium text-xs select-none disabled:opacity-50 disabled:cursor-not-allowed';
-            const variants = {
-                primary: 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 active:scale-95',
-                secondary: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 active:scale-95',
-                ghost: 'bg-transparent hover:bg-zinc-800 text-zinc-400 hover:text-white',
-                danger: 'bg-red-900/30 hover:bg-red-800 text-red-200 border border-red-800 active:scale-95',
-            };
-            return (
-                <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`} title={title}>
-                    {Icon && <Icon size={14} className={children ? 'mr-1.5' : ''} />}
-                    {children}
-                </button>
-            );
-        });
-
-        // --- 性能优化工具函数 ---
-        const debounce = (func, wait) => {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
-                    clearTimeout(timeout);
-                    func(...args);
-                };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
-        };
-
-        const Modal = ({ isOpen, onClose, title, children, theme = 'dark' }) => {
-            if (!isOpen) return null;
-            const isDark = theme === 'dark';
-            return (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-                    <div
-                        className={`rounded-xl shadow-2xl w-[680px] max-w-[90vw] overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[85vh] border ${
-                            isDark ? 'bg-[#09090b] border-zinc-800' : 'bg-white border-zinc-200'
-                        }`}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div
-                            className={`flex items-center justify-between p-5 border-b shrink-0 ${
-                                isDark ? 'border-zinc-800/50' : 'border-zinc-200'
-                            }`}
-                        >
-                            <h3 className={`font-bold text-lg ${isDark ? 'text-white' : 'text-zinc-900'}`}>{title}</h3>
-                            <button
-                                onClick={onClose}
-                                className={isDark ? 'text-zinc-500 hover:text-white' : 'text-zinc-500 hover:text-zinc-900'}
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className={`p-0 overflow-y-auto custom-scrollbar flex-1 ${isDark ? 'bg-[#09090b]' : 'bg-white'}`}>
-                            {children}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const Lightbox = ({ item, onClose, onNavigate }) => {
-            if (!item) return null;
-            
-            // 使用ref存储最新的item值，避免闭包问题
-            const itemRef = useRef(item);
-            useEffect(() => {
-                itemRef.current = item;
-            }, [item]);
-            
-            // 键盘事件处理：左右方向键切换图片
-            useEffect(() => {
-                if (!item) return;
-                
-                const handleKeyDown = (e) => {
-                    // 使用ref获取最新的item值
-                    const currentItem = itemRef.current;
-                    if (!currentItem) return;
-                    
-                    // 只在有多张图片时响应方向键
-                    if (!currentItem.mjImages || currentItem.mjImages.length <= 1) return;
-                    
-                    // 防止在输入框中触发
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                    
-                    if (e.key === 'ArrowLeft' || e.key === 'Left') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // 切换到上一张（只在当前item的mjImages范围内）
-                        const currentIndex = currentItem.selectedMjImageIndex !== undefined ? currentItem.selectedMjImageIndex : 0;
-                        const prevIndex = currentIndex > 0 ? currentIndex - 1 : currentItem.mjImages.length - 1;
-                        // 确保索引在有效范围内，并且只操作当前item的mjImages
-                        if (prevIndex >= 0 && prevIndex < currentItem.mjImages.length && onNavigate) {
-                            onNavigate(prevIndex);
-                        }
-                    } else if (e.key === 'ArrowRight' || e.key === 'Right') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // 切换到下一张（只在当前item的mjImages范围内）
-                        const currentIndex = currentItem.selectedMjImageIndex !== undefined ? currentItem.selectedMjImageIndex : 0;
-                        const nextIndex = currentIndex < currentItem.mjImages.length - 1 ? currentIndex + 1 : 0;
-                        // 确保索引在有效范围内，并且只操作当前item的mjImages
-                        if (nextIndex >= 0 && nextIndex < currentItem.mjImages.length && onNavigate) {
-                            onNavigate(nextIndex);
-                        }
-                    }
-                };
-                
-                window.addEventListener('keydown', handleKeyDown);
-                return () => {
-                    window.removeEventListener('keydown', handleKeyDown);
-                };
-            }, [item, onNavigate]);
-            
-            return (
-                <div className="fixed inset-0 z-[200] lightbox-overlay flex flex-col items-center justify-center animate-in fade-in duration-200" onClick={onClose}>
-                    <button className="absolute top-4 right-4 text-white/70 hover:text-white p-2 bg-black/50 rounded-full transition-colors" onClick={onClose}><X size={24} /></button>
-                    <div className="max-w-[90vw] max-h-[85vh] relative" onClick={(e) => e.stopPropagation()}>
-                        {item.type === 'image' ? (
-                            <img src={item.url} alt={item.prompt} className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" />
-                        ) : (
-                            <video src={item.url} controls autoPlay className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
-                        )}
-                        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md px-6 py-3 rounded-full text-white text-sm font-medium border border-white/10 text-center shadow-2xl">
-                            <div className="line-clamp-1 max-w-xl">{item.prompt}</div>
-                            <div className="text-[10px] text-zinc-400 mt-1">
-                                {item.width}x{item.height} • {item.modelName}
-                                {item.mjImages && item.mjImages.length > 1 && (
-                                    <span className="ml-2">({(item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : 0) + 1}/{item.mjImages.length})</span>
-                                )}
-                            </div>
-                        </div>
-                        {/* 左右切换提示 */}
-                        {item.mjImages && item.mjImages.length > 1 && (
-                            <>
-                                <button
-                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 bg-black/50 rounded-full transition-colors"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const currentIndex = item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : 0;
-                                        const prevIndex = currentIndex > 0 ? currentIndex - 1 : item.mjImages.length - 1;
-                                        if (onNavigate) onNavigate(prevIndex);
-                                    }}
-                                    title="上一张 (←)"
-                                >
-                                    <ChevronLeft size={24} />
-                                </button>
-                                <button
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 bg-black/50 rounded-full transition-colors"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const currentIndex = item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : 0;
-                                        const nextIndex = currentIndex < item.mjImages.length - 1 ? currentIndex + 1 : 0;
-                                        if (onNavigate) onNavigate(nextIndex);
-                                    }}
-                                    title="下一张 (→)"
-                                >
-                                    <ChevronRight size={24} />
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
-            );
-        };
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import './styles.css';
+import './app.css';
+import { renderMarkdown } from '../shared/markdown.js';
+import {
+  ArrowRightSquare,
+  Bot,
+  Brush,
+  Camera,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardCopy,
+  Code,
+  CopyPlus,
+  Download,
+  Eraser,
+  FileImage,
+  FileAudio,
+  FileSearch,
+  FileText,
+  FileVideo,
+  FolderCog,
+  FolderOpen,
+  HardDrive,
+  History,
+  ImageIcon,
+  ImagePlus,
+  Layers,
+  Layout,
+  LayoutGrid,
+  LinkIcon,
+  Loader2,
+  Maximize2,
+  MessageSquare,
+  Mic2,
+  Moon,
+  MousePointer2,
+  Paperclip,
+  Play,
+  Plus,
+  RefreshCw,
+  Save,
+  Settings,
+  Scissors,
+  Send,
+  Sparkles,
+  Sun,
+  Trash2,
+  Unlink,
+  User,
+  Users,
+  Video,
+  Wand2,
+  X,
+  Zap
+} from '../shared/icons.jsx';
+
+import {
+  MaskVisualFeedback,
+  LazyBase64Image,
+  ArtisticProgress,
+  VirtualList,
+  HistoryItem,
+  MaskEditor,
+  VIRTUAL_CANVAS_WIDTH,
+  VIRTUAL_CANVAS_HEIGHT,
+  DEFAULT_BASE_URL,
+  JIMENG_API_BASE_URL,
+  JIMENG_SESSION_ID,
+  DEFAULT_API_CONFIGS,
+  RATIOS,
+  GROK_VIDEO_RATIOS,
+  VIDEO_RES_OPTIONS,
+  PROMPT_LIBRARY_KEY,
+  GRID_PROMPT_TEXT,
+  UPSCALE_PROMPT_TEXT,
+  STORYBOARD_PROMPT_TEXT,
+  CHARACTER_SHEET_PROMPT_TEXT,
+  MOOD_BOARD_PROMPT_TEXT,
+  DELETED_MODEL_IDS,
+  getRatiosForModel,
+  RESOLUTIONS,
+  getResolutionsForModel,
+  MJ_VERSIONS,
+  calculateResolution,
+  getModelParams,
+  getImageDimensions,
+  isVideoUrl,
+  getVideoMetadata,
+  extractKeyFrames,
+  ImageCompareView,
+  Button,
+  debounce,
+  Modal,
+  Lightbox
+} from './support.jsx';
 
         function TapnowApp() {
             const [theme, setTheme] = useState(() => {
@@ -1637,12 +106,6 @@ You must design a visual composition that tells the story through **8 distinct p
                 }
             });
 
-            useEffect(() => {
-                const styleSheet = document.createElement('style');
-                styleSheet.innerText = styles;
-                document.head.appendChild(styleSheet);
-                return () => { document.head.removeChild(styleSheet); };
-            }, []);
 
             useEffect(() => {
                 try {
@@ -1660,8 +123,25 @@ You must design a visual composition that tells the story through **8 distinct p
                 }
             }, [theme]);
 
+            const [isPerformanceMode, setPerformanceMode] = useState(() => {
+                try {
+                    return localStorage.getItem('tapnow_performance_mode') === 'true';
+                } catch (e) {
+                    return false;
+                }
+            });
+            
+            useEffect(() => {
+                try {
+                    localStorage.setItem('tapnow_performance_mode', isPerformanceMode.toString());
+                } catch (e) {}
+            }, [isPerformanceMode]);
+
             const [nodes, setNodes] = useState([]);
             const [connections, setConnections] = useState([]);
+            const updateNodeSettings = useCallback((id, newSettings) => {
+                setNodes((prev) => prev.map((n) => n.id === id ? { ...n, settings: { ...n.settings, ...newSettings } } : n));
+            }, []);
             const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
             // 性能优化：使用 ref 存储 view 和拖拽状态，避免频繁 setState
             const viewRef = useRef({ x: 0, y: 0, zoom: 1 });
@@ -1695,6 +175,16 @@ You must design a visual composition that tells the story through **8 distinct p
                     const insertIndex = sora2Index >= 0 ? sora2Index + 1 : configs.findIndex(c => c.type === 'Video' && c.id === 'google-veo3');
                     const finalIndex = insertIndex >= 0 ? insertIndex : configs.length;
                     configs.splice(finalIndex, 0, { id: 'sora-2-pro', provider: 'Sora 2 Pro', modelName: 'sora-2-pro', type: 'Video', key: '', url: DEFAULT_BASE_URL, durations: ['15s', '25s'] });
+                }
+                
+                // 确保 gpt-image-1.5 存在（如果不存在则添加）
+                const hasGptImage15 = configs.some(c => c.id === 'gpt-image-1.5');
+                if (!hasGptImage15) {
+                    // 找到 gpt-image 的位置，在它后面插入 gpt-image-1.5
+                    const gptImageIndex = configs.findIndex(c => c.id === 'gpt-image');
+                    const insertIndex = gptImageIndex >= 0 ? gptImageIndex + 1 : configs.findIndex(c => c.type === 'Image' && c.id === 'flux-kontext');
+                    const finalIndex = insertIndex >= 0 ? insertIndex : configs.length;
+                    configs.splice(finalIndex, 0, { id: 'gpt-image-1.5', provider: 'GPT Image 1.5', modelName: 'gpt-image-1.5', type: 'Image', key: '', url: DEFAULT_BASE_URL });
                 }
                 
                 // 过滤掉已删除的模型配置
@@ -1893,6 +383,7 @@ You must design a visual composition that tells the story through **8 distinct p
             const [createCharacterVideoSourceType, setCreateCharacterVideoSourceType] = useState('url');
             const [createCharacterVideoUrl, setCreateCharacterVideoUrl] = useState('');
             const [createCharacterSelectedTaskId, setCreateCharacterSelectedTaskId] = useState('');
+            const [createCharacterHistoryDropdownOpen, setCreateCharacterHistoryDropdownOpen] = useState(false);
             const [createCharacterStartSecond, setCreateCharacterStartSecond] = useState(1);
             const [createCharacterEndSecond, setCreateCharacterEndSecond] = useState(3);
             const [createCharacterEndpoint, setCreateCharacterEndpoint] = useState('');
@@ -1908,6 +399,51 @@ You must design a visual composition that tells the story through **8 distinct p
             const [apiStatus, setApiStatus] = useState({});
             // 实时计时器状态：nodeId -> elapsedSeconds
             const [nodeTimers, setNodeTimers] = useState({});
+
+            // 历史保存文件夹记忆
+            const [savedFolderHistory, setSavedFolderHistory] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('tapnow_saved_folder_history');
+                    return saved ? JSON.parse(saved) : [];
+                } catch (e) {
+                    return [];
+                }
+            });
+            
+            // 框选节点右键菜单
+            const [selectionContextMenu, setSelectionContextMenu] = useState({ visible: false, x: 0, y: 0 });
+
+            // 性能模式：历史记录使用缩略图显示
+            // 'off' = 关闭, 'normal' = 普通(150px/0.6), 'ultra' = 极致(80px/0.3)
+            const [historyPerformanceMode, setHistoryPerformanceMode] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('tapnow_history_performance_mode');
+                    // 兼容旧版本布尔值
+                    if (saved === 'true') return 'normal';
+                    if (saved === 'false') return 'off';
+                    return saved || 'normal'; // 默认普通性能模式
+                } catch (e) {
+                    return 'normal';
+                }
+            });
+            
+            // 本地缓存服务器状态
+            const [localCacheServerConnected, setLocalCacheServerConnected] = useState(false);
+            const localCacheServerUrl = 'http://127.0.0.1:9527';
+            
+            // 本地缓存服务器配置
+            const [localServerConfig, setLocalServerConfig] = useState({
+                imageSavePath: '',
+                videoSavePath: '',
+                convertPngToJpg: true,
+                jpgQuality: 95
+            });
+            
+            // 本地缓存设置面板开关
+            const [localCacheSettingsOpen, setLocalCacheSettingsOpen] = useState(false);
+            
+            // 缩略图缓存 Map: id -> thumbnailUrl
+            const thumbnailCacheRef = useRef(new Map());
 
             const canvasRef = useRef(null);
             const lastMousePos = useRef({ x: 0, y: 0 });
@@ -1929,6 +465,322 @@ You must design a visual composition that tells the story through **8 distinct p
                 const filteredConfigs = apiConfigs.filter(c => c.id !== 'jimeng-4.5');
                 localStorage.setItem('tapnow_api_configs', JSON.stringify(filteredConfigs)); 
             }, [apiConfigs]);
+            
+            // 保存历史文件夹到localStorage
+            useEffect(() => {
+                try {
+                    localStorage.setItem('tapnow_saved_folder_history', JSON.stringify(savedFolderHistory));
+                } catch (e) {}
+            }, [savedFolderHistory]);
+            
+            // 添加文件夹到历史记录的函数
+            const addFolderToHistory = useCallback((folder) => {
+                if (!folder || folder.trim() === '') return;
+                setSavedFolderHistory(prev => {
+                    const filtered = prev.filter(f => f !== folder);
+                    return [folder, ...filtered].slice(0, 10); // 最多保存10个
+                });
+            }, []);
+            
+            // 保存性能模式设置
+            useEffect(() => {
+                localStorage.setItem('tapnow_history_performance_mode', String(historyPerformanceMode));
+            }, [historyPerformanceMode]);
+            
+            // 性能模式变化时，为历史记录生成缩略图
+            useEffect(() => {
+                if (historyPerformanceMode === 'off') return;
+                
+                const generateThumbnailsForHistory = async () => {
+                    const quality = historyPerformanceMode; // 'normal' 或 'ultra'
+                    const config = quality === 'ultra' 
+                        ? { maxSize: 80, jpegQuality: 0.3 }
+                        : { maxSize: 150, jpegQuality: 0.6 };
+                    
+                    // 生成单张缩略图的辅助函数
+                    const genThumb = (url) => new Promise((resolve) => {
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let w = img.naturalWidth;
+                            let h = img.naturalHeight;
+                            if (w > h) {
+                                if (w > config.maxSize) { h = h * config.maxSize / w; w = config.maxSize; }
+                            } else {
+                                if (h > config.maxSize) { w = w * config.maxSize / h; h = config.maxSize; }
+                            }
+                            canvas.width = w;
+                            canvas.height = h;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, w, h);
+                            resolve(canvas.toDataURL('image/jpeg', config.jpegQuality));
+                        };
+                        img.onerror = () => resolve(null);
+                        img.src = url;
+                    });
+                    
+                    // 找出需要生成缩略图的项（已完成且有图片但没有缩略图的）
+                    const itemsNeedThumbnail = history.filter(item => 
+                        item.status === 'completed' && 
+                        item.type === 'image' && 
+                        (item.url || item.originalUrl) && 
+                        !item.thumbnailUrl
+                    );
+                    
+                    // 批量生成缩略图（每次最多处理5个，避免卡顿）
+                    const batchSize = 5;
+                    for (let i = 0; i < Math.min(itemsNeedThumbnail.length, batchSize); i++) {
+                        const item = itemsNeedThumbnail[i];
+                        try {
+                            const thumbnail = await genThumb(item.url || item.originalUrl);
+                            
+                            // 如果有MJ多图，也生成缩略图
+                            let mjThumbnails = null;
+                            if (item.mjImages && item.mjImages.length > 0) {
+                                mjThumbnails = await Promise.all(
+                                    item.mjImages.map(url => genThumb(url))
+                                );
+                            }
+                            
+                            if (thumbnail || mjThumbnails) {
+                                setHistory(prev => prev.map(h => 
+                                    h.id === item.id ? { 
+                                        ...h, 
+                                        thumbnailUrl: thumbnail || h.thumbnailUrl,
+                                        mjThumbnails: mjThumbnails || h.mjThumbnails
+                                    } : h
+                                ));
+                            }
+                        } catch (e) {
+                            console.warn('[缩略图] 生成失败:', e);
+                        }
+                    }
+                };
+                
+                // 延迟执行，避免阻塞UI
+                const timer = setTimeout(generateThumbnailsForHistory, 100);
+                return () => clearTimeout(timer);
+            }, [historyPerformanceMode, history.length]);
+            
+            // 检查本地缓存服务器连接状态并获取配置
+            useEffect(() => {
+                const checkLocalCacheServer = async () => {
+                    try {
+                        const res = await fetch(`${localCacheServerUrl}/ping`, { method: 'GET' });
+                        if (res.ok) {
+                            const data = await res.json();
+                            setLocalCacheServerConnected(true);
+                            // 更新服务器配置
+                            setLocalServerConfig(prev => ({
+                                ...prev,
+                                imageSavePath: data.image_save_path || '',
+                                videoSavePath: data.video_save_path || '',
+                                convertPngToJpg: data.convert_png_to_jpg !== false,
+                                pilAvailable: data.pil_available || false
+                            }));
+                            console.log('[缓存] 本地缓存服务器已连接', data);
+                        } else {
+                            setLocalCacheServerConnected(false);
+                        }
+                    } catch (e) {
+                        setLocalCacheServerConnected(false);
+                    }
+                };
+                checkLocalCacheServer();
+                // 每30秒检查一次
+                const interval = setInterval(checkLocalCacheServer, 30000);
+                return () => clearInterval(interval);
+            }, []);
+            
+            // 更新本地服务器配置
+            const updateLocalServerConfig = useCallback(async (newConfig) => {
+                if (!localCacheServerConnected) return false;
+                try {
+                    const res = await fetch(`${localCacheServerUrl}/config`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newConfig)
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.success) {
+                            setLocalServerConfig(prev => ({
+                                ...prev,
+                                imageSavePath: data.config.image_save_path || '',
+                                videoSavePath: data.config.video_save_path || '',
+                                convertPngToJpg: data.config.convert_png_to_jpg !== false,
+                                jpgQuality: data.config.jpg_quality || 95
+                            }));
+                            return true;
+                        }
+                    }
+                } catch (e) {
+                    console.error('[缓存] 更新配置失败:', e);
+                }
+                return false;
+            }, [localCacheServerConnected]);
+            
+            // 生成缩略图的函数（用于性能模式）
+            // quality: 'normal' = 150px/0.6质量, 'ultra' = 80px/0.3质量（极致丝滑）
+            const generateThumbnail = useCallback(async (imageUrl, quality = 'normal') => {
+                const config = quality === 'ultra' 
+                    ? { maxSize: 80, jpegQuality: 0.3 }  // 极致性能模式
+                    : { maxSize: 150, jpegQuality: 0.6 }; // 普通性能模式
+                return new Promise((resolve) => {
+                    try {
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let w = img.naturalWidth;
+                            let h = img.naturalHeight;
+                            // 按比例缩放
+                            if (w > h) {
+                                if (w > config.maxSize) { h = h * config.maxSize / w; w = config.maxSize; }
+                            } else {
+                                if (h > config.maxSize) { w = w * config.maxSize / h; h = config.maxSize; }
+                            }
+                            canvas.width = w;
+                            canvas.height = h;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, w, h);
+                            // 使用JPEG压缩
+                            resolve(canvas.toDataURL('image/jpeg', config.jpegQuality));
+                        };
+                        img.onerror = () => resolve(null);
+                        img.src = imageUrl;
+                    } catch (e) {
+                        resolve(null);
+                    }
+                });
+            }, []);
+            
+            // 保存缩略图到本地缓存
+            const saveThumbnailToLocal = useCallback(async (itemId, thumbnailDataUrl, category = 'history') => {
+                if (!localCacheServerConnected || !thumbnailDataUrl) return null;
+                try {
+                    const res = await fetch(`${localCacheServerUrl}/save-thumbnail`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: itemId, content: thumbnailDataUrl, category })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.success) {
+                            return data.url;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[缓存] 保存缩略图失败:', e);
+                }
+                return null;
+            }, [localCacheServerConnected]);
+            
+            // 从URL中提取文件名（不含扩展名）
+            const getFilenameFromUrl = useCallback((url) => {
+                if (!url) return null;
+                try {
+                    // 去除查询参数
+                    const urlWithoutQuery = url.split('?')[0];
+                    // 获取最后一个路径部分
+                    const parts = urlWithoutQuery.split('/');
+                    const filename = parts[parts.length - 1];
+                    // 去除扩展名
+                    const nameWithoutExt = filename.replace(/\.[^.]+$/, '');
+                    return nameWithoutExt || null;
+                } catch (e) {
+                    return null;
+                }
+            }, []);
+            
+            // 保存原图到本地缓存（用于角色库）
+            const saveImageToLocalCache = useCallback(async (itemId, imageUrl, category = 'characters') => {
+                if (!localCacheServerConnected) return null;
+                try {
+                    // 从URL中提取文件名，如果失败则使用itemId
+                    const filenameFromUrl = getFilenameFromUrl(imageUrl);
+                    const saveId = filenameFromUrl || itemId;
+                    
+                    // 将图片转换为 base64
+                    let content = imageUrl;
+                    if (!imageUrl.startsWith('data:')) {
+                        const res = await fetch(imageUrl);
+                        const blob = await res.blob();
+                        content = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
+                    }
+                    
+                    const res = await fetch(`${localCacheServerUrl}/save-cache`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: saveId, content, category, ext: '.jpg' })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.success) {
+                            console.log('[缓存] 图片已缓存到本地:', data.url, '路径:', data.path);
+                            return { url: data.url, path: data.path };
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[缓存] 保存图片缓存失败:', e);
+                }
+                return null;
+            }, [localCacheServerConnected, getFilenameFromUrl]);
+            
+            // 保存视频到本地缓存
+            const saveVideoToLocalCache = useCallback(async (itemId, videoUrl, category = 'history') => {
+                if (!localCacheServerConnected) return null;
+                try {
+                    // 从URL中提取文件名，如果失败则使用itemId
+                    const filenameFromUrl = getFilenameFromUrl(videoUrl);
+                    const saveId = filenameFromUrl || itemId;
+                    
+                    console.log('[缓存] 开始缓存视频:', saveId, '(原ID:', itemId, ')');
+                    // 获取视频数据并转换为 base64
+                    const res = await fetch(videoUrl);
+                    const blob = await res.blob();
+                    console.log('[缓存] 视频大小:', (blob.size / 1024 / 1024).toFixed(2), 'MB');
+                    const content = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                    
+                    const saveRes = await fetch(`${localCacheServerUrl}/save-cache`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: saveId, content, category, ext: '.mp4', type: 'video' })
+                    });
+                    if (saveRes.ok) {
+                        const data = await saveRes.json();
+                        if (data.success) {
+                            console.log('[缓存] 视频已缓存到本地:', data.url, '路径:', data.path);
+                            return { url: data.url, path: data.path };
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[缓存] 保存视频缓存失败:', e);
+                }
+                return null;
+            }, [localCacheServerConnected, getFilenameFromUrl]);
+            
+            // 检查本地缓存是否存在
+            const checkLocalCache = useCallback(async (itemId, category = 'history') => {
+                if (!localCacheServerConnected) return null;
+                try {
+                    const url = `${localCacheServerUrl}/file/.tapnow_cache/${category}/${itemId}.jpg`;
+                    const res = await fetch(url, { method: 'HEAD' });
+                    if (res.ok) {
+                        return url;
+                    }
+                } catch (e) {}
+                return null;
+            }, [localCacheServerConnected]);
             
             // 全局 Delete 键删除节点
             useEffect(() => {
@@ -1973,6 +825,38 @@ You must design a visual composition that tells the story through **8 distinct p
             useEffect(() => {
                 debouncedSaveCharacters(characterLibrary);
             }, [characterLibrary, debouncedSaveCharacters]);
+            
+            // 角色库本地缓存：当角色库变化时，缓存图片到本地
+            useEffect(() => {
+                if (!localCacheServerConnected) return;
+                
+                const cacheCharacterImages = async () => {
+                    for (const char of characterLibrary) {
+                        // 检查是否已有本地缓存
+                        if (char.localCacheUrl) continue;
+                        
+                        // 检查图片URL是否有效
+                        if (!char.imageUrl || char.imageUrl.startsWith('blob:')) continue;
+                        
+                        try {
+                            // 尝试缓存到本地
+                            const result = await saveImageToLocalCache(char.id, char.imageUrl, 'characters');
+                            if (result) {
+                                // 更新角色库中的本地缓存URL和文件路径
+                                setCharacterLibrary(prev => prev.map(c => 
+                                    c.id === char.id ? { ...c, localCacheUrl: result.url, localFilePath: result.path } : c
+                                ));
+                            }
+                        } catch (e) {
+                            console.warn('[角色库缓存] 缓存失败:', char.name, e);
+                        }
+                    }
+                };
+                
+                // 延迟执行，避免频繁调用
+                const timer = setTimeout(cacheCharacterImages, 2000);
+                return () => clearTimeout(timer);
+            }, [characterLibrary.length, localCacheServerConnected, saveImageToLocalCache]);
 
             // 当视频 URL 改变时清除错误提示
             useEffect(() => {
@@ -2088,6 +972,155 @@ You must design a visual composition that tells the story through **8 distinct p
                     }
                 }
             }, [history, debouncedSaveHistory]);
+            
+            // 跟踪已尝试缓存的项目ID，避免重复尝试
+            const triedCacheIdsRef = useRef(new Set());
+            
+            // 历史记录本地缓存：当历史记录变化时，缓存图片到本地
+            useEffect(() => {
+                if (!localCacheServerConnected) return;
+                
+                const cacheHistoryImages = async () => {
+                    for (const item of history) {
+                        // 只处理已完成的图片
+                        if (item.status !== 'completed' || item.type !== 'image') continue;
+                        
+                        // 检查是否已有本地缓存
+                        if (item.localCacheUrl) continue;
+                        
+                        // 检查是否已尝试过缓存（避免重复尝试失败的项目）
+                        if (triedCacheIdsRef.current.has(item.id)) continue;
+                        
+                        // 立即标记为已尝试，避免重复检查
+                        triedCacheIdsRef.current.add(item.id);
+                        
+                        // 检查图片URL是否有效（优先使用url，其次使用originalUrl或mjOriginalUrl）
+                        const imageUrl = item.url || item.originalUrl || item.mjOriginalUrl;
+                        
+                        // 从URL中提取文件名，检查本地是否已有缓存
+                        const filenameFromUrl = imageUrl ? getFilenameFromUrl(imageUrl) : null;
+                        // 根据配置确定基础路径
+                        const baseDir = localServerConfig.imageSavePath ? 'history' : '.tapnow_cache/history';
+                        // 尝试检查 jpg 和 png 两种格式，同时检查 filenameFromUrl 和 item.id 两种文件名
+                        let foundLocal = false;
+                        const filenamesToCheck = [filenameFromUrl, item.id].filter(Boolean);
+                        for (const filename of filenamesToCheck) {
+                            if (foundLocal) break;
+                            for (const ext of ['.jpg', '.png']) {
+                                try {
+                                    const basePath = `${baseDir}/${filename}${ext}`;
+                                    const checkUrl = `${localCacheServerUrl}/file/${basePath}`;
+                                    const checkRes = await fetch(checkUrl, { method: 'HEAD' });
+                                    if (checkRes.ok) {
+                                        // 本地已有缓存，直接更新记录
+                                        console.log('[历史缓存] 发现已有本地缓存:', filename + ext);
+                                        setHistory(prev => prev.map(h => 
+                                            h.id === item.id ? { ...h, localCacheUrl: checkUrl, localFilePath: basePath } : h
+                                        ));
+                                        foundLocal = true;
+                                        break;
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+                        if (foundLocal) continue;
+                        
+                        // 如果没有有效的URL，跳过下载
+                        if (!imageUrl || imageUrl.startsWith('blob:') || imageUrl.includes('...')) continue;
+                        
+                        try {
+                            // 尝试缓存到本地
+                            const result = await saveImageToLocalCache(item.id, imageUrl, 'history');
+                            if (result) {
+                                // 更新历史记录中的本地缓存URL和文件路径
+                                setHistory(prev => prev.map(h => 
+                                    h.id === item.id ? { ...h, localCacheUrl: result.url, localFilePath: result.path } : h
+                                ));
+                            }
+                        } catch (e) {
+                            console.warn('[历史缓存] 缓存失败:', item.id, e);
+                        }
+                    }
+                };
+                
+                // 延迟执行，避免频繁调用
+                const timer = setTimeout(cacheHistoryImages, 3000);
+                return () => clearTimeout(timer);
+            }, [history.length, localCacheServerConnected, saveImageToLocalCache, getFilenameFromUrl, localServerConfig.imageSavePath]);
+            
+            // 历史记录本地缓存：当历史记录变化时，缓存视频到本地
+            useEffect(() => {
+                if (!localCacheServerConnected) return;
+                
+                const cacheHistoryVideos = async () => {
+                    for (const item of history) {
+                        // 只处理已完成的视频
+                        if (item.status !== 'completed' || item.type !== 'video') continue;
+                        
+                        // 检查是否已有本地缓存
+                        if (item.localCacheUrl) continue;
+                        
+                        // 检查是否已尝试过缓存（避免重复尝试失败的项目）
+                        if (triedCacheIdsRef.current.has(item.id)) continue;
+                        
+                        // 立即标记为已尝试，避免重复检查
+                        triedCacheIdsRef.current.add(item.id);
+                        
+                        // 检查视频URL是否有效（优先使用url，其次使用originalUrl）
+                        const videoUrl = item.url || item.originalUrl;
+                        
+                        // 跳过已经是本地缓存的URL
+                        if (videoUrl && (videoUrl.includes('localhost:') || videoUrl.includes('127.0.0.1:'))) continue;
+                        
+                        // 从URL中提取文件名，检查本地是否已有缓存
+                        const filenameFromUrl = videoUrl ? getFilenameFromUrl(videoUrl) : null;
+                        // 同时检查 filenameFromUrl 和 item.id 两种文件名
+                        const filenamesToCheck = [filenameFromUrl, item.id].filter(Boolean);
+                        let foundLocalVideo = false;
+                        for (const filename of filenamesToCheck) {
+                            if (foundLocalVideo) break;
+                            try {
+                                // 根据配置确定检查路径：如果设置了videoSavePath则使用它，否则使用默认的.tapnow_cache
+                                const basePath = localServerConfig.videoSavePath 
+                                    ? `history/${filename}.mp4`
+                                    : `.tapnow_cache/history/${filename}.mp4`;
+                                const checkUrl = `${localCacheServerUrl}/file/${basePath}`;
+                                const checkRes = await fetch(checkUrl, { method: 'HEAD' });
+                                if (checkRes.ok) {
+                                    // 本地已有缓存，直接更新记录
+                                    console.log('[历史缓存] 发现已有本地视频缓存:', filename);
+                                    setHistory(prev => prev.map(h => 
+                                        h.id === item.id ? { ...h, localCacheUrl: checkUrl, localFilePath: basePath } : h
+                                    ));
+                                    foundLocalVideo = true;
+                                }
+                            } catch (e) {}
+                        }
+                        if (foundLocalVideo) continue;
+                        
+                        // 如果没有有效的URL，跳过下载
+                        if (!videoUrl || videoUrl.startsWith('blob:') || videoUrl.includes('...')) continue;
+                        
+                        try {
+                            // 尝试缓存到本地
+                            const result = await saveVideoToLocalCache(item.id, videoUrl, 'history');
+                            if (result) {
+                                // 更新历史记录中的本地缓存URL和文件路径
+                                setHistory(prev => prev.map(h => 
+                                    h.id === item.id ? { ...h, localCacheUrl: result.url, localFilePath: result.path } : h
+                                ));
+                            }
+                        } catch (e) {
+                            console.warn('[历史缓存] 视频缓存失败:', item.id, e);
+                        }
+                    }
+                };
+                
+                // 延迟执行，避免频繁调用（视频较大，延迟更长）
+                const timer = setTimeout(cacheHistoryVideos, 5000);
+                return () => clearTimeout(timer);
+            }, [history.length, localCacheServerConnected, saveVideoToLocalCache, getFilenameFromUrl, localServerConfig.videoSavePath]);
+            
             const debouncedSaveChatSessions = useMemo(() => debounce((sessions) => {
                 try { localStorage.setItem('tapnow_chat_sessions', JSON.stringify(sessions)); } catch (e) {}
             }, 1000), []);
@@ -2165,6 +1198,61 @@ You must design a visual composition that tells the story through **8 distinct p
             useEffect(() => {
                 viewRef.current = view;
             }, [view]);
+            
+            // 媒体降载：当节点完全离开视口时，隐藏其内部 img/video（保留骨架 DOM，不影响 React 状态）
+            // 注意：节点本身仍由 visibleNodes 控制渲染范围（含 padding），这里只处理“仍在 padding 内但已离开可视区”的媒体开销
+            const mediaObserverRef = useRef(null);
+            const observedNodeElsRef = useRef(new Set());
+            const mediaScanTimerRef = useRef(null);
+            useEffect(() => {
+                const rootEl = canvasRef.current;
+                if (!rootEl) return;
+                
+                if (!mediaObserverRef.current) {
+                    mediaObserverRef.current = new IntersectionObserver((entries) => {
+                        entries.forEach((entry) => {
+                            const el = entry.target;
+                            // 完全离开视口：隐藏媒体
+                            if (!entry.isIntersecting) {
+                                el.classList.add('media-offscreen');
+                            } else {
+                                el.classList.remove('media-offscreen');
+                            }
+                        });
+                    }, {
+                        root: null,
+                        threshold: 0
+                    });
+                }
+                
+                const obs = mediaObserverRef.current;
+                
+                // 节流扫描：避免在持续拖拽/缩放时频繁 querySelectorAll
+                if (mediaScanTimerRef.current) clearTimeout(mediaScanTimerRef.current);
+                mediaScanTimerRef.current = setTimeout(() => {
+                    const nodeEls = rootEl.querySelectorAll('.node-wrapper');
+                    nodeEls.forEach((el) => {
+                        if (!observedNodeElsRef.current.has(el)) {
+                            obs.observe(el);
+                            observedNodeElsRef.current.add(el);
+                        }
+                    });
+                    // 清理已卸载节点
+                    Array.from(observedNodeElsRef.current).forEach((el) => {
+                        if (!rootEl.contains(el)) {
+                            try { obs.unobserve(el); } catch {}
+                            observedNodeElsRef.current.delete(el);
+                        }
+                    });
+                }, 120);
+                
+                return () => {
+                    if (mediaScanTimerRef.current) {
+                        clearTimeout(mediaScanTimerRef.current);
+                        mediaScanTimerRef.current = null;
+                    }
+                };
+            }, [visibleNodes]);
 
             // 使用 useMemo 缓存连接相关的计算，避免重复计算
             const connectionsByNode = useMemo(() => {
@@ -2207,6 +1295,127 @@ You must design a visual composition that tells the story through **8 distinct p
                 
                 return () => clearInterval(interval);
             }, [history]);
+            
+            // 自动保存功能：监听local-save节点的连接变化
+            const autoSaveProcessingRef = useRef(new Set());
+            useEffect(() => {
+                const localSaveNodes = nodes.filter(n => n.type === 'local-save' && n.settings?.autoSave && n.settings?.serverStatus === 'connected');
+                if (localSaveNodes.length === 0) return;
+                
+                localSaveNodes.forEach(async (node) => {
+                    const connectedImgs = getConnectedInputImages(node.id);
+                    if (connectedImgs.length === 0) return;
+                    
+                    // 检查是否有新的图片（与上次保存的不同）
+                    const lastSavedUrls = node.settings?.lastSavedUrls || [];
+                    const newImages = connectedImgs.filter(img => !lastSavedUrls.includes(img));
+                    
+                    if (newImages.length === 0) return;
+                    
+                    // 防止重复处理
+                    const processKey = `${node.id}-${newImages.join(',')}`;
+                    if (autoSaveProcessingRef.current.has(processKey)) return;
+                    autoSaveProcessingRef.current.add(processKey);
+                    
+                    // 延迟执行，避免频繁触发
+                    setTimeout(async () => {
+                        try {
+                            const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
+                            const subfolder = node.settings?.subfolder || '';
+                            const files = [];
+                            
+                            // PNG转高质量JPG的辅助函数
+                            const convertToJpg = async (imgUrl) => {
+                                return new Promise(async (resolve) => {
+                                    try {
+                                        const img = new Image();
+                                        img.crossOrigin = 'anonymous';
+                                        img.onload = () => {
+                                            const canvas = document.createElement('canvas');
+                                            canvas.width = img.naturalWidth;
+                                            canvas.height = img.naturalHeight;
+                                            const ctx = canvas.getContext('2d');
+                                            ctx.fillStyle = '#FFFFFF';
+                                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                            ctx.drawImage(img, 0, 0);
+                                            const jpgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                                            resolve(jpgDataUrl);
+                                        };
+                                        img.onerror = () => resolve(null);
+                                        img.src = imgUrl;
+                                    } catch (e) {
+                                        resolve(null);
+                                    }
+                                });
+                            };
+                            
+                            for (let i = 0; i < newImages.length; i++) {
+                                const imgUrl = newImages[i];
+                                const isVideo = isVideoUrl(imgUrl);
+                                try {
+                                    let content = imgUrl;
+                                    let ext = '.jpg';
+                                    
+                                    if (isVideo) {
+                                        ext = '.mp4';
+                                        if (!imgUrl.startsWith('data:')) {
+                                            const response = await fetch(imgUrl);
+                                            const blob = await response.blob();
+                                            content = await new Promise((resolve) => {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => resolve(reader.result);
+                                                reader.readAsDataURL(blob);
+                                            });
+                                        }
+                                    } else {
+                                        const jpgContent = await convertToJpg(imgUrl);
+                                        if (jpgContent) {
+                                            content = jpgContent;
+                                        } else if (!imgUrl.startsWith('data:')) {
+                                            const response = await fetch(imgUrl);
+                                            const blob = await response.blob();
+                                            content = await new Promise((resolve) => {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => resolve(reader.result);
+                                                reader.readAsDataURL(blob);
+                                            });
+                                            ext = '.png';
+                                        }
+                                    }
+                                    const timestamp = Date.now();
+                                    files.push({
+                                        filename: `tapnow_${timestamp}_${i}${ext}`,
+                                        content: content
+                                    });
+                                } catch (e) {
+                                    console.error('自动保存处理文件失败:', e);
+                                }
+                            }
+                            
+                            if (files.length > 0) {
+                                const response = await fetch(`${serverUrl}/save-batch`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ files, subfolder })
+                                });
+                                const result = await response.json();
+                                if (result.success) {
+                                    updateNodeSettings(node.id, { 
+                                        lastSaved: new Date().toISOString(),
+                                        savedFiles: result.results || [],
+                                        lastSavedUrls: [...connectedImgs]
+                                    });
+                                    console.log(`自动保存成功: ${files.length} 个文件`);
+                                }
+                            }
+                        } catch (e) {
+                            console.error('自动保存失败:', e);
+                        } finally {
+                            autoSaveProcessingRef.current.delete(processKey);
+                        }
+                    }, 1000); // 延迟1秒执行
+                });
+            }, [nodes, connections, getConnectedInputImages]);
             
             // 检查并重新切割需要切割的Midjourney图片（使用useRef避免重复切割）
             const splittingRef = useRef(new Set());
@@ -2463,8 +1672,18 @@ You must design a visual composition that tells the story through **8 distinct p
                     setView((prev) => {
                         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
                         let newZoom = Math.min(Math.max(prev.zoom * zoomFactor, 0.2), 3);
+                        // 限制小数位，避免极微小浮点变化引起的无限重渲染
+                        newZoom = Math.round(newZoom * 10000) / 10000;
                         const scale = newZoom / prev.zoom;
-                        return { zoom: newZoom, x: mouseX - (mouseX - prev.x) * scale, y: mouseY - (mouseY - prev.y) * scale };
+                        const newX = mouseX - (mouseX - prev.x) * scale;
+                        const newY = mouseY - (mouseY - prev.y) * scale;
+                        // 同步对 x/y 做轻微截断，减少抖动
+                        const precision = newZoom < 0.5 || newZoom > 2.5 ? 1000 : 100;
+                        return { 
+                            zoom: newZoom, 
+                            x: Math.round(newX * precision) / precision, 
+                            y: Math.round(newY * precision) / precision 
+                        };
                     });
                 };
 
@@ -2474,7 +1693,7 @@ You must design a visual composition that tells the story through **8 distinct p
                 return () => {
                     canvasElement.removeEventListener('wheel', wheelHandler);
                 };
-            }, [view]);
+            }, []);
 
             useEffect(() => {
                 if (isResizingChat) {
@@ -2769,6 +1988,9 @@ You must design a visual composition that tells the story through **8 distinct p
             // 使用 requestAnimationFrame 节流框选逻辑
             const selectionRafRef = useRef(null);
             const pendingSelectionUpdate = useRef(null);
+            
+            // 画布拖动微型节流：避免 rAF 包装 setView 导致的状态抖动（目标 ~10ms 一次）
+            const panThrottleLastTsRef = useRef(0);
 
             const handleMouseMove = useCallback((e) => {
                 const { clientX, clientY } = e;
@@ -2852,8 +2074,7 @@ You must design a visual composition that tells the story through **8 distinct p
                         return;
                     }
                     
-                    // 使用 requestAnimationFrame 节流画布拖动更新，提升性能
-                    // 累积移动距离，而不是只保留最后一次
+                    // 微型节流（约 10ms）：累积移动距离，确保 setView 更新频率低于浏览器渲染频率，减少抖动
                     if (pendingPanUpdate.current) {
                         pendingPanUpdate.current.dx += dx;
                         pendingPanUpdate.current.dy += dy;
@@ -2861,33 +2082,23 @@ You must design a visual composition that tells the story through **8 distinct p
                         pendingPanUpdate.current = { dx, dy };
                     }
                     
-                    if (!panRafRef.current) {
-                        panRafRef.current = requestAnimationFrame(() => {
-                            if (!pendingPanUpdate.current) {
-                                panRafRef.current = null;
-                                return;
-                            }
-                            
-                            const { dx, dy } = pendingPanUpdate.current;
-                            // 使用函数式更新，避免依赖 view
-                            // 使用 Math.round 处理高缩放级别下的浮点数精度问题
-                            // 添加 zoom 边界检查，防止极端缩放下的位置漂移
-                            setView((prev) => {
-                                // 确保 zoom 在有效范围内（0.2-3.0）
-                                const safeZoom = Math.max(0.2, Math.min(3.0, prev.zoom));
-                                // 在极端缩放下使用更高精度的舍入
-                                const precision = safeZoom < 0.5 || safeZoom > 2.5 ? 1000 : 100;
-                                return {
-                                    ...prev,
-                                    zoom: safeZoom,
-                                    x: Math.round((prev.x + dx) * precision) / precision,
-                                    y: Math.round((prev.y + dy) * precision) / precision
-                                };
-                            });
-                            
-                            pendingPanUpdate.current = null;
-                            panRafRef.current = null;
+                    const nowTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                    const lastTs = panThrottleLastTsRef.current || 0;
+                    if (nowTs - lastTs >= 10 && pendingPanUpdate.current) {
+                        const { dx: accDx, dy: accDy } = pendingPanUpdate.current;
+                        // 使用函数式更新，避免依赖 view
+                        setView((prev) => {
+                            const safeZoom = Math.max(0.2, Math.min(3.0, prev.zoom));
+                            const precision = safeZoom < 0.5 || safeZoom > 2.5 ? 1000 : 100;
+                            return {
+                                ...prev,
+                                zoom: safeZoom,
+                                x: Math.round((prev.x + accDx) * precision) / precision,
+                                y: Math.round((prev.y + accDy) * precision) / precision
+                            };
                         });
+                        pendingPanUpdate.current = null;
+                        panThrottleLastTsRef.current = nowTs;
                     }
                     
                     lastMousePos.current = { x: clientX, y: clientY };
@@ -3191,7 +2402,7 @@ You must design a visual composition that tells the story through **8 distinct p
                         nodeConnections.set(inputType, []);
                     }
                     const sourceNode = nodesMap.get(conn.from);
-                    if (sourceNode && ((sourceNode.type === 'input-image') || (sourceNode.type === 'video-input'))) {
+                    if (sourceNode) {
                         let images = [];
                         if (sourceNode.type === 'video-input') {
                             const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0 
@@ -3202,20 +2413,45 @@ You must design a visual composition that tells the story through **8 distinct p
                             } else if (sourceNode.frames && sourceNode.frames.length > 0) {
                                 images = [sourceNode.frames[0].url];
                             }
-                        } else if (sourceNode.content) {
+                        } else if (sourceNode.type === 'input-image' && sourceNode.content) {
                             images = [sourceNode.content];
+                        } else if (sourceNode.type === 'preview') {
+                            // 从预览窗口获取选中的图片
+                            if (sourceNode.selectedPreviewImage) {
+                                images = [sourceNode.selectedPreviewImage];
+                            } else if (sourceNode.content) {
+                                images = [sourceNode.content];
+                            } else if (sourceNode.previewMjImages && sourceNode.previewMjImages.length > 0) {
+                                images = [sourceNode.previewMjImages[0]];
+                            }
+                        } else if (sourceNode.type === 'gen-image' || sourceNode.type === 'gen-video') {
+                            // 从历史记录中获取该节点最新生成的图片/视频
+                            const nodeHistory = history.filter(h => h.sourceNodeId === sourceNode.id && h.status === 'completed');
+                            if (nodeHistory.length > 0) {
+                                const latestResult = nodeHistory[nodeHistory.length - 1];
+                                // 优先获取 MJ/jimeng 的4张切割图
+                                if (latestResult.mjImages && latestResult.mjImages.length > 0) {
+                                    images = [...latestResult.mjImages];
+                                } else if (latestResult.resultUrl) {
+                                    images = [latestResult.resultUrl];
+                                } else if (latestResult.resultUrls && latestResult.resultUrls.length > 0) {
+                                    images = latestResult.resultUrls;
+                                }
+                            }
                         }
-                        nodeConnections.get(inputType).push(...images);
+                        if (images.length > 0) {
+                            nodeConnections.get(inputType).push(...images);
+                        }
                     }
                 });
                 return cache;
-            }, [connections, nodesMap, nodes.length, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.length || 0}:${n.frames?.length || 0}`).join('|')]);
+            }, [connections, nodesMap, nodes.length, history, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.length || 0}:${n.frames?.length || 0}:${n.selectedPreviewImage || ''}:${n.previewMjImages?.length || 0}`).join('|')]);
 
-            const getConnectedInputImages = useCallback((targetNodeId, inputType = 'default') => {
+            function getConnectedInputImages(targetNodeId, inputType = 'default') {
                 const nodeCache = connectedImagesCache.get(targetNodeId);
                 if (!nodeCache) return [];
                 return nodeCache.get(inputType) || [];
-            }, [connectedImagesCache]);
+            }
 
             // 使用 useMemo 缓存 video-input 节点查找结果
             const connectedVideoInputCache = useMemo(() => {
@@ -4343,6 +3579,89 @@ You must design a visual composition that tells the story through **8 distinct p
                 });
             };
 
+            // --- Sora 2: 强制将输入图片转换为合规尺寸/格式 ---
+            // 背景：/v1/videos 对 sora-2 会校验 size 与输入图像尺寸；若用户上传的是任意尺寸/比例，容易触发 invalid_size。
+            const getSora2CompliantSize = (ratio, w, h, enableHD = false) => {
+                // Sora2 仅支持 16:9 / 9:16；其它比例按当前 w/h 取最接近方向
+                const toAspectValue = (r) => {
+                    if (!r || typeof r !== 'string') return null;
+                    const [a, b] = r.split(':').map(Number);
+                    if (!a || !b) return null;
+                    return a / b;
+                };
+                const aspect = (ratio === '16:9' || ratio === '9:16')
+                    ? ratio
+                    : (() => {
+                        const rv = toAspectValue(ratio);
+                        const fallback = (w && h) ? (w / h) : (rv || (16 / 9));
+                        const d169 = Math.abs(fallback - (16 / 9));
+                        const d916 = Math.abs(fallback - (9 / 16));
+                        return d916 < d169 ? '9:16' : '16:9';
+                    })();
+
+                const portrait = aspect === '9:16';
+
+                // 采用固定像素尺寸集合（避免后端 size 校验失败）
+                // - 非HD：1280x720 / 720x1280
+                // - HD：1920x1080 / 1080x1920
+                if (enableHD) {
+                    return portrait
+                        ? { sizeStr: '1080x1920', w: 1080, h: 1920, aspect }
+                        : { sizeStr: '1920x1080', w: 1920, h: 1080, aspect };
+                }
+                return portrait
+                    ? { sizeStr: '720x1280', w: 720, h: 1280, aspect }
+                    : { sizeStr: '1280x720', w: 1280, h: 720, aspect };
+            };
+
+            const normalizeImageBlobToSize = async (blob, targetW, targetH, mime = 'image/png') => {
+                if (!(blob instanceof Blob) || !targetW || !targetH) return blob;
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    const objUrl = URL.createObjectURL(blob);
+                    img.onload = () => {
+                        try {
+                            const srcW = img.naturalWidth || img.width || 1;
+                            const srcH = img.naturalHeight || img.height || 1;
+
+                            const canvas = document.createElement('canvas');
+                            canvas.width = targetW;
+                            canvas.height = targetH;
+                            const ctx = canvas.getContext('2d');
+                            if (!ctx) {
+                                URL.revokeObjectURL(objUrl);
+                                resolve(blob);
+                                return;
+                            }
+                            ctx.imageSmoothingEnabled = true;
+                            ctx.imageSmoothingQuality = 'high';
+
+                            // cover 裁剪：保持主体充满目标画布，居中裁剪
+                            const scale = Math.max(targetW / srcW, targetH / srcH);
+                            const drawW = srcW * scale;
+                            const drawH = srcH * scale;
+                            const dx = (targetW - drawW) / 2;
+                            const dy = (targetH - drawH) / 2;
+                            ctx.clearRect(0, 0, targetW, targetH);
+                            ctx.drawImage(img, dx, dy, drawW, drawH);
+
+                            canvas.toBlob((out) => {
+                                URL.revokeObjectURL(objUrl);
+                                resolve(out || blob);
+                            }, mime, 0.92);
+                        } catch (e) {
+                            URL.revokeObjectURL(objUrl);
+                            resolve(blob);
+                        }
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(objUrl);
+                        resolve(blob);
+                    };
+                    img.src = objUrl;
+                });
+            };
+
             const disconnectConnection = useCallback((connectionId) => {
                 setConnections(prev => {
                     const filtered = prev.filter(conn => conn.id !== connectionId);
@@ -4673,7 +3992,7 @@ You must design a visual composition that tells the story through **8 distinct p
                     window.removeEventListener('paste', handlePaste);
                     window.removeEventListener('keydown', handleKeyDown);
                 };
-            }, [updateNodeSettings, handleVideoFileUpload, setNodes, setConnections, setSelectedNodeId, setSelectedNodeIds, view]);
+            }, [updateNodeSettings, setNodes, setConnections, setSelectedNodeId, setSelectedNodeIds, view]);
 
             const pollVeoJob = async (jobId, taskId, baseUrl, apiKey, w, h, attempt = 0) => {
                 const maxAttempts = 90; // 增加到90次，支持最长360秒（6分钟）的生成时间
@@ -4715,6 +4034,12 @@ You must design a visual composition that tells the story through **8 distinct p
                         if (!videoUrl) {
                             console.warn('[Tapnow] Veo: 任务成功但未找到视频URL', data);
                             setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: '未找到视频URL' } : hItem));
+                            // 分镜表任务：解除 generating，避免一直转圈
+                            const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                            if (storyboardTask) {
+                                updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                                storyboardTaskMapRef.current.delete(taskId);
+                            }
                             return;
                         }
                         console.log('[Tapnow] Veo: 任务成功，视频URL:', videoUrl);
@@ -4803,6 +4128,24 @@ You must design a visual composition that tells the story through **8 distinct p
                                             setTimeout(() => {
                                                 console.log('[Tapnow] Veo: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId });
                                                 updatePreviewFromTask(taskId, videoUrl, 'video', sourceNodeId);
+                                                // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
+                                                setNodes(prevNodes => prevNodes.map(n => {
+                                                    if (n.id !== sourceNodeId) return n;
+                                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                                        return {
+                                                            ...n,
+                                                            content: videoUrl,
+                                                            settings: {
+                                                                ...n.settings,
+                                                                videoUrl: videoUrl,
+                                                                isGenerating: false,
+                                                                progress: 100,
+                                                                error: null
+                                                            }
+                                                        };
+                                                    }
+                                                    return n;
+                                                }));
                                             }, 0);
                                             }
                                         }
@@ -4848,6 +4191,24 @@ You must design a visual composition that tells the story through **8 distinct p
                                         setTimeout(() => {
                                             console.log('[Tapnow] Veo: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId });
                                             updatePreviewFromTask(taskId, videoUrl, 'video', sourceNodeId);
+                                            // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
+                                            setNodes(prevNodes => prevNodes.map(n => {
+                                                if (n.id !== sourceNodeId) return n;
+                                                if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                                    return {
+                                                        ...n,
+                                                        content: videoUrl,
+                                                        settings: {
+                                                            ...n.settings,
+                                                            videoUrl: videoUrl,
+                                                            isGenerating: false,
+                                                            progress: 100,
+                                                            error: null
+                                                        }
+                                                    };
+                                                }
+                                                return n;
+                                            }));
                                         }, 0);
                                         }
                                     }
@@ -4873,6 +4234,14 @@ You must design a visual composition that tells the story through **8 distinct p
                         }
                         console.error('[Tapnow] Veo: 任务失败', { status, failReason, errorMsg });
                         setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg } : hItem));
+                        // 分镜表任务：解除 generating，避免一直转圈
+                        {
+                            const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                            if (storyboardTask) {
+                                updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                                storyboardTaskMapRef.current.delete(taskId);
+                            }
+                        }
                         return;
                     }
 
@@ -4952,6 +4321,12 @@ You must design a visual composition that tells the story through **8 distinct p
                         const videoUrl = data?.data?.output || data?.output || data?.data?.video_url || data?.data?.url || data?.video_url || data?.url;
                         if (!videoUrl) {
                             setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: '未找到视频URL' } : hItem));
+                            // 分镜表任务：解除 generating，避免一直转圈
+                            const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                            if (storyboardTask) {
+                                updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                                storyboardTaskMapRef.current.delete(taskId);
+                            }
                             return;
                         }
                         const endTime = Date.now();
@@ -4979,6 +4354,24 @@ You must design a visual composition that tells the story through **8 distinct p
                                 setTimeout(() => {
                                     console.log('[Tapnow] Sora: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId: updatedItem.sourceNodeId });
                                     updatePreviewFromTask(taskId, videoUrl, 'video', updatedItem.sourceNodeId);
+                                    // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
+                                    setNodes(prevNodes => prevNodes.map(n => {
+                                        if (n.id !== updatedItem.sourceNodeId) return n;
+                                        if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                            return {
+                                                ...n,
+                                                content: videoUrl,
+                                                settings: {
+                                                    ...n.settings,
+                                                    videoUrl: videoUrl,
+                                                    isGenerating: false,
+                                                    progress: 100,
+                                                    error: null
+                                                }
+                                            };
+                                        }
+                                        return n;
+                                    }));
                                 }, 0);
                             } else {
                                 console.warn('[Tapnow] Sora: 未找到 sourceNodeId', { taskId, updatedItem });
@@ -4991,10 +4384,65 @@ You must design a visual composition that tells the story through **8 distinct p
 
                     if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
                         setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: `任务失败: ${status}` } : hItem));
+                        // 分镜表任务：解除 generating，避免一直转圈
+                        {
+                            const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                            if (storyboardTask) {
+                                updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                                storyboardTaskMapRef.current.delete(taskId);
+                            }
+                        }
+                        // 同步失败状态到“生成角色/场景视频”节点进度条
+                        const historyItem = historyMap.get(taskId);
+                        const sourceNodeIdForNode = historyItem?.sourceNodeId;
+                        if (sourceNodeIdForNode) {
+                            requestAnimationFrame(() => {
+                                setNodes(prevNodes => prevNodes.map(n => {
+                                    if (n.id !== sourceNodeIdForNode) return n;
+                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                        return {
+                                            ...n,
+                                            settings: {
+                                                ...n.settings,
+                                                isGenerating: false,
+                                                error: `任务失败: ${status}`,
+                                                progress: 0
+                                            }
+                                        };
+                                    }
+                                    return n;
+                                }));
+                            });
+                        }
                         return;
                     }
 
                     setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'generating', progress: Math.min(95, (hItem.progress || 10) + 2) } : hItem));
+                    // 同步进度到“生成角色/场景视频”节点进度条
+                    {
+                        const historyItem = historyMap.get(taskId);
+                        const sourceNodeIdForNode = historyItem?.sourceNodeId;
+                        const approxProgress = Math.min(95, ((historyItem?.progress || 10) + 2));
+                        if (sourceNodeIdForNode) {
+                            requestAnimationFrame(() => {
+                                setNodes(prevNodes => prevNodes.map(n => {
+                                    if (n.id !== sourceNodeIdForNode) return n;
+                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                        return {
+                                            ...n,
+                                            settings: {
+                                                ...n.settings,
+                                                isGenerating: true,
+                                                error: null,
+                                                progress: approxProgress
+                                            }
+                                        };
+                                    }
+                                    return n;
+                                }));
+                            });
+                        }
+                    }
                     setTimeout(() => pollSoraJob(jobId, taskId, baseUrl, apiKey, w, h, modelId, attempt + 1), delayMs);
                 })
                 .catch(err => {
@@ -5006,6 +4454,12 @@ You must design a visual composition that tells the story through **8 distinct p
                     } else {
                         // 最后5次尝试失败后，标记为失败
                         setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: `轮询失败: ${err.message || '网络错误'}` } : hItem));
+                        // 分镜表任务：解除 generating，避免一直转圈
+                        const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                        if (storyboardTask) {
+                            updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                            storyboardTaskMapRef.current.delete(taskId);
+                        }
                     }
                 });
             };
@@ -5358,6 +4812,28 @@ You must design a visual composition that tells the story through **8 distinct p
                                             // 使用requestAnimationFrame确保在下一个渲染周期更新，但比setTimeout更快
                                             requestAnimationFrame(() => {
                                                 updatePreviewFromTask(taskId, primaryUrl, 'image', nodeIdToUse, imageUrls.length > 1 ? imageUrls : null);
+                                                // 同步回填到“生成角色/场景图片”节点本身（用于节点内预览与右键发送到画布）
+                                                if (nodeIdToUse) {
+                                                    setNodes(prevNodes => prevNodes.map(n => {
+                                                        if (n.id !== nodeIdToUse) return n;
+                                                        if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                                            return {
+                                                                ...n,
+                                                                content: primaryUrl,
+                                                                settings: {
+                                                                    ...n.settings,
+                                                                    imageUrl: primaryUrl,
+                                                                    imageUrls: imageUrls,
+                                                                    isGenerating: false,
+                                                                    progress: 100,
+                                                                    error: null,
+                                                                    selectedImageIndex: null
+                                                                }
+                                                            };
+                                                        }
+                                                        return n;
+                                                    }));
+                                                }
                                             });
                                             
                                             return { 
@@ -5457,6 +4933,28 @@ You must design a visual composition that tells the story through **8 distinct p
                                             // 使用requestAnimationFrame确保在下一个渲染周期更新，但比setTimeout更快
                                             requestAnimationFrame(() => {
                                                 updatePreviewFromTask(taskId, foundUrl, 'image', nodeIdToUse, null);
+                                                // 同步回填到“生成角色/场景图片”节点本身（用于节点内预览与右键发送到画布）
+                                                if (nodeIdToUse) {
+                                                    setNodes(prevNodes => prevNodes.map(n => {
+                                                        if (n.id !== nodeIdToUse) return n;
+                                                        if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                                            return {
+                                                                ...n,
+                                                                content: foundUrl,
+                                                                settings: {
+                                                                    ...n.settings,
+                                                                    imageUrl: foundUrl,
+                                                                    imageUrls: [foundUrl],
+                                                                    isGenerating: false,
+                                                                    progress: 100,
+                                                                    error: null,
+                                                                    selectedImageIndex: null
+                                                                }
+                                                            };
+                                                        }
+                                                        return n;
+                                                    }));
+                                                }
                                             });
                                             
                                             return { 
@@ -5532,6 +5030,29 @@ You must design a visual composition that tells the story through **8 distinct p
                     // 获取更新后的进度，用于动态调整轮询间隔
                     const updatedItem = updated.find(h => h.id === taskId);
                     const currentProgress = updatedItem?.progress || 10;
+                    const currentStatusForNode = updatedItem?.status;
+                    const currentErrorForNode = updatedItem?.errorMsg;
+                    
+                    // 同步进度到“生成角色/场景图片”节点（只同步这两类节点，避免影响现有 gen-image 行为）
+                    if (sourceNodeId && (currentStatusForNode === 'generating' || currentStatusForNode === 'failed')) {
+                        requestAnimationFrame(() => {
+                            setNodes(prevNodes => prevNodes.map(n => {
+                                if (n.id !== sourceNodeId) return n;
+                                if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                    return {
+                                        ...n,
+                                        settings: {
+                                            ...n.settings,
+                                            progress: currentProgress,
+                                            isGenerating: currentStatusForNode === 'generating',
+                                            error: currentStatusForNode === 'failed' ? (currentErrorForNode || '生成失败') : null
+                                        }
+                                    };
+                                }
+                                return n;
+                            }));
+                        });
+                    }
                     
                     return updated;
                 });
@@ -5939,6 +5460,22 @@ You must design a visual composition that tells the story through **8 distinct p
                 // 优先使用 options 中的 ratio，其次使用节点设置，最后使用默认值
                 let ratio = options.ratio || node?.settings?.ratio || (modelId.includes('grok') ? '3:2' : '1:1');
                 let resolution = node?.settings?.resolution || (modelId.includes('grok') ? '1080P' : 'Auto');
+                
+                // 兼容：部分 UI/旧数据会把分辨率写成 '2k'/'4k'（小写），会导致 Banana/Banana2 永远退回 1K
+                // 按用户要求：仅对 banana 系列做修复，其他模型不改行为
+                const normalizeBananaResolution = (r) => {
+                    if (typeof r !== 'string') return r;
+                    const t = r.trim();
+                    if (t === '') return r;
+                    const lower = t.toLowerCase();
+                    if (lower === '1k') return '1K';
+                    if (lower === '2k') return '2K';
+                    if (lower === '4k') return '4K';
+                    return r;
+                };
+                if ((modelId.includes('banana') || (config?.modelName ?? '').includes('nano-banana')) && typeof resolution === 'string') {
+                    resolution = normalizeBananaResolution(resolution);
+                }
                 let { sizeStr, w, h } = getModelParams(modelId, ratio, resolution);
 
                 // Auto Resolution Logic (Direct Source, No Scaling, Just Alignment)
@@ -6037,12 +5574,7 @@ You must design a visual composition that tells the story through **8 distinct p
                     }
                 }
                 
-                // 优化：延迟打开历史面板，避免与 setHistory 同时触发造成卡顿
-                requestAnimationFrame(() => {
-                    setTimeout(() => {
-                        setHistoryOpen(true);
-                    }, 0);
-                });
+                // 交互要求：生成任务不自动弹出“生成历史”面板，只允许用户手动打开/关闭
 
                 try {
                     if (type === 'image') {
@@ -6053,10 +5585,14 @@ You must design a visual composition that tells the story through **8 distinct p
                         // --- 模型特征定义 (融合 V2.5-3 和 V2.5-4) ---
                         // isBananaLike: 用于旧版/通用香蕉模型 (排除 nano-banana-2)
                         const isBananaLike = (modelId.includes('banana') || modelId.includes('edit') || modelId.includes('qwen')) && !(modelId.includes('nano-banana-2') || (config?.modelName ?? '').includes('nano-banana-2'));
-                        const isOpenAIImage = modelId.includes('gpt') || (config?.modelName ?? '').includes('gpt-image') || (config?.provider ?? '').toLowerCase().includes('gpt-4o image');
+                        // isGPTImage15: gpt-image-1.5 使用 edits 接口
+                        const isGPTImage15 = modelId.includes('gpt-image-1.5') || (config?.modelName ?? '').includes('gpt-image-1.5');
+                        // isOpenAIImage: GPT-4o Image 使用 generations 接口 (排除 gpt-image-1.5)
+                        const isOpenAIImage = (modelId.includes('gpt') || (config?.modelName ?? '').includes('gpt-image') || (config?.provider ?? '').toLowerCase().includes('gpt-4o image')) && !isGPTImage15;
                         const isFluxKontext = modelId.includes('flux') || (config?.modelName ?? '').includes('flux-kontext');
                         // isNanoBanana2: V2.5-4 新增的异步模型标识
                         const isNanoBanana2 = (config?.modelName ?? '').includes('nano-banana-2') || modelId.includes('nano-banana-2');
+                        const isNanoBanana = !isNanoBanana2 && (((config?.modelName ?? '').includes('nano-banana')) || modelId.includes('nano-banana'));
                         const isMidjourney = modelId.includes('mj') || (config?.provider ?? '').toLowerCase().includes('midjourney');
                         const isJimeng = modelId.includes('jimeng-4.5') || modelId.includes('jimeng-4.1') || modelId.includes('jimeng-3.1') || (config?.modelName ?? '').includes('jimeng-4.5') || (config?.modelName ?? '').includes('jimeng-4.1') || (config?.modelName ?? '').includes('jimeng-3.1');
 
@@ -6073,8 +5609,10 @@ You must design a visual composition that tells the story through **8 distinct p
 
                         const getImageSizeFlag = () => {
                             if (!isNanoBanana2) return undefined;
-                            if (resolution === '4K') return '4K';
-                            if (resolution === '2K') return '2K';
+                            // 兼容小写：'2k'/'4k'
+                            const r = normalizeBananaResolution(resolution);
+                            if (r === '4K') return '4K';
+                            if (r === '2K') return '2K';
                             return '1K';
                         };
                         const imageSizeFlag = getImageSizeFlag();
@@ -6107,7 +5645,75 @@ You must design a visual composition that tells the story through **8 distinct p
                             
                             payload = formData;
                         }
-                        // 2. Flux Kontext
+                        // 2. GPT Image 1.5 (文生图用 generations 异步接口，图生图用 edits 接口)
+                        else if (isGPTImage15) {
+                            // 判断是否有参考图
+                            const hasReferenceImage = connectedImages.length > 0 || sourceImage;
+                            
+                            if (!hasReferenceImage) {
+                                // 文生图：使用 /v1/images/generations?async=true 接口（异步模式）
+                                const useAsync = true; // 默认启用异步模式
+                                endpoint = `${baseUrl}/v1/images/generations${useAsync ? '?async=true' : ''}`;
+                                useMultipart = false;
+                                const jsonBody = {
+                                    model: config?.modelName || 'gpt-image-1.5',
+                                    prompt: prompt || '',
+                                    n: 1,
+                                    size: sizeStr,
+                                    response_format: 'url'
+                                };
+                                if (ratio && ratio !== 'Auto') {
+                                    jsonBody.aspect_ratio = ratio;
+                                }
+                                payload = jsonBody;
+                            } else {
+                                // 图生图：使用 /v1/images/edits 接口（异步模式，multipart/form-data 格式）
+                                // 按照 OpenAPI 规范：必需参数 image、prompt、model，可选参数 mask、n、quality、response_format、size
+                                const useAsync = true; // 默认启用异步模式
+                                endpoint = `${baseUrl}/v1/images/edits${useAsync ? '?async=true' : ''}`;
+                                useMultipart = true;
+                                const formData = new FormData();
+                                
+                                // 必需参数：image（必须先添加，因为规范要求）
+                                if (connectedImages.length > 0) {
+                                    const blobPromises = connectedImages.map(url => getBlobFromUrl(url));
+                                    const blobs = await Promise.all(blobPromises);
+                                    blobs.forEach((blob, i) => {
+                                        formData.append('image', blob, `input_${i}.png`);
+                                    });
+                                } else if (sourceImage) {
+                                    const blob = await getBlobFromUrl(sourceImage);
+                                    formData.append('image', blob, 'input.png');
+                                }
+                                
+                                // 必需参数：prompt
+                                formData.append('prompt', prompt || '');
+                                
+                                // 必需参数：model
+                                formData.append('model', config?.modelName || 'gpt-image-1.5');
+                                
+                                // 可选参数：n（生成图片数量）
+                                formData.append('n', '1');
+                                
+                                // 可选参数：response_format
+                                formData.append('response_format', 'url');
+                                
+                                // 可选参数：size（gpt-image-1 支持 "1024x1024", "1536x1024", "1024x1536", "auto"）
+                                if (sizeStr && sizeStr !== 'auto') {
+                                    formData.append('size', sizeStr);
+                                } else {
+                                    formData.append('size', 'auto');
+                                }
+                                
+                                // 可选参数：mask（蒙版）
+                                if (finalMaskBlob) {
+                                    formData.append('mask', finalMaskBlob, 'mask.png');
+                                }
+                                
+                                payload = formData;
+                            }
+                        }
+                        // 3. Flux Kontext
                         else if (isFluxKontext) {
                             endpoint = `${baseUrl}/v1/images/edits`;
                             useMultipart = true;
@@ -6128,26 +5734,91 @@ You must design a visual composition that tells the story through **8 distinct p
                             }
                             payload = formData;
                         }
-                        // 3. OpenAI Image
+                        // 4. OpenAI Image (GPT-4o Image，支持异步模式)
                         else if (isOpenAIImage) {
-                            let finalPrompt = prompt || '';
-                            const jsonBody = {
-                                model: config?.modelName || 'gpt-4o-image',
-                                prompt: finalPrompt,
-                                n: 1,
-                                size: sizeStr,
-                                aspect_ratio: ratio,
-                                response_format: 'url'
-                            };
-
-                            if (connectedImages.length > 0) {
-                                const b64Promises = connectedImages.map(url => getBase64FromUrl(url));
-                                const b64s = await Promise.all(b64Promises);
-                                jsonBody.image = b64s.map(b => `data:image/png;base64,${b}`);
+                            const useAsync = true; // 默认启用异步模式
+                            const hasReferenceImage = connectedImages.length > 0 || sourceImage;
+                            
+                            if (!hasReferenceImage) {
+                                // 文生图：使用 /v1/images/generations?async=true 接口
+                                endpoint = `${baseUrl}/v1/images/generations${useAsync ? '?async=true' : ''}`;
+                                let finalPrompt = prompt || '';
+                                const jsonBody = {
+                                    model: config?.modelName || 'gpt-4o-image',
+                                    prompt: finalPrompt,
+                                    n: 1,
+                                    response_format: 'url'
+                                };
+                                
+                                // size 参数（按照 gpt-image-1.5 格式）
+                                if (sizeStr && sizeStr !== 'auto') {
+                                    jsonBody.size = sizeStr;
+                                } else {
+                                    jsonBody.size = 'auto';
+                                }
+                                
+                                // aspect_ratio 参数（按照 gpt-image-1.5 格式）
+                                if (ratio && ratio !== 'Auto') {
+                                    jsonBody.aspect_ratio = ratio;
+                                }
+                                
+                                payload = jsonBody;
+                            } else {
+                                // 图生图：使用 /v1/images/edits?async=true 接口（multipart/form-data 格式，和 gpt-image-1.5 一样）
+                                endpoint = `${baseUrl}/v1/images/edits${useAsync ? '?async=true' : ''}`;
+                                useMultipart = true;
+                                const formData = new FormData();
+                                formData.append('model', config?.modelName || 'gpt-4o-image');
+                                formData.append('prompt', prompt || '');
+                                formData.append('n', '1');
+                                formData.append('response_format', 'url');
+                                
+                                // size 参数（按照 gpt-image-1.5 格式）
+                                if (sizeStr && sizeStr !== 'auto') {
+                                    formData.append('size', sizeStr);
+                                } else {
+                                    formData.append('size', 'auto');
+                                }
+                                
+                                // aspect_ratio 参数（按照 gpt-image-1.5 格式）
+                                if (ratio && ratio !== 'Auto') {
+                                    formData.append('aspect_ratio', ratio);
+                                }
+                                
+                                // 必需参数：image
+                                if (connectedImages.length > 0) {
+                                    const blobPromises = connectedImages.map(url => getBlobFromUrl(url));
+                                    const blobs = await Promise.all(blobPromises);
+                                    blobs.forEach((blob, i) => {
+                                        formData.append('image', blob, `input_${i}.png`);
+                                    });
+                                } else if (sourceImage) {
+                                    const blob = await getBlobFromUrl(sourceImage);
+                                    formData.append('image', blob, 'input.png');
+                                }
+                                
+                                // 可选参数：mask（蒙版）
+                                if (finalMaskBlob) {
+                                    formData.append('mask', finalMaskBlob, 'mask.png');
+                                }
+                                
+                                payload = formData;
                             }
+                        }
+                        // 5. Nano Banana (Generations，对接文档推荐；仅处理文生图，图生图仍走 edits 分支)
+                        else if (isNanoBanana) {
+                            endpoint = `${baseUrl}/v1/images/generations`;
+                            const jsonBody = {
+                                model: config?.modelName || 'nano-banana',
+                                prompt: prompt || '',
+                                response_format: 'url',
+                                ...(aspect ? { aspect_ratio: aspect } : {}),
+                                // 兼容旧实现：保留 size，让服务端可按像素控制（即使文档未列出）
+                                ...(sizeStr ? { size: sizeStr } : {}),
+                            };
                             payload = jsonBody;
                         }
-                        // 4. [关键] Nano Banana 2 (V2.5-4 核心逻辑，包含异步处理)
+                        // 6. [关键] Nano Banana 2 (V2.5-4 核心逻辑，包含异步处理)
                         else if (isNanoBanana2) {
                             const useAsync = true; // 保持异步开启
                             if (connectedImages.length > 0) {
@@ -6192,7 +5863,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                 payload = jsonBody;
                             }
                         }
-                        // 5. Midjourney (V2.5-4 逻辑，支持 oref/sref)
+                        // 6. Midjourney (V2.5-4 逻辑，支持 oref/sref)
                         else if (isMidjourney) {
                              const mjMode = node?.settings?.mjMode || 'fast';
                              const mjVersion = node?.settings?.mjVersion || '--v 7';
@@ -6306,17 +5977,21 @@ You must design a visual composition that tells the story through **8 distinct p
                                     jimengResolution = resolution === '1K' ? '1k' : (resolution === '2K' ? '2k' : '4k');
                                 }
 
+                                // 注意：blob: URL 仅在当前浏览器上下文有效，不能当作“远程URL”传给后端。
+                                // 这里统一把 blob/http 图片转换为 dataURL，避免后端尝试 fetch(blob:null/...) 导致上传失败。
                                 const imagePromises = connectedImages.map(async (imgUrl) => {
-                                    if (imgUrl.startsWith('http')) {
-                                        const response = await fetch(imgUrl);
-                                        const blob = await response.blob();
-                                        return await new Promise((resolve) => {
-                                            const reader = new FileReader();
-                                            reader.onloadend = () => resolve(reader.result);
-                                            reader.readAsDataURL(blob);
-                                        });
+                                    const safeUrl = (imgUrl || '').trim();
+                                    if (!safeUrl) return safeUrl;
+                                    if (safeUrl.startsWith('data:')) return safeUrl;
+                                    if (
+                                        safeUrl.startsWith('blob:') ||
+                                        safeUrl.startsWith('http://') ||
+                                        safeUrl.startsWith('https://')
+                                    ) {
+                                        const blob = await getBlobFromUrl(safeUrl);
+                                        return await blobToDataURL(blob);
                                     }
-                                    return imgUrl;
+                                    return safeUrl;
                                 });
                                 const base64Images = await Promise.all(imagePromises);
                                 const jimengModelName = getJimengModelName();
@@ -6413,15 +6088,29 @@ You must design a visual composition that tells the story through **8 distinct p
                             throw new Error(data.message || `即梦API错误: ${data.code}`);
                         }
 
-                        // [保留 V2.5-4 特性] 处理异步任务 (Nano Banana 2)
-                        // 如果响应中包含 task_id，进入异步轮询模式
-                        if (isNanoBanana2 && (data?.task_id || (typeof data?.data === 'string' && data.data.startsWith('task-')))) {
-                            const taskIdForPoll = data.task_id || data.data;
-                            setHistory((prev) => prev.map((hItem) => 
-                                hItem.id === taskId ? { ...hItem, status: 'generating', progress: 10, remoteTaskId: taskIdForPoll } : hItem
-                            ));
-                            pollImageTask(taskId, taskIdForPoll, baseUrl, apiKey, w, h, actualSourceNodeId, 0, true);
-                            return;
+                        // [保留 V2.5-4 特性] 处理异步任务 (Nano Banana 2、GPT Image 1.5、GPT-4o Image)
+                        // 如果响应中包含 task_id，进入异步轮询模式（兼容多种返回格式）
+                        let taskIdForPoll = null;
+                        if (isNanoBanana2 || isGPTImage15 || isOpenAIImage) {
+                            if (data?.task_id) {
+                                taskIdForPoll = data.task_id;
+                            } else if (typeof data?.data === 'string' && (data.data.startsWith('task-') || data.data.length > 10)) {
+                                // data.data 是字符串格式的 task_id（有些后端不带 task- 前缀）
+                                taskIdForPoll = data.data;
+                            } else if (data?.data?.task_id) {
+                                taskIdForPoll = data.data.task_id;
+                            } else if (data?.data?.data && typeof data.data.data === 'string' && (data.data.data.startsWith('task-') || data.data.data.length > 10)) {
+                                taskIdForPoll = data.data.data;
+                            }
+                            
+                            if (taskIdForPoll) {
+                                setHistory((prev) => prev.map((hItem) => 
+                                    hItem.id === taskId ? { ...hItem, status: 'generating', progress: 10, remoteTaskId: taskIdForPoll } : hItem
+                                ));
+                                // GPT Image 1.5 / GPT-4o Image 也走异步轮询（使用与 Nano Banana 2 相同的超时策略）
+                                pollImageTask(taskId, taskIdForPoll, baseUrl, apiKey, w, h, actualSourceNodeId, 0, true);
+                                return;
+                            }
                         }
                         
                         // 处理同步返回结果 (标准 OpenAI 格式或嵌套格式)
@@ -6450,6 +6139,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                         status: 'completed', 
                                         progress: 100, 
                                         url: primaryUrl, 
+                                        urls: imageUrls, // 兼容 V2.6：保存所有图片 URLs，便于 UI 复用
                                         width: w, 
                                         height: h, 
                                         durationMs,
@@ -6461,6 +6151,31 @@ You must design a visual composition that tells the story through **8 distinct p
                                     if (updatedItem.sourceNodeId) {
                                         setTimeout(() => {
                                             updatePreviewFromTask(taskId, primaryUrl, 'image', updatedItem.sourceNodeId, updatedItem.mjImages);
+                                            
+                                            // 同时更新“生成角色/场景图片”节点本身（同步返回也要回填，避免节点区域不显示）
+                                            setNodes(prevNodes => {
+                                                const node = prevNodes.find(n => n.id === updatedItem.sourceNodeId);
+                                                if (node && (node.type === 'generate-character-image' || node.type === 'generate-scene-image')) {
+                                                    return prevNodes.map(n =>
+                                                        n.id === updatedItem.sourceNodeId
+                                                            ? {
+                                                                ...n,
+                                                                content: primaryUrl,
+                                                                settings: {
+                                                                    ...n.settings,
+                                                                    imageUrl: primaryUrl,
+                                                                    imageUrls: imageUrls,
+                                                                    isGenerating: false,
+                                                                    progress: 100,
+                                                                    error: null,
+                                                                    selectedImageIndex: null
+                                                                }
+                                                            }
+                                                            : n
+                                                    );
+                                                }
+                                                return prevNodes;
+                                            });
                                         }, 0);
                                     }
                                     return updatedItem;
@@ -6479,10 +6194,18 @@ You must design a visual composition that tells the story through **8 distinct p
 
                             // 根据文档：images 支持 url 或 base64
                             // 对于Veo接口，如果图片过大，自动缩放到合理尺寸（1920x1080等）
+                            // Veo 3.1（首尾帧）：当开启“首尾帧”时，优先使用 veo_start / veo_end 两个输入点，顺序为 [首帧, 尾帧]，最多 2 张
+                            const currentNodeForVeo = nodesMap.get(nodeId);
+                            const isVeo31FramesMode = (config?.modelName === 'veo3.1') && !!currentNodeForVeo?.settings?.veoFramesMode;
+                            const veoStartFrame = isVeo31FramesMode ? getConnectedImageForInput(nodeId, 'veo_start') : null;
+                            const veoEndFrame = isVeo31FramesMode ? getConnectedImageForInput(nodeId, 'veo_end') : null;
+                            const veoFrameImages = [veoStartFrame, veoEndFrame].filter(Boolean);
+                            const effectiveConnectedImages = (veoFrameImages.length > 0 ? veoFrameImages : connectedImages).slice(0, 2);
+                            const effectiveSourceImage = (veoFrameImages.length > 0 ? veoFrameImages[0] : sourceImage);
                             let images = [];
-                            if (connectedImages && connectedImages.length > 0) {
+                            if (effectiveConnectedImages && effectiveConnectedImages.length > 0) {
                                 // 处理多张图片：先缩放，再转换为data URL
-                                images = await Promise.all(connectedImages
+                                images = await Promise.all(effectiveConnectedImages
                                     .filter(img => img && typeof img === 'string' && img.trim().length > 0)
                                     .map(async (img) => {
                                         const trimmedImg = img.trim();
@@ -6533,9 +6256,9 @@ You must design a visual composition that tells the story through **8 distinct p
                                             throw new Error(`无法处理图片格式: ${trimmedImg.substring(0, 50)}...`);
                                         }
                                     }));
-                            } else if (sourceImage) {
+                            } else if (effectiveSourceImage) {
                                 // 单张图片处理：先检查尺寸，如果太大就缩放
-                                const trimmedSource = sourceImage.trim();
+                                const trimmedSource = effectiveSourceImage.trim();
                                 
                                 try {
                                     // 先获取图片尺寸
@@ -6787,7 +6510,6 @@ You must design a visual composition that tells the story through **8 distinct p
                         // Generic Video Logic (Sora/Kling/etc) - Force Multipart for Image Input with correct field names
                         if (sourceImage) {
                              const formData = new FormData();
-                             const blob = await getBlobFromUrl(sourceImage);
                              
                              if (modelId.includes('sora')) {
                                  endpoint = `${baseUrl}/v1/videos`;
@@ -6796,6 +6518,12 @@ You must design a visual composition that tells the story through **8 distinct p
                                      return `@${username}`;
                                  });
                                  console.log('[Sora 2] Sending prompt with character references:', finalPrompt);
+                                 // Sora2: 强制 size 使用固定合法集合；并将输入图裁剪/缩放到对应尺寸，避免 invalid_size
+                                 const enableSoraHD = (modelId === 'sora-2') && (options.isHD || node?.settings?.isHD);
+                                 const soraParams = getSora2CompliantSize(ratio, w, h, enableSoraHD);
+                                 sizeStr = soraParams.sizeStr;
+                                 w = soraParams.w;
+                                 h = soraParams.h;
                                  formData.append('model', config?.modelName || 'sora-2');
                                  formData.append('prompt', finalPrompt);
                                  formData.append('seconds', duration);
@@ -6804,17 +6532,29 @@ You must design a visual composition that tells the story through **8 distinct p
                                  if (modelId === 'sora-2' && (options.isHD || node?.settings?.isHD)) {
                                      formData.append('quality', 'hd');
                                  }
+                                 // 兼容：如果传入的是“纯base64字符串”而不是 data:，补齐前缀再 fetch 成 Blob
+                                 const normalizedSoraSrc = (() => {
+                                     const s = String(sourceImage || '').trim();
+                                     if (!s) return s;
+                                     if (s.startsWith('data:') || s.startsWith('blob:') || s.startsWith('http://') || s.startsWith('https://')) return s;
+                                     if (s.length > 100 && !s.includes('://')) return `data:image/png;base64,${s.replace(/\s/g, '')}`;
+                                     return s;
+                                 })();
+                                 const soraRawBlob = await getBlobFromUrl(normalizedSoraSrc);
+                                 const soraFixedBlob = await normalizeImageBlobToSize(soraRawBlob, w, h, 'image/png');
                                  // Sora sometimes uses input_reference or image, append both for safety
-                                 formData.append('input_reference', blob, 'ref.png'); 
-                                 formData.append('image', blob, 'ref.png');
+                                 formData.append('input_reference', soraFixedBlob, 'ref.png'); 
+                                 formData.append('image', soraFixedBlob, 'ref.png');
                             } else if (modelId.includes('jimeng')) {
                                  endpoint = `${baseUrl}/jimeng/submit/videos`;
+                                 const blob = await getBlobFromUrl(sourceImage);
                                  formData.append('prompt', prompt);
                                  formData.append('duration', parseInt(duration));
                                  formData.append('aspect_ratio', ratio);
                                  formData.append('image', blob, 'input.png'); 
                             } else if (modelId.includes('grok')) {
                                 endpoint = `${baseUrl}/v1/videos`;
+                                const blob = await getBlobFromUrl(sourceImage);
                                 formData.append('model', config?.modelName || 'grok-video-3');
                                 formData.append('prompt', prompt);
                                 formData.append('aspect_ratio', ratio);
@@ -6822,6 +6562,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                 formData.append('image', blob, 'input.png');
                              } else {
                                  endpoint = `${baseUrl}/v1/videos`;
+                                 const blob = await getBlobFromUrl(sourceImage);
                                  formData.append('model', config?.modelName);
                                  formData.append('prompt', prompt);
                                  formData.append('image', blob, 'input.png');
@@ -6839,6 +6580,12 @@ You must design a visual composition that tells the story through **8 distinct p
                                      return `@${username}`;
                                  });
                                  console.log('[Sora 2] Sending prompt with character references:', finalPrompt);
+                                 // Sora2: 强制 size 使用固定合法集合（T2V 也需要）
+                                 const enableSoraHD = (modelId === 'sora-2') && (options.isHD || node?.settings?.isHD);
+                                 const soraParams = getSora2CompliantSize(ratio, w, h, enableSoraHD);
+                                 sizeStr = soraParams.sizeStr;
+                                 w = soraParams.w;
+                                 h = soraParams.h;
                                  formData.append('model', config?.modelName || 'sora-2');
                                  formData.append('prompt', finalPrompt);
                                  formData.append('seconds', duration);
@@ -6954,6 +6701,12 @@ You must design a visual composition that tells the story through **8 distinct p
                         }
                     }
                     setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg } : hItem));
+                    // 分镜表任务：提交阶段失败也必须解除 generating（否则分镜表会一直转圈）
+                    const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                    if (storyboardTask) {
+                        updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                        storyboardTaskMapRef.current.delete(taskId);
+                    }
                 }
             };
 
@@ -7346,6 +7099,358 @@ You must design a visual composition that tells the story through **8 distinct p
                 }
             };
 
+            // 保存选中的工作流（框选节点后右键保存）
+            const handleSaveSelectedWorkflow = async () => {
+                try {
+                    // 关闭右键菜单
+                    setSelectionContextMenu({ visible: false, x: 0, y: 0 });
+                    
+                    // 获取选中的节点
+                    const selectedIds = selectedNodeIds.size > 0 ? selectedNodeIds : (selectedNodeId ? new Set([selectedNodeId]) : new Set());
+                    if (selectedIds.size === 0) {
+                        alert('请先选择要保存的节点');
+                        return;
+                    }
+                    
+                    // 获取选中的节点数据
+                    const selectedNodes = nodes.filter(n => selectedIds.has(n.id));
+                    
+                    // 获取选中节点之间的连接
+                    const selectedConnections = connections.filter(
+                        conn => selectedIds.has(conn.from) && selectedIds.has(conn.to)
+                    );
+                    
+                    // 兼容性检查：优先使用 File System Access API
+                    if (!window.showSaveFilePicker) {
+                        const shouldProceed = confirm('您的浏览器不支持流式保存大文件。\n\n是否继续使用传统方式保存？');
+                        if (!shouldProceed) return;
+                        
+                        // 降级保存逻辑
+                        const replacer = (key, value) => value === undefined ? null : value;
+                        const nodesToSave = JSON.parse(JSON.stringify(selectedNodes, replacer));
+                        
+                        // 转换 Blob URL 为 Data URL
+                        const convertBlobUrlsToDataUrls = async (obj) => {
+                            if (obj === null || obj === undefined) return obj;
+                            if (typeof obj === 'string' && obj.startsWith('blob:')) {
+                                try {
+                                    const blob = await getBlobFromUrl(obj);
+                                    const dataUrl = await blobToDataURL(blob);
+                                    return dataUrl;
+                                } catch (error) {
+                                    console.error('转换 Blob URL 失败:', error);
+                                    return obj;
+                                }
+                            }
+                            if (Array.isArray(obj)) {
+                                return await Promise.all(obj.map(item => convertBlobUrlsToDataUrls(item)));
+                            }
+                            if (typeof obj === 'object') {
+                                const converted = {};
+                                for (const key in obj) {
+                                    if (obj.hasOwnProperty(key)) {
+                                        converted[key] = await convertBlobUrlsToDataUrls(obj[key]);
+                                    }
+                                }
+                                return converted;
+                            }
+                            return obj;
+                        };
+                        
+                        const nodesWithDataUrls = await convertBlobUrlsToDataUrls(nodesToSave);
+                        const workflowData = {
+                            version: '2.8',
+                            type: 'workflow',
+                            nodes: nodesWithDataUrls,
+                            connections: selectedConnections,
+                            timestamp: getCSTTimestamp()
+                        };
+                        
+                        const jsonStr = JSON.stringify(workflowData, replacer, 2);
+                        const blob = new Blob([jsonStr], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        const timestamp = getCSTFilenameTimestamp();
+                        a.download = `工作流_${timestamp}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        alert('工作流保存成功！');
+                        return;
+                    }
+                    
+                    // 使用 File System Access API 流式写入
+                    const timestamp = getCSTFilenameTimestamp();
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: `工作流_${timestamp}.json`,
+                        types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
+                    });
+                    const writable = await handle.createWritable();
+                    
+                    const replacer = (key, value) => value === undefined ? null : value;
+                    
+                    // 转换节点的 Blob URL
+                    const convertNodeBlobUrls = async (node) => {
+                        const nodeCopy = { ...node };
+                        
+                        if (nodeCopy.content && typeof nodeCopy.content === 'string' && nodeCopy.content.startsWith('blob:')) {
+                            try {
+                                const b64 = await getBase64FromUrl(nodeCopy.content);
+                                const mime = isVideoUrl(nodeCopy.content) ? 'video/mp4' : 'image/png';
+                                nodeCopy.content = `data:${mime};base64,${b64}`;
+                            } catch (e) {
+                                console.error('转换节点 content 失败:', e);
+                            }
+                        }
+                        
+                        if (nodeCopy.maskContent && typeof nodeCopy.maskContent === 'string' && nodeCopy.maskContent.startsWith('blob:')) {
+                            try {
+                                const b64 = await getBase64FromUrl(nodeCopy.maskContent);
+                                nodeCopy.maskContent = `data:image/png;base64,${b64}`;
+                            } catch (e) {
+                                console.error('转换节点 maskContent 失败:', e);
+                            }
+                        }
+                        
+                        if (Array.isArray(nodeCopy.selectedKeyframes)) {
+                            for (let i = 0; i < nodeCopy.selectedKeyframes.length; i++) {
+                                const frame = nodeCopy.selectedKeyframes[i];
+                                if (frame && frame.url && typeof frame.url === 'string' && frame.url.startsWith('blob:')) {
+                                    try {
+                                        const b64 = await getBase64FromUrl(frame.url);
+                                        frame.url = `data:image/png;base64,${b64}`;
+                                    } catch (e) {
+                                        console.error('转换关键帧失败:', e);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (Array.isArray(nodeCopy.frames)) {
+                            for (let i = 0; i < nodeCopy.frames.length; i++) {
+                                const frame = nodeCopy.frames[i];
+                                if (frame && frame.url && typeof frame.url === 'string' && frame.url.startsWith('blob:')) {
+                                    try {
+                                        const b64 = await getBase64FromUrl(frame.url);
+                                        frame.url = `data:image/png;base64,${b64}`;
+                                    } catch (e) {
+                                        console.error('转换帧失败:', e);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (Array.isArray(nodeCopy.previewMjImages)) {
+                            for (let i = 0; i < nodeCopy.previewMjImages.length; i++) {
+                                const imgUrl = nodeCopy.previewMjImages[i];
+                                if (imgUrl && typeof imgUrl === 'string' && imgUrl.startsWith('blob:')) {
+                                    try {
+                                        const b64 = await getBase64FromUrl(imgUrl);
+                                        nodeCopy.previewMjImages[i] = `data:image/png;base64,${b64}`;
+                                    } catch (e) {
+                                        console.error('转换预览图片失败:', e);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        return nodeCopy;
+                    };
+                    
+                    // 写入头部
+                    await writable.write(`{\n  "version": "2.8",\n  "type": "workflow",\n  "nodes": [\n`);
+                    
+                    // 逐个写入节点
+                    for (let i = 0; i < selectedNodes.length; i++) {
+                        const convertedNode = await convertNodeBlobUrls(selectedNodes[i]);
+                        const nodeJson = JSON.stringify(convertedNode, replacer, 4);
+                        const indentedJson = nodeJson.split('\n').map(line => '    ' + line).join('\n');
+                        await writable.write(indentedJson);
+                        if (i < selectedNodes.length - 1) {
+                            await writable.write(',\n');
+                        } else {
+                            await writable.write('\n');
+                        }
+                    }
+                    
+                    // 写入连接和尾部
+                    await writable.write(`  ],\n  "connections": ${JSON.stringify(selectedConnections, replacer, 2)},\n  "timestamp": ${JSON.stringify(getCSTTimestamp())}\n}`);
+                    
+                    await writable.close();
+                    alert('工作流保存成功！');
+                } catch (error) {
+                    console.error('保存工作流失败:', error);
+                    if (error.name === 'AbortError') return;
+                    alert('保存失败: ' + (error.message || '未知错误'));
+                }
+            };
+
+            // 处理画布右键菜单（框选节点后）
+            const handleCanvasContextMenu = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // 检查是否有选中的节点
+                const hasSelection = selectedNodeIds.size > 0 || selectedNodeId;
+                if (hasSelection) {
+                    setSelectionContextMenu({
+                        visible: true,
+                        x: e.clientX,
+                        y: e.clientY
+                    });
+                }
+            };
+
+            // 导入工作流（将工作流节点添加到当前画布）
+            const handleImportWorkflow = async () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    try {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        
+                        // 检查是否是工作流文件
+                        if (data.type !== 'workflow') {
+                            alert('这不是一个有效的工作流文件。\n\n请使用"保存当前选取工作流"功能导出的文件。');
+                            return;
+                        }
+                        
+                        if (!data.nodes || data.nodes.length === 0) {
+                            alert('工作流文件中没有节点数据');
+                            return;
+                        }
+                        
+                        // 尝试获取本地库文件列表
+                        let localFiles = [];
+                        const localServerUrl = 'http://localhost:9527';
+                        try {
+                            const localFilesRes = await fetch(`${localServerUrl}/list-files`);
+                            if (localFilesRes.ok) {
+                                const localFilesData = await localFilesRes.json();
+                                if (localFilesData.success && localFilesData.files) {
+                                    localFiles = localFilesData.files;
+                                    console.log(`[导入工作流] 本地库已连接，找到 ${localFiles.length} 个文件`);
+                                }
+                            }
+                        } catch (err) {
+                            console.log('[导入工作流] 本地服务器未连接');
+                        }
+                        
+                        // 根据文件大小匹配本地文件
+                        const findLocalFileBySize = (dataUrl) => {
+                            if (!localFiles.length) return null;
+                            try {
+                                const base64 = dataUrl.split(',')[1];
+                                if (!base64) return null;
+                                const estimatedSize = Math.floor(base64.length * 0.75);
+                                const tolerance = estimatedSize * 0.05;
+                                const match = localFiles.find(f => Math.abs(f.size - estimatedSize) < tolerance);
+                                if (match) {
+                                    return `${localServerUrl}/file/${encodeURIComponent(match.rel_path)}`;
+                                }
+                            } catch (err) {}
+                            return null;
+                        };
+                        
+                        // 转换节点中的 Base64 为 Blob URL 或本地文件 URL
+                        const convertNodeUrls = async (node) => {
+                            const stack = [node];
+                            while (stack.length > 0) {
+                                const current = stack.pop();
+                                if (!current || typeof current !== 'object') continue;
+                                
+                                for (const key in current) {
+                                    const val = current[key];
+                                    if (typeof val === 'string' && (val.startsWith('data:image/') || val.startsWith('data:video/'))) {
+                                        try {
+                                            // 优先尝试从本地库匹配
+                                            const localUrl = findLocalFileBySize(val);
+                                            if (localUrl) {
+                                                const testRes = await fetch(localUrl, { method: 'HEAD' });
+                                                if (testRes.ok) {
+                                                    current[key] = localUrl;
+                                                    console.log(`[导入工作流] 使用本地文件`);
+                                                    continue;
+                                                }
+                                            }
+                                            // 转换为 Blob URL
+                                            const res = await fetch(val);
+                                            const blob = await res.blob();
+                                            current[key] = URL.createObjectURL(blob);
+                                        } catch (err) {}
+                                    } else if (typeof val === 'object' && val !== null) {
+                                        stack.push(val);
+                                    }
+                                }
+                            }
+                            return node;
+                        };
+                        
+                        // 生成新的节点ID映射（避免ID冲突）
+                        const idMap = new Map();
+                        data.nodes.forEach(node => {
+                            idMap.set(node.id, `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+                        });
+                        
+                        // 计算导入位置（视图中心）
+                        const canvasElement = canvasRef.current;
+                        let importX = 100, importY = 100;
+                        if (canvasElement) {
+                            const rect = canvasElement.getBoundingClientRect();
+                            const centerX = rect.width / 2;
+                            const centerY = rect.height / 2;
+                            const worldPos = screenToWorld(centerX + rect.left, centerY + rect.top);
+                            importX = worldPos.x;
+                            importY = worldPos.y;
+                        }
+                        
+                        // 计算原始节点的边界框
+                        let minX = Infinity, minY = Infinity;
+                        data.nodes.forEach(node => {
+                            if (node.x < minX) minX = node.x;
+                            if (node.y < minY) minY = node.y;
+                        });
+                        
+                        // 转换并添加节点
+                        const newNodes = [];
+                        for (const node of data.nodes) {
+                            const convertedNode = await convertNodeUrls({ ...node });
+                            convertedNode.id = idMap.get(node.id);
+                            convertedNode.x = node.x - minX + importX;
+                            convertedNode.y = node.y - minY + importY;
+                            newNodes.push(convertedNode);
+                        }
+                        
+                        // 转换连接
+                        const newConnections = (data.connections || []).map(conn => ({
+                            ...conn,
+                            from: idMap.get(conn.from),
+                            to: idMap.get(conn.to)
+                        })).filter(conn => conn.from && conn.to);
+                        
+                        // 添加到画布
+                        setNodes(prev => [...prev, ...newNodes]);
+                        setConnections(prev => [...prev, ...newConnections]);
+                        
+                        // 选中导入的节点
+                        setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
+                        
+                        alert(`工作流导入成功！\n\n导入了 ${newNodes.length} 个节点和 ${newConnections.length} 个连接。`);
+                    } catch (error) {
+                        console.error('导入工作流失败:', error);
+                        alert('导入失败: ' + (error.message || '无效的JSON文件'));
+                    }
+                };
+                input.click();
+            };
+
             // 功能5：从JSON文件加载项目（流式读取，支持超大文件，修复多行JSON解析问题，解决内存泄露）
             const handleLoadProject = () => {
                 const input = document.createElement('input');
@@ -7372,8 +7477,47 @@ You must design a visual composition that tells the story through **8 distinct p
                     let bytesRead = 0;
                     const totalBytes = file.size;
 
+                    // --- 尝试获取本地库文件列表（用于优先使用本地文件）---
+                    let localFiles = [];
+                    let localServerUrl = 'http://localhost:9527';
+                    try {
+                        const localFilesRes = await fetch(`${localServerUrl}/list-files`);
+                        if (localFilesRes.ok) {
+                            const localFilesData = await localFilesRes.json();
+                            if (localFilesData.success && localFilesData.files) {
+                                localFiles = localFilesData.files;
+                                console.log(`[导入] 本地库已连接，找到 ${localFiles.length} 个文件`);
+                            }
+                        }
+                    } catch (e) {
+                        console.log('[导入] 本地服务器未连接，将使用原始数据');
+                    }
+
+                    // 根据文件大小匹配本地文件的辅助函数
+                    const findLocalFileBySize = (dataUrl) => {
+                        if (!localFiles.length) return null;
+                        try {
+                            // 从 data URL 计算大小（Base64 解码后的大小）
+                            const base64 = dataUrl.split(',')[1];
+                            if (!base64) return null;
+                            const estimatedSize = Math.floor(base64.length * 0.75); // Base64 编码后大小约为原始的 4/3
+                            
+                            // 查找大小相近的文件（允许 5% 误差）
+                            const tolerance = estimatedSize * 0.05;
+                            const match = localFiles.find(f => 
+                                Math.abs(f.size - estimatedSize) < tolerance
+                            );
+                            if (match) {
+                                return `${localServerUrl}/file/${encodeURIComponent(match.rel_path)}`;
+                            }
+                        } catch (e) {
+                            // 匹配失败，返回 null
+                        }
+                        return null;
+                    };
+
                     // --- 关键辅助函数：原地转换对象中的 Base64 为 Blob URL ---
-                    // 这一步必须非常快且不占用额外内存
+                    // 优先使用本地库文件，否则转换为 Blob URL
                     const convertItemImmediately = async (item) => {
                         // 递归遍历对象，找到所有 data:image 开头的字符串并转换
                         const stack = [item];
@@ -7383,9 +7527,21 @@ You must design a visual composition that tells the story through **8 distinct p
 
                             for (const key in current) {
                                 const val = current[key];
-                                if (typeof val === 'string' && val.startsWith('data:image/')) {
+                                if (typeof val === 'string' && (val.startsWith('data:image/') || val.startsWith('data:video/'))) {
                                     try {
-                                        // 立即转换为 Blob URL，释放原字符串内存
+                                        // 优先尝试从本地库匹配
+                                        const localUrl = findLocalFileBySize(val);
+                                        if (localUrl) {
+                                            // 验证本地文件是否可访问
+                                            const testRes = await fetch(localUrl, { method: 'HEAD' });
+                                            if (testRes.ok) {
+                                                current[key] = localUrl;
+                                                console.log(`[导入] 使用本地文件: ${localUrl}`);
+                                                continue;
+                                            }
+                                        }
+                                        
+                                        // 本地文件不可用，转换为 Blob URL
                                         const res = await fetch(val);
                                         const blob = await res.blob();
                                         current[key] = URL.createObjectURL(blob);
@@ -7547,7 +7703,21 @@ You must design a visual composition that tells the story through **8 distinct p
                                     ? { w: 320, h: 260 }
                                     : type === 'text-node'
                                         ? { w: 280, h: 200 }
-                                        : { w: 260, h: 260 };
+                                        : type === 'novel-input'
+                                            ? { w: 400, h: 500 }
+                                            : type === 'extract-characters-scenes'
+                                                ? { w: 400, h: 500 }
+                                                : type === 'character-description' || type === 'scene-description'
+                                                    ? { w: 400, h: 400 }
+                                                    : type === 'create-character' || type === 'create-scene'
+                                                        ? { w: 350, h: 300 }
+                                                        : type === 'generate-character-video' || type === 'generate-scene-video'
+                                                            ? { w: 400, h: 450 }
+                                                            : (type === 'generate-character-image' || type === 'generate-scene-image')
+                                                                ? { w: 400, h: 450 }
+                                                                : type === 'local-save'
+                                                                    ? { w: 320, h: 380 }
+                                                                    : { w: 260, h: 260 };
                 const newNode = {
                     id: `node-${Date.now()}`,
                     type,
@@ -7567,7 +7737,25 @@ You must design a visual composition that tells the story through **8 distinct p
                                     ? { projectTitle: '未命名分镜', shots: [] }
                                 : type === 'text-node'
                                     ? { text: initialContent || '' }
-                                    : {},
+                                    : type === 'novel-input'
+                                        ? { content: '' }
+                                        : type === 'extract-characters-scenes'
+                                            ? { model: apiConfigs.find(c => c.type === 'Chat')?.id || '', analysisResults: null, lastAnalyzed: null }
+                                            : type === 'character-description'
+                                                ? { characterId: '', characterName: '', role: '', description: '', prompt: '', duration: '15s', style: 'none', mode: 'video', imageModel: '', imageRatio: '16:9', imageResolution: '2k', referenceImages: [] }
+                                                : type === 'scene-description'
+                                                    ? { sceneId: '', sceneName: '', description: '', prompt: '', duration: '15s', style: 'none', mode: 'video', imageModel: '', imageRatio: '16:9', imageResolution: '2k', referenceImages: [], chatModel: '' }
+                                                    : type === 'create-character'
+                                                        ? { name: '', startSecond: 1, endSecond: 3, isCreating: false, createProgress: 0, createError: null }
+                                                        : type === 'create-scene'
+                                                            ? { name: '', timeRange: '' }
+                                                            : type === 'generate-character-video' || type === 'generate-scene-video'
+                                                                ? { model: 'sora-2', duration: '15s', ratio: '16:9', videoPrompt: '', referenceImages: [], sourceType: '', sourceId: '', isGenerating: false, progress: 0, error: null, videoUrl: '' }
+                                                                : (type === 'generate-character-image' || type === 'generate-scene-image')
+                                                                    ? { model: 'nano-banana', ratio: 'Auto', resolution: 'Auto', prompt: '', referenceImages: [], chatModel: '', imageUrls: [], selectedImageIndex: null, isGenerating: false, progress: 0, error: null, imageUrl: '' }
+                                                                    : type === 'local-save'
+                                                                        ? { serverUrl: 'http://127.0.0.1:9527', savePath: '', subfolder: '', autoSave: false, serverStatus: 'unknown', lastSaved: null, savedFiles: [] }
+                                                                        : {},
                 };
                 setNodes(prev => [...prev, newNode]);
                 // 从输出端口连接到新节点（原有逻辑）
@@ -7608,10 +7796,6 @@ You must design a visual composition that tells the story through **8 distinct p
                 if (selectedNodeId === id) setSelectedNodeId(null);
             }, [selectedNodeId]);
 
-            const updateNodeSettings = useCallback((id, newSettings) => {
-                setNodes((prev) => prev.map((n) => n.id === id ? { ...n, settings: { ...n.settings, ...newSettings } } : n));
-            }, []);
-
             // 获取连接的 gen-image 或 gen-video 节点（用于 storyboard-node 节点）
             const getConnectedGenNodes = useCallback((sourceNodeId) => {
                 const genNodes = [];
@@ -7627,6 +7811,411 @@ You must design a visual composition that tells the story through **8 distinct p
             }, [connections, nodesMap]);
 
             // 获取模型的默认时长
+            // 获取风格前缀
+            const getStylePrefix = useCallback((style) => {
+                switch(style) {
+                    case '2d-anime': return '2D动漫风格';
+                    case '3d-anime': return '3D动漫风格';
+                    case 'realistic': return '写实风格';
+                    case 'selfie': return '自拍风格';
+                    case 'news': return '新闻风格';
+                    case 'manga': return '漫画风格';
+                    default: return '动漫风格';
+                }
+            }, []);
+
+            // 本地提示词过滤函数（降级方案）- 角色专用，确保白色背景
+            const filterCharacterPromptLocal = useCallback((prompt) => {
+                if (!prompt) return '';
+                
+                // 1. 移除所有对话内容
+                let filtered = prompt.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
+                
+                // 2. 移除游戏相关描述
+                filtered = filtered.replace(/利用《.*?》游戏.*?/g, '');
+                
+                // 3. 移除内心独白描述
+                filtered = filtered.replace(/内心(.*?)(?=[，。；！？、\s])/g, '');
+                
+                // 4. 移除动作描述
+                filtered = filtered.replace(/(推动|拉动|操作|转身|站立|走动|说|介绍|正在|负责|穿着|站在|面对|做)(.*?)(?=[，。；！？、\s])/g, '');
+                
+                // 5. 移除特定短语
+                filtered = filtered.replace(/(天命杠杆|战舰|游戏|操作|控制|推进|推动|极低速度|以极低速度|最终|最后|现在|正在|目前|此前|起先|起初)/g, '');
+                
+                // 6. 移除360度展示相关
+                filtered = filtered.replace(/，然后缓慢转一圈360度全方位展示身体/g, '');
+                
+                // 7. 移除场景描述，确保背景是纯白色
+                filtered = filtered.replace(/(背景|场景|环境|建筑|地点|位置|周围|附近|后面|前面|旁边)(.*?)(?=[，。；！？、\s])/g, '');
+                
+                // 8. 确保包含纯白色背景描述
+                if (!filtered.includes('白色背景') && !filtered.includes('纯白色背景')) {
+                    filtered = filtered.replace(/(动漫风格，全身视角，)/, '$1站在纯白色背景前，');
+                    if (!filtered.includes('纯白色背景')) {
+                        filtered = `动漫风格，全身视角，站在纯白色背景前，${filtered}`;
+                    }
+                }
+                
+                // 9. 清理多余空格和标点
+                filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
+                
+                // 10. 如果过滤后内容太少，恢复基本结构
+                if (filtered.length < 50) {
+                    filtered = `动漫风格，全身视角，站在纯白色背景前，角色穿着简洁的服装，表情平静，姿态自然`;
+                }
+                
+                return filtered;
+            }, []);
+
+            // 场景提示词本地过滤函数（降级方案）
+            const filterScenePromptLocal = useCallback((prompt) => {
+                if (!prompt) return '';
+                
+                // 移除人物相关描述
+                let filtered = prompt.replace(/(人物|角色|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装)(.*?)(?=[，。；！？、\s])/g, '');
+                
+                // 移除对话内容
+                filtered = filtered.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
+                
+                // 移除特定人物相关短语
+                filtered = filtered.replace(/(名叫|角色|人物|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装|角色特征)/g, '');
+                
+                // 清理多余空格和标点
+                filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
+                
+                // 如果过滤后内容太少，恢复基本结构
+                if (filtered.length < 30) {
+                    filtered = `场景描述：环境、建筑、背景`;
+                }
+                
+                return filtered;
+            }, []);
+
+            // 提示词过滤函数 - 使用大模型API过滤（角色专用，确保白色背景）
+            const filterCharacterPrompt = useCallback(async (rawPrompt) => {
+                if (!rawPrompt || rawPrompt.trim().length === 0) return rawPrompt;
+                
+                try {
+                    // 使用API配置获取聊天模型
+                    const chatConfig = apiConfigs.find(c => c.type === 'Chat');
+                    if (!chatConfig) {
+                        console.warn('未找到聊天模型配置，使用本地过滤');
+                        return filterCharacterPromptLocal(rawPrompt);
+                    }
+                    
+                    const apiKey = chatConfig.key || globalApiKey;
+                    if (!apiKey) {
+                        console.warn('API Key未配置，使用本地过滤');
+                        return filterCharacterPromptLocal(rawPrompt);
+                    }
+                    
+                    const baseUrl = (chatConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
+                    
+                    // 调用大模型过滤提示词，确保背景是纯白色
+                    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: chatConfig.modelName || chatConfig.id || 'gpt-4o',
+                            messages: [
+                                {
+                                    role: 'system',
+                                    content: '你是一个提示词优化专家。请分析以下提示词，只保留关于人物外貌、服装、姿态等角色特征的描述，去除所有剧情、动作、对话和背景信息。输出应简洁，只包含角色特征描述，格式为"全身视角，[人物特征描述]，站在纯白色背景前"。必须确保背景始终是纯白色，不能有任何场景描述。'
+                                },
+                                {
+                                    role: 'user',
+                                    content: rawPrompt
+                                }
+                            ],
+                            temperature: 0.3
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        console.error('提示词过滤API调用失败:', errorData);
+                        return filterCharacterPromptLocal(rawPrompt);
+                    }
+                    
+                    const data = await response.json();
+                    let filtered = data.choices?.[0]?.message?.content?.trim() || rawPrompt;
+                    
+                    // 确保包含白色背景描述
+                    if (!filtered.includes('白色背景') && !filtered.includes('纯白色背景')) {
+                        filtered = filtered.replace(/(全身视角[，,])/, '$1站在纯白色背景前，');
+                        if (!filtered.includes('纯白色背景')) {
+                            filtered = `全身视角，站在纯白色背景前，${filtered}`;
+                        }
+                    }
+                    
+                    return filtered;
+                } catch (error) {
+                    console.error('提示词过滤失败:', error);
+                    return filterCharacterPromptLocal(rawPrompt);
+                }
+            }, [apiConfigs, globalApiKey, filterCharacterPromptLocal]);
+            
+            // 场景提示词过滤函数 - 过滤掉人物、字符描述
+            const filterScenePrompt = useCallback(async (rawPrompt) => {
+                if (!rawPrompt || rawPrompt.trim().length === 0) return rawPrompt;
+                
+                try {
+                    // 使用API配置获取聊天模型
+                    const chatConfig = apiConfigs.find(c => c.type === 'Chat');
+                    if (!chatConfig) {
+                        console.warn('未找到聊天模型配置，使用本地过滤');
+                        return filterScenePromptLocal(rawPrompt);
+                    }
+                    
+                    const apiKey = chatConfig.key || globalApiKey;
+                    if (!apiKey) {
+                        console.warn('API Key未配置，使用本地过滤');
+                        return filterScenePromptLocal(rawPrompt);
+                    }
+                    
+                    const baseUrl = (chatConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
+                    
+                    // 调用大模型过滤提示词，只保留场景描述，去除人物、字符
+                    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: chatConfig.modelName || chatConfig.id || 'gpt-4o',
+                            messages: [
+                                {
+                                    role: 'system',
+                                    content: '你是一个场景描述优化专家。请分析以下提示词，只保留关于场景、环境、建筑、背景等场景特征的描述，去除所有人物、角色、字符、对话和动作描述。输出应简洁，只包含场景特征描述，不能包含任何人物或角色。'
+                                },
+                                {
+                                    role: 'user',
+                                    content: rawPrompt
+                                }
+                            ],
+                            temperature: 0.3
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        console.error('场景提示词过滤API调用失败:', errorData);
+                        return filterScenePromptLocal(rawPrompt);
+                    }
+                    
+                    const data = await response.json();
+                    const filtered = data.choices?.[0]?.message?.content?.trim() || rawPrompt;
+                    return filtered;
+                } catch (error) {
+                    console.error('场景提示词过滤失败:', error);
+                    return filterScenePromptLocal(rawPrompt);
+                }
+            }, [apiConfigs, globalApiKey, filterScenePromptLocal]);
+
+            // 生成角色描述提示词
+            const generateCharacterPrompt = useCallback((character, mode = 'video', style = 'none') => {
+                const age = character.age || '25';
+                const gender = character.gender || '年轻男人';
+                const stylePrefix = getStylePrefix(style);
+                const basePrompt = `${stylePrefix}，全身视角，名叫${character.name}的${age}岁左右${gender}站在白色背景前，${character.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${character.name}，${character.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`;
+                
+                // 如果是视频模式，添加360度展示提示词
+                if (mode === 'video') {
+                    return `${basePrompt}，然后缓慢转一圈360度全方位展示身体`;
+                }
+                
+                return basePrompt;
+            }, [getStylePrefix]);
+
+            // 生成场景描述提示词
+            const generateScenePrompt = useCallback((scene) => {
+                return scene.description || `极度奢华的星际战舰舰桥内部，空间广阔如同一座宫殿，四壁装饰着繁复的黄金浮雕与象牙立柱，地面铺着深红色的天鹅绒地毯，巨大的落地舷窗外是深邃星空，中央悬挂着水晶吊灯，操作台被伪装成古典家具的样子，整体色调金碧辉煌，氛围庄严却透着一种不切实际的荒谬感`;
+            }, []);
+
+            // 自动生成完整工作流（描述节点 -> 视频生成节点 -> 创建节点）
+            const generateFullWorkflow = useCallback((extractNodeId, analysisResults) => {
+                const extractNode = nodesMap.get(extractNodeId);
+                if (!extractNode) return;
+                
+                // 计算起始位置（在提取节点右侧）
+                const worldX = extractNode.x + extractNode.width + 100;
+                const worldY = extractNode.y;
+                
+                const descriptionNodes = [];
+                const videoNodes = [];
+                const createNodes = [];
+                const newConnections = [];
+                const timestamp = Date.now();
+                
+                // 1. 创建角色描述节点、视频生成节点和创建节点
+                if (analysisResults.characters && analysisResults.characters.length > 0) {
+                    analysisResults.characters.forEach((character, idx) => {
+                        // 角色描述节点
+                        const descNodeId = `node-char-desc-${timestamp}-${idx}`;
+                        descriptionNodes.push({
+                            id: descNodeId,
+                            type: 'character-description',
+                            x: worldX,
+                            y: worldY + (idx * 450),
+                            width: 400,
+                            height: 400,
+                            settings: {
+                                characterId: character.id,
+                                characterName: character.name,
+                                role: character.role,
+                                description: character.description,
+                                duration: '15s',
+                                style: 'none',
+                                mode: 'video',
+                                prompt: generateCharacterPrompt(character, 'video')
+                            }
+                        });
+                        
+                        // 视频生成节点
+                        const videoNodeId = `node-char-video-${timestamp}-${idx}`;
+                        videoNodes.push({
+                            id: videoNodeId,
+                            type: 'generate-character-video',
+                            x: worldX + 420,
+                            y: worldY + (idx * 450),
+                            width: 400,
+                            height: 450,
+                            settings: {
+                                model: 'sora-2',
+                                duration: '15s',
+                                ratio: '16:9',
+                                videoPrompt: generateCharacterPrompt(character),
+                                sourceType: 'character-description',
+                                sourceId: descNodeId
+                            }
+                        });
+                        
+                        // 创建角色节点
+                        const createNodeId = `node-char-create-${timestamp}-${idx}`;
+                        createNodes.push({
+                            id: createNodeId,
+                            type: 'create-character',
+                            x: worldX + 840,
+                            y: worldY + (idx * 450),
+                            width: 350,
+                            height: 300,
+                            settings: {
+                                name: character.name,
+                                startSecond: 1,
+                                endSecond: 3
+                            }
+                        });
+                        
+                        // 创建连接
+                        newConnections.push({
+                            id: `conn-char-${timestamp}-${idx}`,
+                            from: extractNodeId,
+                            to: descNodeId
+                        });
+                        newConnections.push({
+                            id: `conn-video-${timestamp}-${idx}`,
+                            from: descNodeId,
+                            to: videoNodeId
+                        });
+                        newConnections.push({
+                            id: `conn-create-${timestamp}-${idx}`,
+                            from: videoNodeId,
+                            to: createNodeId
+                        });
+                    });
+                }
+                
+                // 2. 创建场景描述节点、视频生成节点和创建节点
+                if (analysisResults.scenes && analysisResults.scenes.length > 0) {
+                    const characterCount = analysisResults.characters ? analysisResults.characters.length : 0;
+                    analysisResults.scenes.forEach((scene, idx) => {
+                        // 场景描述节点
+                        const descNodeId = `node-scene-desc-${timestamp}-${idx}`;
+                        descriptionNodes.push({
+                            id: descNodeId,
+                            type: 'scene-description',
+                            x: worldX,
+                            y: worldY + ((characterCount + idx) * 450),
+                            width: 400,
+                            height: 400,
+                            settings: {
+                                sceneId: scene.id,
+                                sceneName: scene.name,
+                                description: scene.description,
+                                duration: '15s',
+                                style: 'none',
+                                prompt: generateScenePrompt(scene)
+                            }
+                        });
+                        
+                        // 视频生成节点
+                        const videoNodeId = `node-scene-video-${timestamp}-${idx}`;
+                        videoNodes.push({
+                            id: videoNodeId,
+                            type: 'generate-scene-video',
+                            x: worldX + 420,
+                            y: worldY + ((characterCount + idx) * 450),
+                            width: 400,
+                            height: 450,
+                            settings: {
+                                model: 'sora-2',
+                                duration: '15s',
+                                ratio: '16:9',
+                                videoPrompt: generateScenePrompt(scene),
+                                sourceType: 'scene-description',
+                                sourceId: descNodeId
+                            }
+                        });
+                        
+                        // 创建场景节点
+                        const createNodeId = `node-scene-create-${timestamp}-${idx}`;
+                        createNodes.push({
+                            id: createNodeId,
+                            type: 'create-scene',
+                            x: worldX + 840,
+                            y: worldY + ((characterCount + idx) * 450),
+                            width: 350,
+                            height: 300,
+                            settings: {
+                                name: scene.name,
+                                timeRange: '1,3'
+                            }
+                        });
+                        
+                        // 创建连接
+                        newConnections.push({
+                            id: `conn-scene-${timestamp}-${idx}`,
+                            from: extractNodeId,
+                            to: descNodeId
+                        });
+                        newConnections.push({
+                            id: `conn-video-scene-${timestamp}-${idx}`,
+                            from: descNodeId,
+                            to: videoNodeId
+                        });
+                        newConnections.push({
+                            id: `conn-create-scene-${timestamp}-${idx}`,
+                            from: videoNodeId,
+                            to: createNodeId
+                        });
+                    });
+                }
+                
+                // 批量添加到节点和连接
+                const allNodes = [...descriptionNodes, ...videoNodes, ...createNodes];
+                if (allNodes.length > 0) {
+                    setNodes(prev => [...prev, ...allNodes]);
+                }
+                if (newConnections.length > 0) {
+                    setConnections(prev => [...prev, ...newConnections]);
+                }
+            }, [nodesMap, generateCharacterPrompt, generateScenePrompt]);
+
             const getDefaultDurationForModel = (modelId) => {
                 if (!modelId) return '5s';
                 if (modelId === 'sora-2-pro') return '15s';
@@ -8101,7 +8690,7 @@ You must design a visual composition that tells the story through **8 distinct p
                         startTime: now,
                         durationMs: null
                     }, ...prev]);
-                    setHistoryOpen(true);
+                    // 交互要求：生成任务不自动弹出“生成历史”面板，只允许用户手动打开/关闭
 
                     // 3. 提交图片到 Midjourney（使用 imagine 接口，不包含 zoom 参数）
                     const mjMode = 'fast';
@@ -9854,8 +10443,8 @@ You must design a visual composition that tells the story through **8 distinct p
                 e.preventDefault();
                 e.stopPropagation();
                 // 如果提供了 imageUrl 和 imageIndex，说明是点击了多图中的某一张
-                // 否则使用 item.url（单图情况）
-                const selectedUrl = imageUrl || item.url;
+                // 否则使用 item.url 或 item.originalUrl（单图情况）
+                const selectedUrl = imageUrl || item.url || item.originalUrl;
                 const selectedIndex = imageIndex !== null ? imageIndex : (item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : null);
                 
                 // 创建一个修改后的item，使用选中的图片URL
@@ -9874,8 +10463,8 @@ You must design a visual composition that tells the story through **8 distinct p
                 const targetId = selectedNodeId;
                 const targetNode = nodesMap.get(targetId);
 
-                if (targetNode && targetNode.type === 'input-image' && item.url) {
-                    setNodes(prev => prev.map(n => n.id === targetId ? { ...n, content: item.url } : n));
+                if (targetNode && targetNode.type === 'input-image' && (item.url || item.originalUrl)) {
+                    setNodes(prev => prev.map(n => n.id === targetId ? { ...n, content: item.url || item.originalUrl } : n));
                 } else {
                     alert('请先选择一个"图片输入"节点');
                 }
@@ -9884,11 +10473,11 @@ You must design a visual composition that tells the story through **8 distinct p
 
             const sendHistoryToCanvas = async () => {
                 const item = historyContextMenu.item;
-                if (!item?.url) return;
+                if (!item?.url && !item?.originalUrl) return;
                 const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
                 
                 // Fix: Mark video content so input-image node knows to display it properly
-                let content = item.url;
+                let content = item.url || item.originalUrl;
                 if (item.type === 'video' && !isVideoUrl(content)) {
                      // Append helper param so isVideoUrl returns true
                      content += (content.includes('?') ? '&' : '?') + 'force_video_display=true';
@@ -10129,10 +10718,14 @@ You must design a visual composition that tells the story through **8 distinct p
                                             fill="none" 
                                             style={{pointerEvents: 'stroke'}}
                                         />
-                                        <path d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`} stroke="#18181b" strokeWidth="4" fill="none" />
-                                        <path d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`} stroke="#71717a" strokeWidth="2" fill="none" />
-                                        <circle cx={startX} cy={startY} r="2" fill="#71717a" />
-                                        <circle cx={endX} cy={endY} r="2" fill="#71717a" />
+                                        {/* 优化后的连接线：单层、1px宽度、蚂蚁线效果 */}
+                                        <path 
+                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`} 
+                                            stroke={isRelatedToSelected ? "#71717a" : "#a1a1aa"} 
+                                            strokeWidth="1" 
+                                            fill="none" 
+                                            strokeDasharray="4,4"
+                                        />
                                         {/* 删除按钮：使用更大的透明热区确保可点击，必须在最后渲染以覆盖透明 path */}
                                         <g 
                                             className="connection-delete cursor-pointer" 
@@ -10445,12 +11038,23 @@ You must design a visual composition that tells the story through **8 distinct p
                                      node.type === 'gen-video' ? '生成视频' : 
                                      node.type === 'text-node' ? '文字' : 
                                      node.type === 'preview' ? '预览' : 
+                                     node.type === 'novel-input' ? '小说输入' :
+                                     node.type === 'extract-characters-scenes' ? '提取角色和场景' :
+                                     node.type === 'character-description' ? '角色描述' :
+                                     node.type === 'scene-description' ? '场景描述' :
+                                     node.type === 'create-character' ? '创建角色' :
+                                     node.type === 'create-scene' ? '创建场景' :
+                                     node.type === 'generate-character-video' ? '生成角色视频' :
+                                     node.type === 'generate-scene-video' ? '生成场景视频' :
+                                     node.type === 'generate-character-image' ? '生成角色图片' :
+                                     node.type === 'generate-scene-image' ? '生成场景图片' :
+                                     node.type === 'local-save' ? '保存到本地' :
                                      node.type || '节点'}
                                 </div>
                             )}
                             
                             {/* 保留连接点占位符，确保连线位置正确（简化样式） */}
-                            {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && node.type !== 'preview' && (
+                            {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && (
                                 node.type === 'image-compare' ? (
                                     <>
                                         <div 
@@ -10526,7 +11130,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                     />
                                 )
                             )}
-                            {node.type !== 'preview' && (
+                            {node.type !== 'local-save' && (
                                 <div
                                     className="connector connector-right"
                                     style={{
@@ -10566,14 +11170,14 @@ You must design a visual composition that tells the story through **8 distinct p
                     <div
                         key={node.id}
                         data-node-id={node.id}
-                        className={`absolute rounded-xl shadow-xl transition-shadow duration-150 group flex flex-col node-wrapper ${
+                        className={`absolute rounded-xl ${isPerformanceMode ? '' : 'shadow-xl'} transition-shadow duration-150 group flex flex-col node-wrapper ${
                             isSelected
-                                ? 'ring-1 ring-blue-500 shadow-blue-500/20'
+                                ? 'ring-1 ring-blue-500' + (isPerformanceMode ? '' : ' shadow-blue-500/20')
                                 : isAdjacent
-                                    ? 'ring-2 ring-blue-300/60 shadow-blue-300/30'
+                                    ? 'ring-2 ring-blue-300/60' + (isPerformanceMode ? '' : ' shadow-blue-300/30')
                                     : theme === 'dark'
-                                        ? 'border border-zinc-800 shadow-black/40'
-                                        : 'border border-zinc-200 shadow-black/10'
+                                        ? 'border border-zinc-800' + (isPerformanceMode ? '' : ' shadow-black/40')
+                                        : 'border border-zinc-200' + (isPerformanceMode ? '' : ' shadow-black/10')
                         } ${isHoverTarget && ((connectingSource && connectingSource !== node.id) || (connectingTarget && connectingTarget !== node.id)) ? 'ring-2 ring-green-500/50' : ''} ${
                             theme === 'dark' ? 'bg-[#18181b]' : 'bg-white'
                         }`}
@@ -10584,6 +11188,7 @@ You must design a visual composition that tells the story through **8 distinct p
                             height: node.height, 
                             cursor: (dragNodeId === node.id || (dragNodeId && selectedNodeIds.has(node.id))) ? 'grabbing' : 'default', 
                             zIndex: isDragging ? 50 : 10, // 拖动时提升 z-index，避免被其他节点遮挡
+                            boxShadow: isPerformanceMode ? undefined : (isDragging ? (theme === 'dark' ? '0 0 25px rgba(59, 130, 246, 0.6), 0 0 10px rgba(59, 130, 246, 0.4)' : '0 0 25px rgba(59, 130, 246, 0.4), 0 0 10px rgba(59, 130, 246, 0.2)') : undefined),
                             WebkitFontSmoothing: 'antialiased',
                             MozOsxFontSmoothing: 'grayscale',
                             textRendering: 'optimizeLegibility',
@@ -10651,7 +11256,7 @@ You must design a visual composition that tells the story through **8 distinct p
                         </button>
                         <div className="absolute bottom-1 right-1 w-4 h-4 z-[100] resize-handle flex items-end justify-end p-0.5" onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setResizingNodeId(node.id); }}><svg width="6" height="6" viewBox="0 0 8 8" fill="none" className="text-zinc-600"><path d="M8 0L8 8L0 8" stroke="currentColor" strokeWidth="2" /></svg></div>
                         
-                        {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && node.type !== 'preview' && (
+                        {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && (
                             node.type === 'image-compare' ? (
                                 <>
                                     <div 
@@ -10703,7 +11308,7 @@ You must design a visual composition that tells the story through **8 distinct p
                             )
                         )}
                         
-                        {node.type !== 'preview' && (
+                        {node.type !== 'local-save' && (
                             <div
                                 className={`connector connector-right ${connectingSource === node.id ? 'active' : ''} ${connectingTarget && hoverTargetId === node.id ? 'ring-2 ring-green-500/50' : ''}`}
                                 title="输出"
@@ -10856,6 +11461,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                                     imageUrl={node.content}
                                                     imageDimensions={node.dimensions}
                                                     isActive={node.isMasking}
+                                                    isPerformanceMode={isPerformanceMode}
                                                     onClose={() => {
                                                         setNodes((prev) => prev.map((n) => 
                                                             n.id === node.id 
@@ -11092,6 +11698,2446 @@ You must design a visual composition that tells the story through **8 distinct p
                                             }`}
                                             onMouseDown={(e) => e.stopPropagation()}
                                         />
+                                    </div>
+                                </div>
+                            )}
+
+                            {node.type === 'novel-input' && (
+                                <div
+                                    className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
+                                        theme === 'dark'
+                                            ? 'bg-zinc-900/80'
+                                            : 'bg-zinc-100'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-1.5 px-3 py-2 border-b text-xs font-semibold shrink-0">
+                                        <FileText size={12} className="text-blue-500" />
+                                        <span>小说输入</span>
+                                    </div>
+                                    <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden min-h-0">
+                                        <textarea
+                                            value={node.settings?.content || ''}
+                                            onChange={(e) => {
+                                                const newValue = e.target.value;
+                                                if (newValue.length <= 10000) {
+                                                    updateNodeSettings(node.id, { content: newValue });
+                                                }
+                                            }}
+                                            placeholder="输入小说内容（最多10,000字）..."
+                                            maxLength={10000}
+                                            className={`w-full h-full resize-none outline-none text-sm p-2 rounded border ${
+                                                theme === 'dark'
+                                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
+                                                    : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
+                                            }`}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                        />
+                                        <div className="text-right text-[10px] text-zinc-500 shrink-0">
+                                            {(node.settings?.content || '').length}/10,000
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between px-3 py-2 border-t shrink-0">
+                                        <button
+                                            className={`flex-1 px-3 py-2 rounded text-xs font-medium transition-colors ${
+                                                theme === 'dark'
+                                                    ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                            }`}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            type="button"
+                                            onClick={() => {
+                                                if (!node.settings?.content || node.settings.content.trim().length === 0) {
+                                                    alert('请先输入小说内容');
+                                                    return;
+                                                }
+                                                // 创建提取角色和场景节点
+                                                // node.x/node.y 本身就是 world 坐标，不应再 screenToWorld，否则会导致新节点“飞到”视野外
+                                                const worldX = node.x + node.width + 100;
+                                                const worldY = node.y + node.height / 2;
+                                                const extractNodeId = `node-${Date.now()}`;
+                                                const extractNode = {
+                                                    id: extractNodeId,
+                                                    type: 'extract-characters-scenes',
+                                                    x: worldX - 200,
+                                                    y: worldY - 200,
+                                                    width: 400,
+                                                    height: 500,
+                                                    settings: {
+                                                        model: apiConfigs.find(c => c.type === 'Chat')?.id || '',
+                                                        content: node.settings.content
+                                                    }
+                                                };
+                                                setNodes(prev => [...prev, extractNode]);
+                                                // 创建连接
+                                                setConnections(prev => [...prev, {
+                                                    id: `conn-${Date.now()}`,
+                                                    from: node.id,
+                                                    to: extractNodeId
+                                                }]);
+                                                
+                                                // 自动触发提取（延迟100ms确保节点已渲染）
+                                                setTimeout(() => {
+                                                    const extractButton = document.getElementById(`extract-button-${extractNodeId}`);
+                                                    if (extractButton) {
+                                                        extractButton.click();
+                                                    }
+                                                }, 100);
+                                            }}
+                                        >
+                                            提取角色和场景
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {node.type === 'extract-characters-scenes' && (
+                                <div
+                                    className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
+                                        theme === 'dark'
+                                            ? 'bg-zinc-900/80'
+                                            : 'bg-zinc-100'
+                                    }`}
+                                >
+                                    <div className={`flex items-center justify-between px-3 py-2 border-b text-xs font-semibold shrink-0 ${
+                                        theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
+                                    }`}>
+                                        <div className="flex items-center gap-1.5">
+                                            <Wand2 size={12} className="text-purple-500" />
+                                            <span>提取角色和场景</span>
+                                        </div>
+                                        {node.settings?.analysisResults && (
+                                            <span className="text-[10px] text-zinc-500">
+                                                {(node.settings.analysisResults.characters?.length || 0) + (node.settings.analysisResults.scenes?.length || 0)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
+                                        {/* 模型选择器 */}
+                                        <div>
+                                            <label className="text-[10px] mb-1 block text-zinc-500">选择分析模型</label>
+                                            <select
+                                                value={node.settings?.model || ''}
+                                                onChange={(e) => updateNodeSettings(node.id, { model: e.target.value })}
+                                                className={`w-full px-2 py-1 rounded text-xs border ${
+                                                    theme === 'dark'
+                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                }`}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            >
+                                                {apiConfigs
+                                                    .filter(c => c.type === 'Chat')
+                                                    .map(c => (
+                                                        <option key={c.id} value={c.id}>{c.provider}</option>
+                                                    ))}
+                                            </select>
+                                        </div>
+                                        
+                                        {/* 显示提取结果 */}
+                                        {node.settings?.analysisResults ? (
+                                            <>
+                                                {/* 角色列表 */}
+                                                {node.settings.analysisResults.characters && node.settings.analysisResults.characters.length > 0 && (
+                                                    <div>
+                                                        <div className="text-[10px] font-medium mb-1 text-zinc-500">
+                                                            角色 ({node.settings.analysisResults.characters.length})
+                                                        </div>
+                                                        {node.settings.analysisResults.characters.map((char, idx) => (
+                                                            <div key={char.id} className={`p-2 rounded mb-1 ${
+                                                                theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-50'
+                                                            }`}>
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                                                        idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-purple-500' : 'bg-blue-500'
+                                                                    }`}></span>
+                                                                    <span className="text-[11px]">{char.name} ({char.role || '未知'})</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                {/* 场景列表 */}
+                                                {node.settings.analysisResults.scenes && node.settings.analysisResults.scenes.length > 0 && (
+                                                    <div>
+                                                        <div className="text-[10px] font-medium mb-1 text-zinc-500">
+                                                            场景 ({node.settings.analysisResults.scenes.length})
+                                                        </div>
+                                                        {node.settings.analysisResults.scenes.map((scene, idx) => (
+                                                            <div key={scene.id} className={`p-2 rounded mb-1 ${
+                                                                theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-50'
+                                                            }`}>
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+                                                                    <span className="text-[11px]">{scene.name}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center flex-1 gap-2 text-[11px] text-zinc-500">
+                                                <Wand2 size={24} className="text-zinc-400" />
+                                                <span>点击"提取"按钮开始分析</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="px-3 py-2 border-t shrink-0">
+                                        {/* 进度条显示 */}
+                                        {node.settings?.isAnalyzing && (
+                                            <div className="mb-2">
+                                                <div className="text-[10px] mb-1 text-zinc-500">正在分析小说内容...</div>
+                                                <div className={`w-full h-1.5 rounded-full overflow-hidden ${
+                                                    theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
+                                                }`}>
+                                                    <div 
+                                                        className="h-full bg-blue-500 transition-all duration-300"
+                                                        style={{ width: `${node.settings?.progress || 0}%` }}
+                                                    />
+                                                </div>
+                                                <div className="text-[10px] text-zinc-500 mt-1">
+                                                    {node.settings?.progress || 0}% 完成
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        <button
+                                            id={`extract-button-${node.id}`}
+                                            className={`w-full py-2 rounded text-xs font-medium transition-colors ${
+                                                node.settings?.isAnalyzing
+                                                    ? 'bg-zinc-400 cursor-not-allowed text-white'
+                                                    : theme === 'dark'
+                                                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'
+                                                        : 'bg-blue-600 hover:bg-blue-500 text-white'
+                                            }`}
+                                            disabled={node.settings?.isAnalyzing}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onClick={async () => {
+                                                // 从连接的小说节点获取内容
+                                                const novelNode = connections
+                                                    .filter(c => c.to === node.id)
+                                                    .map(c => nodesMap.get(c.from))
+                                                    .find(n => n?.type === 'novel-input');
+                                                
+                                                const novelContent = novelNode?.settings?.content || node.settings?.content || '';
+                                                
+                                                if (!novelContent || novelContent.trim().length === 0) {
+                                                    alert('请先连接小说输入节点或输入小说内容');
+                                                    return;
+                                                }
+                                                
+                                                const selectedModel = node.settings?.model || apiConfigs.find(c => c.type === 'Chat')?.id || '';
+                                                if (!selectedModel) {
+                                                    alert('请先选择分析模型');
+                                                    return;
+                                                }
+                                                
+                                                // 更新节点状态，显示进度条
+                                                updateNodeSettings(node.id, { 
+                                                    isAnalyzing: true,
+                                                    progress: 0,
+                                                    lastAnalyzed: null,
+                                                    error: null
+                                                });
+                                                
+                                                try {
+                                                    // 模拟分析过程，显示进度
+                                                    const step = 10;
+                                                    let progress = 0;
+                                                    
+                                                    const progressInterval = setInterval(() => {
+                                                        progress += step;
+                                                        if (progress >= 90) {
+                                                            clearInterval(progressInterval);
+                                                        }
+                                                        updateNodeSettings(node.id, { progress });
+                                                    }, 300);
+                                                    const config = apiConfigsMap.get(selectedModel);
+                                                    const apiKey = config?.key || globalApiKey;
+                                                    const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
+                                                    
+                                                    if (!apiKey) {
+                                                        alert('请先配置API Key');
+                                                        return;
+                                                    }
+                                                    
+                                                    // 构建分析请求
+                                                    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Authorization': `Bearer ${apiKey}`,
+                                                            'Content-Type': 'application/json'
+                                                        },
+                                                        body: JSON.stringify({
+                                                            model: config?.modelName || selectedModel,
+                                                            messages: [
+                                                                {
+                                                                    role: 'system',
+                                                                    content: `你是一个小说内容分析器。请分析以下小说内容，提取所有角色和场景信息，返回JSON格式：
+{
+  "characters": [
+    {"id": "唯一ID", "name": "角色名", "role": "角色身份", "description": "角色详细描述", "age": "年龄", "gender": "性别"},
+    ...
+  ],
+  "scenes": [
+    {"id": "唯一ID", "name": "场景名", "description": "场景详细描述"},
+    ...
+  ]
+}
+请确保返回的是有效的JSON格式，不要包含任何markdown代码块标记。`
+                                                                },
+                                                                {
+                                                                    role: 'user',
+                                                                    content: `小说内容：\n${novelContent}`
+                                                                }
+                                                            ],
+                                                            temperature: 0.3
+                                                        })
+                                                    });
+                                                    
+                                                    if (!response.ok) {
+                                                        const errText = await response.text();
+                                                        throw new Error(errText || `API Error: ${response.status}`);
+                                                    }
+                                                    
+                                                    const data = await response.json();
+                                                    const content = data.choices?.[0]?.message?.content || '{}';
+                                                    let results;
+                                                    
+                                                    try {
+                                                        // 尝试直接解析JSON
+                                                        results = JSON.parse(content);
+                                                    } catch (e) {
+                                                        // 尝试修复JSON格式（移除markdown代码块标记）
+                                                        const cleaned = content
+                                                            .replace(/```json\s*/g, '')
+                                                            .replace(/```\s*/g, '')
+                                                            .replace(/[\r\n]/g, ' ')
+                                                            .replace(/,\s*}/g, '}')
+                                                            .replace(/,\s*\]/g, ']')
+                                                            .trim();
+                                                        try {
+                                                            results = JSON.parse(cleaned);
+                                                        } catch (e2) {
+                                                            throw new Error('解析结果失败，请重试');
+                                                        }
+                                                    }
+                                                    
+                                                    // 验证结果格式
+                                                    if (!results.characters || !Array.isArray(results.characters)) {
+                                                        results.characters = [];
+                                                    }
+                                                    if (!results.scenes || !Array.isArray(results.scenes)) {
+                                                        results.scenes = [];
+                                                    }
+                                                    
+                                                    // 更新节点设置
+                                                    updateNodeSettings(node.id, { 
+                                                        isAnalyzing: false,
+                                                        progress: 100,
+                                                        analysisResults: results,
+                                                        lastAnalyzed: Date.now()
+                                                    });
+                                                    
+                                                    // 自动生成完整工作流
+                                                    setTimeout(() => {
+                                                        generateFullWorkflow(node.id, results);
+                                                    }, 500);
+                                                } catch (error) {
+                                                    console.error('分析错误:', error);
+                                                    updateNodeSettings(node.id, { 
+                                                        isAnalyzing: false,
+                                                        progress: 0,
+                                                        error: error.message
+                                                    });
+                                                    alert(`分析失败: ${error.message}`);
+                                                }
+                                            }}
+                                        >
+                                            {node.settings?.isAnalyzing 
+                                                ? '分析中...' 
+                                                : node.settings?.lastAnalyzed ? '重新提取' : '提取角色和场景'}
+                                        </button>
+                                        {node.settings?.error && (
+                                            <div className="mt-2 text-[10px] text-red-500">
+                                                {node.settings.error}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {(node.type === 'character-description' || node.type === 'scene-description') && (
+                                <div
+                                    className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
+                                        theme === 'dark'
+                                            ? 'bg-zinc-900/80'
+                                            : 'bg-zinc-100'
+                                    }`}
+                                >
+                                    {(() => {
+                                        const isCharacter = node.type === 'character-description';
+                                        const title = isCharacter ? '角色描述' : '场景描述';
+                                        const styles = [
+                                            { value: 'none', label: '无' },
+                                            { value: '2d-anime', label: '2D动漫' },
+                                            { value: '3d-anime', label: '3D动漫' },
+                                            { value: 'realistic', label: '写实' },
+                                            { value: 'selfie', label: '自拍' },
+                                            { value: 'news', label: '新闻' },
+                                            { value: 'manga', label: '漫画' }
+                                        ];
+                                        
+                                        // 默认提示词
+                                        const defaultPrompt = isCharacter
+                                            ? `动漫风格，全身视角，名叫${node.settings?.characterName || '{角色名}'}的${node.settings?.age || '25'}岁左右${node.settings?.gender || '年轻男人'}站在白色背景前，${node.settings?.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${node.settings?.characterName || '{角色名}'}，${node.settings?.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`
+                                            : node.settings?.description || `极度奢华的星际战舰舰桥内部，空间广阔如同一座宫殿，四壁装饰着繁复的黄金浮雕与象牙立柱，地面铺着深红色的天鹅绒地毯，巨大的落地舷窗外是深邃星空，中央悬挂着水晶吊灯，操作台被伪装成古典家具的样子，整体色调金碧辉煌，氛围庄严却透着一种不切实际的荒谬感`;
+                                        
+                                        return (
+                                            <>
+                                                <div className={`flex items-center justify-between px-3 py-2 border-b text-xs font-semibold shrink-0 ${
+                                                    theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
+                                                }`}>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <FileText size={12} className={isCharacter ? "text-red-500" : "text-green-500"} />
+                                                        <span>{title}</span>
+                                                    </div>
+                                                    {isCharacter && node.settings?.characterName && (
+                                                        <div className="text-[10px] text-zinc-500">角色: {node.settings.characterName}</div>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden min-h-0">
+                                                    {/* 模式切换 - 角色和场景描述节点都显示 */}
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <button
+                                                            className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                                                                (node.settings?.mode || 'video') === 'video'
+                                                                    ? 'bg-blue-500 text-white'
+                                                                    : theme === 'dark'
+                                                                        ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                                                                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                                                            }`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                            onClick={() => {
+                                                                const newMode = 'video';
+                                                                const currentPrompt = node.settings?.prompt || defaultPrompt;
+                                                                if (isCharacter) {
+                                                                    const newPrompt = currentPrompt.includes('360度') 
+                                                                        ? currentPrompt 
+                                                                        : currentPrompt + '，然后缓慢转一圈360度全方位展示身体';
+                                                                    updateNodeSettings(node.id, { mode: newMode, prompt: newPrompt });
+                                                                } else {
+                                                                    updateNodeSettings(node.id, { mode: newMode });
+                                                                }
+                                                            }}
+                                                        >
+                                                            视频模式
+                                                        </button>
+                                                        <button
+                                                            className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                                                                node.settings?.mode === 'image'
+                                                                    ? 'bg-blue-500 text-white'
+                                                                    : theme === 'dark'
+                                                                        ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                                                                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                                                            }`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                            onClick={() => {
+                                                                const newMode = 'image';
+                                                                const currentPrompt = node.settings?.prompt || defaultPrompt;
+                                                                if (isCharacter) {
+                                                                    const newPrompt = currentPrompt.replace(/，然后缓慢转一圈360度全方位展示身体/g, '');
+                                                                    updateNodeSettings(node.id, { mode: newMode, prompt: newPrompt });
+                                                                } else {
+                                                                    updateNodeSettings(node.id, { mode: newMode });
+                                                                }
+                                                            }}
+                                                        >
+                                                            图片模式
+                                                        </button>
+                                                    </div>
+                                                    
+                                                    {/* 提示词输入区域 */}
+                                                    <div className="flex-1 flex flex-col gap-1 min-h-0">
+                                                        <div className="flex items-center justify-between shrink-0">
+                                                            <span className="text-[10px] text-zinc-500">提示词</span>
+                                                            <div className="flex items-center gap-2">
+                                                                {!isCharacter && (
+                                                                    <button
+                                                                        className="text-[10px] text-purple-500 hover:text-purple-700"
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            const currentPrompt = node.settings?.prompt || defaultPrompt;
+                                                                            if (!currentPrompt || currentPrompt.trim().length === 0) {
+                                                                                alert('请先输入提示词');
+                                                                                return;
+                                                                            }
+                                                                            
+                                                                            // 获取大模型配置
+                                                                            const chatModelForEnhance = node.settings?.chatModel || apiConfigs.find(c => c.type === 'Chat')?.id;
+                                                                            if (!chatModelForEnhance) {
+                                                                                alert('请先选择大模型');
+                                                                                return;
+                                                                            }
+                                                                            
+                                                                            const chatConfig = apiConfigs.find(c => c.id === chatModelForEnhance);
+                                                                            if (!chatConfig) {
+                                                                                alert('未找到大模型配置');
+                                                                                return;
+                                                                            }
+                                                                            
+                                                                            const apiKey = chatConfig.key || globalApiKey;
+                                                                            if (!apiKey) {
+                                                                                alert('请先配置API Key');
+                                                                                setSettingsOpen(true);
+                                                                                return;
+                                                                            }
+                                                                            
+                                                                            updateNodeSettings(node.id, { isEnhancing: true });
+                                                                            try {
+                                                                                const baseUrl = (chatConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
+                                                                                const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+                                                                                    method: 'POST',
+                                                                                    headers: {
+                                                                                        'Authorization': `Bearer ${apiKey}`,
+                                                                                        'Content-Type': 'application/json'
+                                                                                    },
+                                                                                    body: JSON.stringify({
+                                                                                        model: chatConfig.modelName || chatConfig.id || 'gpt-4o',
+                                                                                        messages: [
+                                                                                            {
+                                                                                                role: 'system',
+                                                                                                content: '你是一个场景描述增强专家。请根据用户提供的场景描述，增加更多细节，包括环境氛围、光线、材质、色彩、空间布局等，但必须确保不包含任何人物、角色、字符。输出应详细且生动，只包含场景特征描述。'
+                                                                                            },
+                                                                                            {
+                                                                                                role: 'user',
+                                                                                                content: currentPrompt
+                                                                                            }
+                                                                                        ],
+                                                                                        temperature: 0.7
+                                                                                    })
+                                                                                });
+                                                                                
+                                                                                if (!response.ok) {
+                                                                                    throw new Error('增强场景描述失败');
+                                                                                }
+                                                                                
+                                                                                const data = await response.json();
+                                                                                const enhanced = data.choices?.[0]?.message?.content?.trim() || currentPrompt;
+                                                                                
+                                                                                // 再次过滤，确保没有人物、字符
+                                                                                const filtered = await filterScenePrompt(enhanced);
+                                                                                
+                                                                                updateNodeSettings(node.id, { 
+                                                                                    prompt: filtered,
+                                                                                    filteredPrompt: filtered,
+                                                                                    isEnhancing: false
+                                                                                });
+                                                                            } catch (error) {
+                                                                                console.error('增强场景描述失败:', error);
+                                                                                updateNodeSettings(node.id, { isEnhancing: false });
+                                                                                alert('增强场景描述失败，请重试');
+                                                                            }
+                                                                        }}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                        disabled={node.settings?.isEnhancing}
+                                                                    >
+                                                                        {node.settings?.isEnhancing ? '增强中...' : '增强场景描述'}
+                                                                    </button>
+                                                                )}
+                                                                {isCharacter ? (
+                                                                    <button
+                                                                        className="text-[10px] text-blue-500 hover:text-blue-700"
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            const currentPrompt = node.settings?.prompt || defaultPrompt;
+                                                                            if (!currentPrompt || currentPrompt.trim().length === 0) {
+                                                                                alert('请先输入提示词');
+                                                                                return;
+                                                                            }
+                                                                            updateNodeSettings(node.id, { isFiltering: true });
+                                                                            try {
+                                                                                const filtered = await filterCharacterPrompt(currentPrompt);
+                                                                                updateNodeSettings(node.id, { 
+                                                                                    prompt: filtered,
+                                                                                    filteredPrompt: filtered,
+                                                                                    isFiltering: false
+                                                                                });
+                                                                            } catch (error) {
+                                                                                console.error('过滤提示词失败:', error);
+                                                                                updateNodeSettings(node.id, { isFiltering: false });
+                                                                                alert('过滤提示词失败，请重试');
+                                                                            }
+                                                                        }}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                        disabled={node.settings?.isFiltering}
+                                                                    >
+                                                                        {node.settings?.isFiltering ? '过滤中...' : '过滤提示词'}
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        className="text-[10px] text-blue-500 hover:text-blue-700"
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            const currentPrompt = node.settings?.prompt || defaultPrompt;
+                                                                            if (!currentPrompt || currentPrompt.trim().length === 0) {
+                                                                                alert('请先输入提示词');
+                                                                                return;
+                                                                            }
+                                                                            updateNodeSettings(node.id, { isFiltering: true });
+                                                                            try {
+                                                                                const filtered = await filterScenePrompt(currentPrompt);
+                                                                                updateNodeSettings(node.id, { 
+                                                                                    prompt: filtered,
+                                                                                    filteredPrompt: filtered,
+                                                                                    isFiltering: false
+                                                                                });
+                                                                            } catch (error) {
+                                                                                console.error('过滤提示词失败:', error);
+                                                                                updateNodeSettings(node.id, { isFiltering: false });
+                                                                                alert('过滤提示词失败，请重试');
+                                                                            }
+                                                                        }}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                        disabled={node.settings?.isFiltering}
+                                                                    >
+                                                                        {node.settings?.isFiltering ? '过滤中...' : '过滤提示词'}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <textarea
+                                                            value={node.settings?.prompt || defaultPrompt}
+                                                            onChange={(e) => updateNodeSettings(node.id, { prompt: e.target.value })}
+                                                            placeholder={`输入${isCharacter ? '角色' : '场景'}描述...`}
+                                                            className={`w-full flex-1 resize-none outline-none text-sm p-2 rounded border ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
+                                                                    : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
+                                                            }`}
+                                                            style={{ 
+                                                                minHeight: '100px',
+                                                                maxHeight: '200px',
+                                                                overflowY: 'auto',
+                                                                resize: 'vertical'
+                                                            }}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        />
+                                                    </div>
+                                                    
+                                                    {/* 大模型选择 - 用于增强场景描述和过滤提示词 */}
+                                                    {!isCharacter && (
+                                                        <div className="shrink-0">
+                                                            <label className="text-[10px] block mb-1 text-zinc-500">大模型选择（用于增强场景描述和过滤提示词）</label>
+                                                            <select
+                                                                value={node.settings?.chatModel || ''}
+                                                                onChange={(e) => updateNodeSettings(node.id, { chatModel: e.target.value })}
+                                                                className={`w-full text-[10px] px-2 py-1 rounded border ${
+                                                                    theme === 'dark'
+                                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                                }`}
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                            >
+                                                                <option value="">选择大模型（可选）</option>
+                                                                {apiConfigs
+                                                                    .filter(c => c.type === 'Chat')
+                                                                    .map(c => (
+                                                                        <option key={c.id} value={c.id}>{c.provider}</option>
+                                                                    ))}
+                                                            </select>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 模式特定设置 */}
+                                                    {(node.settings?.mode || 'video') === 'video' ? (
+                                                        <div className="flex flex-col gap-2 shrink-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] text-zinc-500">时长</span>
+                                                                    <button
+                                                                        className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                                                                            node.settings?.duration === '10s'
+                                                                                ? 'bg-blue-500 text-white'
+                                                                                : theme === 'dark'
+                                                                                    ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                                                                                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                                                                        }`}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                        onClick={() => updateNodeSettings(node.id, { duration: '10s' })}
+                                                                    >
+                                                                        10s
+                                                                    </button>
+                                                                    <button
+                                                                        className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                                                                            node.settings?.duration === '15s'
+                                                                                ? 'bg-blue-500 text-white'
+                                                                                : theme === 'dark'
+                                                                                    ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                                                                                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                                                                        }`}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                        onClick={() => updateNodeSettings(node.id, { duration: '15s' })}
+                                                                    >
+                                                                        15s
+                                                                    </button>
+                                                                </div>
+                                                                
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] text-zinc-500">风格</span>
+                                                                    <select
+                                                                        value={node.settings?.style || 'none'}
+                                                                        onChange={(e) => {
+                                                                            const newStyle = e.target.value;
+                                                                            const stylePrefix = getStylePrefix(newStyle);
+                                                                            const currentPrompt = node.settings?.prompt || defaultPrompt;
+                                                                            // 更新风格并自动更新提示词前缀
+                                                                            const updatedPrompt = currentPrompt.replace(/^[^，]+，/, `${stylePrefix}，`);
+                                                                            updateNodeSettings(node.id, { style: newStyle, prompt: updatedPrompt });
+                                                                        }}
+                                                                        className={`text-[10px] px-2 py-1 rounded border ${
+                                                                            theme === 'dark'
+                                                                                ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                                : 'bg-white border-zinc-300 text-zinc-800'
+                                                                        }`}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        {styles.map(style => (
+                                                                            <option key={style.value} value={style.value}>{style.label}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* 视频模式下也显示图片生成设置（仅场景描述） */}
+                                                            {!isCharacter && (
+                                                                <div className="flex flex-col gap-2 border-t pt-2 mt-2">
+                                                                    <div className="text-[10px] text-zinc-500 mb-1">图片生成设置</div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="flex-1">
+                                                                            <span className="text-[10px] block mb-1 text-zinc-500">模型</span>
+                                                                            <select
+                                                                                value={node.settings?.imageModel || ''}
+                                                                                onChange={(e) => updateNodeSettings(node.id, { imageModel: e.target.value })}
+                                                                                className={`w-full text-[10px] px-2 py-1 rounded border ${
+                                                                                    theme === 'dark'
+                                                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                                                }`}
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                <option value="">选择模型</option>
+                                                                                {apiConfigs
+                                                                                    .filter(c => c.type === 'Image')
+                                                                                    .map(c => (
+                                                                                        <option key={c.id} value={c.id}>{c.provider}</option>
+                                                                                    ))}
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+                                                                    
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="flex-1">
+                                                                            <span className="text-[10px] block mb-1 text-zinc-500">比例</span>
+                                                                            <select
+                                                                                value={node.settings?.imageRatio || '16:9'}
+                                                                                onChange={(e) => updateNodeSettings(node.id, { imageRatio: e.target.value })}
+                                                                                className={`w-full text-[10px] px-2 py-1 rounded border ${
+                                                                                    theme === 'dark'
+                                                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                                                }`}
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                <option value="auto">Auto</option>
+                                                                                <option value="1:1">1:1</option>
+                                                                                <option value="16:9">16:9</option>
+                                                                                <option value="9:16">9:16</option>
+                                                                                <option value="4:3">4:3</option>
+                                                                                <option value="3:4">3:4</option>
+                                                                                <option value="21:9">21:9</option>
+                                                                                <option value="3:2">3:2</option>
+                                                                                <option value="2:3">2:3</option>
+                                                                            </select>
+                                                                        </div>
+                                                                        
+                                                                        <div className="flex-1">
+                                                                            <span className="text-[10px] block mb-1 text-zinc-500">分辨率</span>
+                                                                            <select
+                                                                                value={node.settings?.imageResolution || '2k'}
+                                                                                onChange={(e) => updateNodeSettings(node.id, { imageResolution: e.target.value })}
+                                                                                className={`w-full text-[10px] px-2 py-1 rounded border ${
+                                                                                    theme === 'dark'
+                                                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                                                }`}
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                <option value="2k">2K</option>
+                                                                                <option value="4k">4K</option>
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col gap-2 shrink-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="flex-1">
+                                                                    <span className="text-[10px] block mb-1 text-zinc-500">模型</span>
+                                                                    <select
+                                                                        value={node.settings?.imageModel || ''}
+                                                                        onChange={(e) => updateNodeSettings(node.id, { imageModel: e.target.value })}
+                                                                        className={`w-full text-[10px] px-2 py-1 rounded border ${
+                                                                            theme === 'dark'
+                                                                                ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                                : 'bg-white border-zinc-300 text-zinc-800'
+                                                                        }`}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <option value="">选择模型</option>
+                                                                        {apiConfigs
+                                                                            .filter(c => c.type === 'Image')
+                                                                            .map(c => (
+                                                                                <option key={c.id} value={c.id}>{c.provider}</option>
+                                                                            ))}
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="flex-1">
+                                                                    <span className="text-[10px] block mb-1 text-zinc-500">比例</span>
+                                                                    <select
+                                                                        value={node.settings?.imageRatio || '16:9'}
+                                                                        onChange={(e) => updateNodeSettings(node.id, { imageRatio: e.target.value })}
+                                                                        className={`w-full text-[10px] px-2 py-1 rounded border ${
+                                                                            theme === 'dark'
+                                                                                ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                                : 'bg-white border-zinc-300 text-zinc-800'
+                                                                        }`}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <option value="auto">Auto</option>
+                                                                        <option value="1:1">1:1</option>
+                                                                        <option value="16:9">16:9</option>
+                                                                        <option value="9:16">9:16</option>
+                                                                        <option value="4:3">4:3</option>
+                                                                        <option value="3:4">3:4</option>
+                                                                        <option value="21:9">21:9</option>
+                                                                        <option value="3:2">3:2</option>
+                                                                        <option value="2:3">2:3</option>
+                                                                    </select>
+                                                                </div>
+                                                                
+                                                                <div className="flex-1">
+                                                                    <span className="text-[10px] block mb-1 text-zinc-500">分辨率</span>
+                                                                    <select
+                                                                        value={node.settings?.imageResolution || '2k'}
+                                                                        onChange={(e) => updateNodeSettings(node.id, { imageResolution: e.target.value })}
+                                                                        className={`w-full text-[10px] px-2 py-1 rounded border ${
+                                                                            theme === 'dark'
+                                                                                ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                                : 'bg-white border-zinc-300 text-zinc-800'
+                                                                        }`}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <option value="2k">2K</option>
+                                                                        <option value="4k">4K</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 参考图区域 */}
+                                                    <div className="mt-2 shrink-0">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <span className="text-[10px] text-zinc-500">参考图</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    className="text-[10px] text-blue-500 hover:text-blue-700"
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        document.getElementById(`ref-upload-${node.id}`)?.click();
+                                                                    }}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                >
+                                                                    + 添加参考图
+                                                                </button>
+                                                                <input
+                                                                    id={`ref-upload-${node.id}`}
+                                                                    type="file"
+                                                                    multiple
+                                                                    accept="image/*"
+                                                                    className="hidden"
+                                                                    onChange={(e) => {
+                                                                        const files = Array.from(e.target.files || []);
+                                                                        if (files.length === 0) return;
+                                                                        
+                                                                        const currentImages = node.settings?.referenceImages || [];
+                                                                        const newImages = [];
+                                                                        
+                                                                        files.slice(0, 4 - currentImages.length).forEach(file => {
+                                                                            if (file.type.startsWith('image/')) {
+                                                                                const reader = new FileReader();
+                                                                                reader.onload = (ev) => {
+                                                                                    newImages.push(ev.target.result);
+                                                                                    if (newImages.length === files.slice(0, 4 - currentImages.length).length) {
+                                                                                        const updatedImages = [...currentImages, ...newImages];
+                                                                                        updateNodeSettings(node.id, { referenceImages: updatedImages });
+                                                                                    }
+                                                                                };
+                                                                                reader.readAsDataURL(file);
+                                                                            }
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div
+                                                        tabIndex={0}
+                                                        className={`h-20 border rounded overflow-hidden flex items-center justify-center outline-none ${
+                                                            theme === 'dark' ? 'border-zinc-700' : 'border-zinc-300'
+                                                        }`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            // 让该区域获得焦点，以便 Ctrl+V 能触发 onPaste
+                                                            e.currentTarget.focus();
+                                                        }}
+                                                        onPaste={(e) => {
+                                                            // 只在参考图区域处理粘贴，避免被全局 paste 逻辑抢走
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            const items = Array.from(e.clipboardData?.items || []);
+                                                            const imageItems = items.filter(it => it.type && it.type.startsWith('image/'));
+                                                            if (imageItems.length === 0) return;
+                                                            
+                                                            const currentImages = node.settings?.referenceImages || [];
+                                                            const remaining = Math.max(0, 4 - currentImages.length);
+                                                            const toAdd = imageItems.slice(0, remaining);
+                                                            if (toAdd.length === 0) return;
+                                                            
+                                                            const newImages = [];
+                                                            toAdd.forEach((item) => {
+                                                                const file = item.getAsFile();
+                                                                if (!file) return;
+                                                                const reader = new FileReader();
+                                                                reader.onload = (ev) => {
+                                                                    newImages.push(ev.target.result);
+                                                                    if (newImages.length === toAdd.length) {
+                                                                        updateNodeSettings(node.id, { referenceImages: [...currentImages, ...newImages] });
+                                                                    }
+                                                                };
+                                                                reader.readAsDataURL(file);
+                                                            });
+                                                        }}
+                                                        onDragOver={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                        }}
+                                                        onDrop={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            const files = Array.from(e.dataTransfer.files || []);
+                                                            if (files.length === 0) return;
+                                                            
+                                                            const currentImages = node.settings?.referenceImages || [];
+                                                            const newImages = [];
+                                                            
+                                                            files.slice(0, 4 - currentImages.length).forEach(file => {
+                                                                if (file.type.startsWith('image/')) {
+                                                                    const reader = new FileReader();
+                                                                    reader.onload = (ev) => {
+                                                                        newImages.push(ev.target.result);
+                                                                        if (newImages.length === files.slice(0, 4 - currentImages.length).length) {
+                                                                            const updatedImages = [...currentImages, ...newImages];
+                                                                            updateNodeSettings(node.id, { referenceImages: updatedImages });
+                                                                        }
+                                                                    };
+                                                                    reader.readAsDataURL(file);
+                                                                }
+                                                            });
+                                                        }}
+                                                        >
+                                                            {(() => {
+                                                                const referenceImages = node.settings?.referenceImages || [];
+                                                                const hasReferenceImage = referenceImages.length > 0;
+                                                                
+                                                                return hasReferenceImage ? (
+                                                                    <div className="flex gap-1 overflow-x-auto w-full h-full p-1">
+                                                                        {referenceImages.map((src, idx) => (
+                                                                            <div key={idx} className="relative w-16 h-16 flex-shrink-0">
+                                                                                <img 
+                                                                                    src={src} 
+                                                                                    alt={`Reference ${idx + 1}`} 
+                                                                                    className="w-full h-full object-cover rounded"
+                                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                                />
+                                                                                <button
+                                                                                    className="absolute top-0 right-0 bg-red-500 text-white text-[10px] p-0.5 rounded-bl"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        const newImages = referenceImages.filter((_, i) => i !== idx);
+                                                                                        updateNodeSettings(node.id, { referenceImages: newImages });
+                                                                                    }}
+                                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                                >
+                                                                                    ×
+                                                                                </button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-center w-full">
+                                                                        <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                                                            拖放图片到此处、点击添加，或 Ctrl+V 粘贴
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="px-3 py-2 border-t shrink-0 flex flex-col gap-2">
+                                                    {/* 根据模式显示不同的按钮 */}
+                                                    {(node.settings?.mode || 'video') === 'image' ? (
+                                                        <button
+                                                            className={`w-full py-2 rounded text-xs font-medium transition-colors ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                                                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                                            }`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                if (!node.settings?.prompt || node.settings.prompt.trim().length === 0) {
+                                                                    alert('请先输入描述');
+                                                                    return;
+                                                                }
+                                                                
+                                                                // 创建生成图片节点
+                                                                const worldX = node.x + node.width + 100;
+                                                                const worldY = node.y + node.height / 2;
+                                                                const imageNodeId = `node-${Date.now()}`;
+                                                                const imageNode = {
+                                                                    id: imageNodeId,
+                                                                    type: isCharacter ? 'generate-character-image' : 'generate-scene-image',
+                                                                    x: worldX - 200,
+                                                                    y: worldY - 200,
+                                                                    width: 400,
+                                                                    height: 450,
+                                                                    settings: {
+                                                                        model: node.settings?.imageModel || apiConfigs.find(c => c.type === 'Image')?.id || '',
+                                                                        prompt: node.settings?.filteredPrompt || node.settings?.prompt,
+                                                                        chatModel: node.settings?.chatModel, // 传递大模型选择
+                                                                        ratio: node.settings?.imageRatio || '16:9',
+                                                                        resolution: node.settings?.imageResolution || '2k',
+                                                                        referenceImages: node.settings?.referenceImages || [],
+                                                                        sourceType: node.type,
+                                                                        sourceId: node.id
+                                                                    }
+                                                                };
+                                                                setNodes(prev => [...prev, imageNode]);
+                                                                
+                                                                // 创建连接
+                                                                setConnections(prev => [...prev, {
+                                                                    id: `conn-${Date.now()}`,
+                                                                    from: node.id,
+                                                                    to: imageNodeId
+                                                                }]);
+                                                            }}
+                                                        >
+                                                            {isCharacter ? '生成角色图片' : '生成场景图片'}
+                                                        </button>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                className={`w-full py-2 rounded text-xs font-medium transition-colors ${
+                                                                    theme === 'dark'
+                                                                        ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white'
+                                                                        : 'bg-green-600 hover:bg-green-500 text-white'
+                                                                }`}
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    if (!node.settings?.prompt || node.settings.prompt.trim().length === 0) {
+                                                                        alert('请先输入描述');
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    // 创建生成视频节点
+                                                                    const worldX = node.x + node.width + 100;
+                                                                    const worldY = node.y + node.height / 2;
+                                                                    const videoNodeId = `node-${Date.now()}`;
+                                                                    const videoNode = {
+                                                                        id: videoNodeId,
+                                                                        type: isCharacter ? 'generate-character-video' : 'generate-scene-video',
+                                                                        x: worldX - 200,
+                                                                        y: worldY - 200,
+                                                                        width: 400,
+                                                                        height: 450,
+                                                                        settings: {
+                                                                            model: 'sora-2',
+                                                                            duration: node.settings?.duration || '15s',
+                                                                            ratio: '16:9',
+                                                                            videoPrompt: node.settings?.filteredPrompt || node.settings?.prompt || '',
+                                                                            referenceImages: node.settings?.referenceImages || [],
+                                                                            sourceType: node.type,
+                                                                            sourceId: node.id
+                                                                        }
+                                                                    };
+                                                                    setNodes(prev => [...prev, videoNode]);
+                                                                    
+                                                                    // 创建连接
+                                                                    setConnections(prev => [...prev, {
+                                                                        id: `conn-${Date.now()}`,
+                                                                        from: node.id,
+                                                                        to: videoNodeId
+                                                                    }]);
+                                                                }}
+                                                            >
+                                                                生成视频
+                                                            </button>
+                                                            {/* 视频模式下也显示生成图片按钮（仅场景描述） */}
+                                                            {!isCharacter && (
+                                                                <button
+                                                                    className={`w-full py-2 rounded text-xs font-medium transition-colors ${
+                                                                        theme === 'dark'
+                                                                            ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                                                            : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                                                    }`}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        if (!node.settings?.prompt || node.settings.prompt.trim().length === 0) {
+                                                                            alert('请先输入描述');
+                                                                            return;
+                                                                        }
+                                                                        
+                                                                        // 创建生成图片节点
+                                                                        const worldX = node.x + node.width + 100;
+                                                                        const worldY = node.y + node.height / 2;
+                                                                        const imageNodeId = `node-${Date.now()}`;
+                                                                        const imageNode = {
+                                                                            id: imageNodeId,
+                                                                            type: 'generate-scene-image',
+                                                                            x: worldX - 200,
+                                                                            y: worldY - 200,
+                                                                            width: 400,
+                                                                            height: 450,
+                                                                            settings: {
+                                                                                model: node.settings?.imageModel || apiConfigs.find(c => c.type === 'Image')?.id || '',
+                                                                                prompt: node.settings?.filteredPrompt || node.settings?.prompt,
+                                                                                chatModel: node.settings?.chatModel, // 传递大模型选择
+                                                                                ratio: node.settings?.imageRatio || '16:9',
+                                                                                resolution: node.settings?.imageResolution || '2k',
+                                                                                referenceImages: node.settings?.referenceImages || [],
+                                                                                sourceType: node.type,
+                                                                                sourceId: node.id
+                                                                            }
+                                                                        };
+                                                                        setNodes(prev => [...prev, imageNode]);
+                                                                        
+                                                                        // 创建连接
+                                                                        setConnections(prev => [...prev, {
+                                                                            id: `conn-${Date.now()}`,
+                                                                            from: node.id,
+                                                                            to: imageNodeId
+                                                                        }]);
+                                                                    }}
+                                                                >
+                                                                    生成场景图片
+                                                                </button>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+
+                            {(node.type === 'create-character' || node.type === 'create-scene') && (
+                                <div
+                                    className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
+                                        theme === 'dark'
+                                            ? 'bg-zinc-900/80'
+                                            : 'bg-zinc-100'
+                                    }`}
+                                >
+                                    {(() => {
+                                        const isCharacter = node.type === 'create-character';
+                                        const title = isCharacter ? '创建角色' : '创建场景';
+                                        
+                                        // 解析旧数据：早期 create-scene 使用 timeRange（例如 "1,3"）
+                                        const parseTimeRangeToSeconds = (tr) => {
+                                            if (!tr) return null;
+                                            try {
+                                                const cleaned = String(tr)
+                                                    .trim()
+                                                    .replace(/[，\s]+/g, ',')
+                                                    .replace(/[~\-–—]+/g, ',');
+                                                const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
+                                                if (parts.length < 2) return null;
+                                                const start = parseFloat(parts[0]);
+                                                const end = parseFloat(parts[1]);
+                                                if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+                                                return { start, end };
+                                            } catch (e) {
+                                                return null;
+                                            }
+                                        };
+                                        const parsedRange = !isCharacter ? parseTimeRangeToSeconds(node.settings?.timeRange) : null;
+                                        const uiStartSecond = node.settings?.startSecond ?? parsedRange?.start ?? 1;
+                                        const uiEndSecond = node.settings?.endSecond ?? parsedRange?.end ?? 3;
+                                        
+                                        return (
+                                            <>
+                                                <div className={`flex items-center gap-1.5 px-3 py-2 border-b text-xs font-semibold shrink-0 ${
+                                                    theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
+                                                }`}>
+                                                    <User size={12} className={isCharacter ? "text-blue-500" : "text-green-500"} />
+                                                    <span>{title}</span>
+                                                </div>
+                                                
+                                                <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
+                                                    <div>
+                                                        <label className="text-[10px] block mb-1 text-zinc-500">
+                                                            {isCharacter ? '角色名称' : '场景名称'}
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={node.settings?.name || ''}
+                                                            onChange={(e) => updateNodeSettings(node.id, { name: e.target.value })}
+                                                            className={`w-full px-2 py-1 rounded text-xs border ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                    : 'bg-white border-zinc-300 text-zinc-800'
+                                                            }`}
+                                                            placeholder={isCharacter ? "输入角色名称..." : "输入场景名称..."}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        />
+                                                    </div>
+                                                    
+                                                    <div>
+                                                        <label className="text-[10px] block mb-1 text-zinc-500">
+                                                            时间范围（秒，间隔需在 1-3 秒之间）
+                                                        </label>
+                                                        <div className="flex gap-2 items-center flex-wrap">
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.1"
+                                                                value={uiStartSecond}
+                                                                onChange={(e) => updateNodeSettings(node.id, { startSecond: parseFloat(e.target.value) || 0 })}
+                                                                className={`w-20 px-2 py-1 rounded text-xs border ${
+                                                                    theme === 'dark'
+                                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                                }`}
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                            />
+                                                            <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>到</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.1"
+                                                                value={uiEndSecond}
+                                                                onChange={(e) => updateNodeSettings(node.id, { endSecond: parseFloat(e.target.value) || 0 })}
+                                                                className={`w-20 px-2 py-1 rounded text-xs border ${
+                                                                    theme === 'dark'
+                                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                                }`}
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                            />
+                                                            <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                                                秒（间隔: {(uiEndSecond - uiStartSecond).toFixed(1)}s）
+                                                            </span>
+                                                            {!isCharacter && (
+                                                                <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-500'}`}>
+                                                                    （旧版时间截: {node.settings?.timeRange || '无'}）
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* 进度条显示 */}
+                                                {node.settings?.isCreating && (
+                                                    <div className="px-3 py-2 border-t shrink-0">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center justify-between mb-1">
+                                                                    <span className="text-[10px] text-zinc-500">{title}中...</span>
+                                                                    <span className="text-[10px] text-zinc-500">{node.settings?.createProgress || 0}%</span>
+                                                                </div>
+                                                                <div className={`w-full h-1.5 rounded-full overflow-hidden ${
+                                                                    theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
+                                                                }`}>
+                                                                    <div 
+                                                                        className="h-full bg-blue-500 transition-all duration-300"
+                                                                        style={{ width: `${node.settings?.createProgress || 0}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {node.settings?.createError && (
+                                                            <div className="text-[10px] text-red-500 mt-1">
+                                                                {node.settings.createError}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                
+                                                <div className="px-3 py-2 border-t shrink-0">
+                                                    <button
+                                                        className={`w-full py-2 rounded text-xs font-medium transition-colors ${
+                                                            (node.settings?.isCreating)
+                                                                ? 'bg-zinc-400 cursor-not-allowed text-white'
+                                                                : theme === 'dark'
+                                                                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'
+                                                                    : 'bg-blue-600 hover:bg-blue-500 text-white'
+                                                        }`}
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                        type="button"
+                                                        disabled={node.settings?.isCreating}
+                                                        onClick={async () => {
+                                                            const name = node.settings?.name || '';
+                                                            
+                                                            if (!name || name.trim().length === 0) {
+                                                                alert(`请填写${isCharacter ? '角色' : '场景'}名称`);
+                                                                return;
+                                                            }
+                                                            
+                                                            // 如果是角色，使用Sora角色库API创建（完全复用Sora角色库逻辑）
+                                                            if (isCharacter) {
+                                                                const startSecond = uiStartSecond ?? 1;
+                                                                const endSecond = uiEndSecond ?? 3;
+                                                                
+                                                                // 验证时间范围
+                                                                if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
+                                                                    alert('时间范围必须在 1-3 秒之间');
+                                                                    return;
+                                                                }
+                                                                
+                                                                // 获取关联的视频节点
+                                                                const videoNode = connections
+                                                                    .filter(c => c.to === node.id)
+                                                                    .map(c => nodesMap.get(c.from))
+                                                                    .find(n => n?.type === 'generate-character-video');
+                                                                
+                                                                if (!videoNode) {
+                                                                    alert('找不到关联的视频节点');
+                                                                    return;
+                                                                }
+                                                                
+                                                                const videoUrl = videoNode.settings?.videoUrl || videoNode.content || '';
+                                                                if (!videoUrl) {
+                                                                    alert('视频节点没有视频URL');
+                                                                    return;
+                                                                }
+                                                                
+                                                                // 从历史记录中查找是否有对应的 taskId（优先使用 from_task）
+                                                                let fromTaskId = null;
+                                                                const historyItem = history.find(h => 
+                                                                    h.type === 'video' && 
+                                                                    h.sourceNodeId === videoNode.id && 
+                                                                    h.status === 'completed' &&
+                                                                    h.remoteTaskId
+                                                                );
+                                                                if (historyItem && historyItem.remoteTaskId) {
+                                                                    fromTaskId = historyItem.remoteTaskId;
+                                                                    console.log('[Create Character Node] Found taskId from history:', fromTaskId);
+                                                                }
+                                                                
+                                                                // 设置创建状态
+                                                                updateNodeSettings(node.id, { 
+                                                                    isCreating: true, 
+                                                                    createProgress: 10,
+                                                                    createError: null
+                                                                });
+                                                                
+                                                                // 使用与Sora角色库完全相同的逻辑
+                                                                try {
+                                                                    // 1. 获取配置
+                                                                    const soraConfig = apiConfigs.find(c => c.type === 'Video' && (c.id === 'sora-2' || c.id === 'sora-2-pro'));
+                                                                    if (!soraConfig) {
+                                                                        updateNodeSettings(node.id, { isCreating: false, createError: '未找到 Sora 2 模型配置' });
+                                                                        alert('未找到 Sora 2 模型配置，请先在设置中配置 Sora 2 或 Sora 2 Pro');
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    const apiKey = soraConfig.key || globalApiKey;
+                                                                    if (!apiKey) {
+                                                                        updateNodeSettings(node.id, { isCreating: false, createError: '请先配置 API Key' });
+                                                                        alert('请先配置 API Key');
+                                                                        setSettingsOpen(true);
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    // 更新进度
+                                                                    updateNodeSettings(node.id, { createProgress: 30 });
+                                                                    
+                                                                    // 2. 自动构造 endpoint
+                                                                    const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
+                                                                    const endpoint = `${baseUrl}/sora/v1/characters`;
+                                                                    
+                                                                    // 3. 构造 Body（优先使用 from_task，否则使用 url）
+                                                                    const timestamps = `${startSecond},${endSecond}`;
+                                                                    const payload = fromTaskId 
+                                                                        ? { from_task: fromTaskId, timestamps }
+                                                                        : { url: videoUrl, timestamps };
+                                                                    
+                                                                    // 更新进度
+                                                                    updateNodeSettings(node.id, { createProgress: 50 });
+                                                                    
+                                                                    // 4. 详细调试日志
+                                                                    console.log('[Create Character Node] Request Details:', {
+                                                                        endpoint,
+                                                                        apiKey: apiKey ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}` : 'EMPTY',
+                                                                        payload,
+                                                                        fromTaskId,
+                                                                        videoUrl: fromTaskId ? 'N/A (using from_task)' : videoUrl
+                                                                    });
+                                                                    
+                                                                    // 更新进度
+                                                                    updateNodeSettings(node.id, { createProgress: 70 });
+                                                                    
+                                                                    // 5. 发送请求
+                                                                    const resp = await fetch(endpoint, {
+                                                                        method: 'POST',
+                                                                        headers: {
+                                                                            'Authorization': `Bearer ${apiKey}`,
+                                                                            'Content-Type': 'application/json'
+                                                                        },
+                                                                        body: JSON.stringify(payload)
+                                                                    });
+                                                                    
+                                                                    // 更新进度
+                                                                    updateNodeSettings(node.id, { createProgress: 90 });
+                                                                    
+                                                                    // 6. 错误处理
+                                                                    if (!resp.ok) {
+                                                                        const errText = await resp.text();
+                                                                        console.error('[Create Character Node] API Error:', {
+                                                                            status: resp.status,
+                                                                            statusText: resp.statusText,
+                                                                            errorText: errText,
+                                                                            endpoint
+                                                                        });
+                                                                        
+                                                                        // 尝试解析错误响应
+                                                                        let errorData = null;
+                                                                        try {
+                                                                            errorData = JSON.parse(errText);
+                                                                        } catch (e) {
+                                                                            // 如果不是 JSON，使用原始文本
+                                                                        }
+                                                                        
+                                                                        // 特殊处理 500 错误和 get_origin_task_failed
+                                                                        if (resp.status === 500 || (errorData && (errorData.code === 'get_origin_task_failed' || errorData.message?.includes('get_origin_task_failed')))) {
+                                                                            throw new Error('TASK_NOT_FOUND');
+                                                                        }
+                                                                        
+                                                                        throw new Error(`API错误 (${resp.status}): ${errText || resp.statusText}`);
+                                                                    }
+                                                                    
+                                                                    const data = await resp.json();
+                                                                    console.log('[Create Character Node] Success:', data);
+                                                                    
+                                                                    // 更新进度
+                                                                    updateNodeSettings(node.id, { createProgress: 100 });
+                                                                    
+                                                                    // 7. 保存到角色库（与Sora角色库完全一致）
+                                                                    if (data.id && data.username) {
+                                                                        const newCharacter = {
+                                                                            id: data.id,
+                                                                            username: data.username,
+                                                                            profile_picture_url: data.profile_picture_url || '',
+                                                                            permalink: data.permalink || ''
+                                                                        };
+                                                                        
+                                                                        const updated = [...characterLibrary, newCharacter];
+                                                                        setCharacterLibrary(updated);
+                                                                        
+                                                                        // 保存到 localStorage
+                                                                        try {
+                                                                            localStorage.setItem('tapnow_characters', JSON.stringify(updated));
+                                                                        } catch (err) {
+                                                                            console.error('保存角色库失败:', err);
+                                                                        }
+                                                                        
+                                                                        // 延迟一下再清除状态，让用户看到成功
+                                                                        setTimeout(() => {
+                                                                            updateNodeSettings(node.id, { 
+                                                                                isCreating: false, 
+                                                                                createProgress: 0,
+                                                                                createError: null
+                                                                            });
+                                                                            alert(`角色 "${data.username}" 创建成功！`);
+                                                                        }, 500);
+                                                                    } else {
+                                                                        throw new Error('返回数据缺少 id 或 username');
+                                                                    }
+                                                                } catch (err) {
+                                                                    console.error('[Create Character Node] Failed:', err);
+                                                                    let msg = err.message;
+                                                                    
+                                                                    // 特殊处理：原任务已过期或无法访问
+                                                                    if (msg === 'TASK_NOT_FOUND') {
+                                                                        updateNodeSettings(node.id, { 
+                                                                            isCreating: false, 
+                                                                            createProgress: 0,
+                                                                            createError: '原任务已过期或无法访问'
+                                                                        });
+                                                                        alert('创建失败：原任务已过期或无法访问。\n\n请尝试获取该视频的下载链接，使用"输入视频 URL"方式重新创建。');
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    // 处理网络错误
+                                                                    if (msg.includes('Failed to fetch') || err.name === 'TypeError' || err.message.includes('NetworkError')) {
+                                                                        msg = '连接失败。可能原因：\n\n1. API 地址填写错误\n   - 请检查 API 接口地址是否多余了 "/sora" 前缀\n   - 有些服务商的路径可能不同，请询问服务商 Sora 角色创建接口的准确路径\n\n2. 跨域限制 (CORS)\n   - 请尝试安装 Allow CORS 浏览器插件\n\n3. 网络问题\n   - 请检查网络连接';
+                                                                    }
+                                                                    
+                                                                    updateNodeSettings(node.id, { 
+                                                                        isCreating: false, 
+                                                                        createProgress: 0,
+                                                                        createError: msg
+                                                                    });
+                                                                    alert(`创建角色失败: ${msg}`);
+                                                                }
+                                                            } else {
+                                                                const startSecond = uiStartSecond ?? 1;
+                                                                const endSecond = uiEndSecond ?? 3;
+                                                                
+                                                                // 验证时间范围
+                                                                if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
+                                                                    alert('时间范围必须在 1-3 秒之间');
+                                                                    return;
+                                                                }
+                                                                
+                                                                // 获取关联的视频节点
+                                                                const videoNode = connections
+                                                                    .filter(c => c.to === node.id)
+                                                                    .map(c => nodesMap.get(c.from))
+                                                                    .find(n => n?.type === 'generate-scene-video');
+                                                                
+                                                                if (!videoNode) {
+                                                                    alert('找不到关联的视频节点');
+                                                                    return;
+                                                                }
+                                                                
+                                                                const videoUrl = videoNode.settings?.videoUrl || videoNode.content || '';
+                                                                if (!videoUrl) {
+                                                                    alert('视频节点没有视频URL');
+                                                                    return;
+                                                                }
+                                                                
+                                                                // 从历史记录中查找是否有对应的 taskId（优先使用 from_task）
+                                                                let fromTaskId = null;
+                                                                const historyItem = history.find(h => 
+                                                                    h.type === 'video' && 
+                                                                    h.sourceNodeId === videoNode.id && 
+                                                                    h.status === 'completed' &&
+                                                                    h.remoteTaskId
+                                                                );
+                                                                if (historyItem && historyItem.remoteTaskId) {
+                                                                    fromTaskId = historyItem.remoteTaskId;
+                                                                    console.log('[Create Scene Node] Found taskId from history:', fromTaskId);
+                                                                }
+                                                                
+                                                                // 设置创建状态
+                                                                updateNodeSettings(node.id, { 
+                                                                    isCreating: true, 
+                                                                    createProgress: 10,
+                                                                    createError: null
+                                                                });
+                                                                
+                                                                // 场景创建：沿用创建角色的 Sora 库创建逻辑（仅更换 endpoint）
+                                                                try {
+                                                                    const soraConfig = apiConfigs.find(c => c.type === 'Video' && (c.id === 'sora-2' || c.id === 'sora-2-pro'));
+                                                                    if (!soraConfig) {
+                                                                        updateNodeSettings(node.id, { isCreating: false, createError: '未找到 Sora 2 模型配置' });
+                                                                        alert('未找到 Sora 2 模型配置，请先在设置中配置 Sora 2 或 Sora 2 Pro');
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    const apiKey = soraConfig.key || globalApiKey;
+                                                                    if (!apiKey) {
+                                                                        updateNodeSettings(node.id, { isCreating: false, createError: '请先配置 API Key' });
+                                                                        alert('请先配置 API Key');
+                                                                        setSettingsOpen(true);
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    updateNodeSettings(node.id, { createProgress: 30 });
+                                                                    
+                                                                    const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
+                                                                    // 创建场景：完全复用“创建角色”的请求方式（同 endpoint / 同 payload / 同错误处理）
+                                                                    // 仅前端 UI 显示为“创建场景”，并将结果落到 tapnow_scenes
+                                                                    const endpoint = (createCharacterEndpoint && createCharacterEndpoint.trim())
+                                                                        ? createCharacterEndpoint.trim()
+                                                                        : `${baseUrl}/sora/v1/characters`;
+                                                                    
+                                                                    const timestamps = `${startSecond},${endSecond}`;
+                                                                    const payload = fromTaskId 
+                                                                        ? { from_task: fromTaskId, timestamps }
+                                                                        : { url: videoUrl, timestamps };
+                                                                    
+                                                                    updateNodeSettings(node.id, { createProgress: 70 });
+                                                                    
+                                                                    console.log('[Create Scene Node] Request Details:', {
+                                                                        endpoint,
+                                                                        apiKey: apiKey ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}` : 'EMPTY',
+                                                                        payload,
+                                                                        fromTaskId,
+                                                                        videoUrl: fromTaskId ? 'N/A (using from_task)' : videoUrl
+                                                                    });
+                                                                    
+                                                                    const resp = await fetch(endpoint, {
+                                                                        method: 'POST',
+                                                                        headers: {
+                                                                            'Authorization': `Bearer ${apiKey}`,
+                                                                            'Content-Type': 'application/json'
+                                                                        },
+                                                                        body: JSON.stringify(payload)
+                                                                    });
+                                                                    
+                                                                    updateNodeSettings(node.id, { createProgress: 90 });
+                                                                    
+                                                                    if (!resp.ok) {
+                                                                        const errText = await resp.text();
+                                                                        console.error('[Create Scene Node] API Error:', {
+                                                                            status: resp.status,
+                                                                            statusText: resp.statusText,
+                                                                            errorText: errText,
+                                                                            endpoint
+                                                                        });
+                                                                        
+                                                                        // 尝试解析错误响应
+                                                                        let errorData = null;
+                                                                        try { errorData = JSON.parse(errText); } catch (e) {}
+                                                                        
+                                                                        // 特殊处理 500 错误和 get_origin_task_failed
+                                                                        if (resp.status === 500 || (errorData && (errorData.code === 'get_origin_task_failed' || errorData.message?.includes('get_origin_task_failed')))) {
+                                                                            throw new Error('TASK_NOT_FOUND');
+                                                                        }
+                                                                        
+                                                                        throw new Error(`API错误 (${resp.status}): ${errText || resp.statusText}`);
+                                                                    }
+                                                                    
+                                                                    const data = await resp.json();
+                                                                    console.log('[Create Scene Node] Success:', data);
+                                                                    updateNodeSettings(node.id, { createProgress: 100 });
+                                                                    
+                                                                    // 注意：后端返回结构与“创建角色”一致（id/username）
+                                                                    // 按用户要求：仍按“角色”来显示与保存（不使用中文 name 作为标识）
+                                                                    if (!data?.id || !data?.username) {
+                                                                        throw new Error('返回数据缺少 id 或 username');
+                                                                    }
+                                                                    const characterId = data.id;
+                                                                    const characterUsername = data.username;
+                                                                    
+                                                                    // 写入角色库（与创建角色一致）
+                                                                    try {
+                                                                        const newCharacter = {
+                                                                            id: characterId,
+                                                                            username: characterUsername,
+                                                                            profile_picture_url: data.profile_picture_url || '',
+                                                                            permalink: data.permalink || ''
+                                                                        };
+                                                                        const updated = [...characterLibrary, newCharacter];
+                                                                        setCharacterLibrary(updated);
+                                                                        try {
+                                                                            localStorage.setItem('tapnow_characters', JSON.stringify(updated));
+                                                                        } catch (err) {
+                                                                            console.error('保存角色库失败:', err);
+                                                                        }
+                                                                    } catch (e) {
+                                                                        console.warn('写入角色库失败:', e);
+                                                                    }
+                                                                    
+                                                                    // 记录结果到节点，便于用户确认
+                                                                    setTimeout(() => {
+                                                                        updateNodeSettings(node.id, { 
+                                                                            isCreating: false, 
+                                                                            createProgress: 0,
+                                                                            createError: null,
+                                                                            characterId,
+                                                                            characterUsername
+                                                                        });
+                                                                        alert(`角色 "${characterUsername}" 创建成功！`);
+                                                                    }, 300);
+                                                                } catch (err) {
+                                                                    console.error('[Create Scene Node] Failed:', err);
+                                                                    let msg = err.message;
+                                                                    
+                                                                    if (msg === 'TASK_NOT_FOUND') {
+                                                                        updateNodeSettings(node.id, { 
+                                                                            isCreating: false, 
+                                                                            createProgress: 0,
+                                                                            createError: '原任务已过期或无法访问'
+                                                                        });
+                                                                        alert('创建失败：原任务已过期或无法访问。\n\n请尝试获取该视频的下载链接，使用"输入视频 URL"方式重新创建。');
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    if (msg.includes('Failed to fetch') || err.name === 'TypeError' || err.message.includes('NetworkError')) {
+                                                                        msg = '连接失败。可能原因：\n\n1. API 地址填写错误\n   - 请检查 API 接口地址是否多余了 "/sora" 前缀\n   - 有些服务商的路径可能不同，请询问服务商 Sora 场景创建接口的准确路径\n\n2. 跨域限制 (CORS)\n   - 请尝试安装 Allow CORS 浏览器插件\n\n3. 网络问题\n   - 请检查网络连接';
+                                                                    }
+                                                                    
+                                                                    updateNodeSettings(node.id, { 
+                                                                        isCreating: false, 
+                                                                        createProgress: 0,
+                                                                        createError: msg
+                                                                    });
+                                                                    alert(`创建场景失败: ${msg}`);
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        {isCharacter ? '创建角色' : '创建场景'}
+                                                    </button>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+
+                            {(node.type === 'generate-character-video' || node.type === 'generate-scene-video') && (
+                                <div
+                                    className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
+                                        theme === 'dark'
+                                            ? 'bg-zinc-900/80'
+                                            : 'bg-zinc-100'
+                                    }`}
+                                >
+                                    {(() => {
+                                        const isCharacter = node.type === 'generate-character-video';
+                                        
+                                        // 从连接的描述节点获取提示词
+                                        const descriptionNode = connections
+                                            .filter(c => c.to === node.id)
+                                            .map(c => nodesMap.get(c.from))
+                                            .find(n => n?.type === (isCharacter ? 'character-description' : 'scene-description'));
+                                        
+                                        // 从连接的图片生成节点获取选中的图片URL（Image-to-Video模式）
+                                        const imageNode = connections
+                                            .filter(c => c.to === node.id)
+                                            .map(c => nodesMap.get(c.from))
+                                            .find(n => (isCharacter ? n?.type === 'generate-character-image' : n?.type === 'generate-scene-image'));
+                                        
+                                        const selectedImageUrl = imageNode?.settings?.selectedImageIndex !== null && imageNode?.settings?.selectedImageIndex !== undefined
+                                            ? (imageNode.settings?.imageUrls?.[imageNode.settings.selectedImageIndex] || imageNode.settings?.imageUrl || imageNode.content)
+                                            : null;
+                                        
+                                        const videoPrompt = node.settings?.videoPrompt || descriptionNode?.settings?.prompt || '';
+                                        
+                                        // 显示Image-to-Video模式提示
+                                        const isImageToVideoMode = selectedImageUrl !== null;
+                                        
+                                        return (
+                                            <>
+                                                <div className={`flex items-center gap-1.5 px-3 py-2 border-b text-xs font-semibold shrink-0 ${
+                                                    theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
+                                                }`}>
+                                                    <FileVideo size={12} className="text-green-500" />
+                                                    <span>{isCharacter ? '生成角色视频' : '生成场景视频'}</span>
+                                                </div>
+                                                
+                                                <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
+                                                    {/* 引用参考图提示和缩略图 */}
+                                                    {(() => {
+                                                        const referenceImages = node.settings?.referenceImages || descriptionNode?.settings?.referenceImages || [];
+                                                        const hasRefImages = referenceImages && referenceImages.length > 0;
+                                                        return hasRefImages ? (
+                                                            <div className={`flex flex-col gap-2 px-2 py-2 rounded text-[10px] ${
+                                                                theme === 'dark' ? 'bg-green-900/30 border border-green-700' : 'bg-green-50 border border-green-200'
+                                                            }`}>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="text-green-500">✅</span>
+                                                                    <span className={theme === 'dark' ? 'text-green-400' : 'text-green-700'}>
+                                                                        引用图片成功 ({referenceImages.length}张)
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex gap-2 overflow-x-auto">
+                                                                    {referenceImages.slice(0, 4).map((img, idx) => (
+                                                                        <div key={idx} className="relative w-16 h-16 flex-shrink-0 rounded overflow-hidden border border-green-500">
+                                                                            <img 
+                                                                                src={img} 
+                                                                                alt={`Reference ${idx + 1}`} 
+                                                                                className="w-full h-full object-cover"
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                            />
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ) : null;
+                                                    })()}
+                                                    
+                                                    {/* 模型选择 */}
+                                                    <div>
+                                                        <label className="text-[10px] block mb-1 text-zinc-500">选择模型</label>
+                                                        <select
+                                                            value={node.settings?.model || 'sora-2'}
+                                                            onChange={(e) => updateNodeSettings(node.id, { model: e.target.value })}
+                                                            className={`w-full px-2 py-1 rounded text-xs border ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                    : 'bg-white border-zinc-300 text-zinc-800'
+                                                            }`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        >
+                                                            {apiConfigs
+                                                                .filter(c => c.type === 'Video')
+                                                                .map(c => (
+                                                                    <option key={c.id} value={c.id}>{c.provider}</option>
+                                                                ))}
+                                                        </select>
+                                                    </div>
+                                                    
+                                                    {/* 时长选择 */}
+                                                    <div>
+                                                        <label className="text-[10px] block mb-1 text-zinc-500">时长</label>
+                                                        <select
+                                                            value={node.settings?.duration || '15s'}
+                                                            onChange={(e) => updateNodeSettings(node.id, { duration: e.target.value })}
+                                                            className={`w-full px-2 py-1 rounded text-xs border ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                    : 'bg-white border-zinc-300 text-zinc-800'
+                                                            }`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        >
+                                                            <option value="5s">5秒</option>
+                                                            <option value="10s">10秒</option>
+                                                            <option value="15s">15秒</option>
+                                                        </select>
+                                                    </div>
+                                                    
+                                                    {/* 比例选择 */}
+                                                    <div>
+                                                        <label className="text-[10px] block mb-1 text-zinc-500">比例</label>
+                                                        <select
+                                                            value={node.settings?.ratio || '16:9'}
+                                                            onChange={(e) => updateNodeSettings(node.id, { ratio: e.target.value })}
+                                                            className={`w-full px-2 py-1 rounded text-xs border ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                    : 'bg-white border-zinc-300 text-zinc-800'
+                                                            }`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        >
+                                                            <option value="16:9">16:9</option>
+                                                            <option value="9:16">9:16</option>
+                                                            <option value="1:1">1:1</option>
+                                                        </select>
+                                                    </div>
+                                                    
+                                                    {/* 提示词 */}
+                                                    <div>
+                                                        <label className="text-[10px] block mb-1 text-zinc-500">提示词</label>
+                                                        <textarea
+                                                            value={videoPrompt}
+                                                            onChange={(e) => updateNodeSettings(node.id, { videoPrompt: e.target.value })}
+                                                            placeholder="输入视频生成提示词..."
+                                                            className={`w-full h-20 resize-none outline-none text-sm p-2 rounded border ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
+                                                                    : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
+                                                            }`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        />
+                                                    </div>
+                                                    
+                                                    {/* 预览区域 - 支持双击打开和右键发送到画布 */}
+                                                    {node.settings?.videoUrl || node.content ? (
+                                                        <div 
+                                                            className="relative w-full aspect-video bg-black rounded-lg overflow-hidden cursor-pointer"
+                                                            onDoubleClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                // 双击打开大图预览
+                                                                const videoUrl = node.settings?.videoUrl || node.content;
+                                                                setLightboxItem({ id: `preview-video-${node.id}`, url: videoUrl, type: 'video' });
+                                                                setLightboxOpen(true);
+                                                            }}
+                                                            onContextMenu={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                // 右键发送到画布
+                                                                const videoUrl = node.settings?.videoUrl || node.content;
+                                                                const world = screenToWorld(e.clientX, e.clientY);
+                                                                const dims = { w: 400, h: 300 };
+                                                                addNode('video-input', world.x, world.y, null, videoUrl, dims);
+                                                                console.log('[右键菜单] 已发送视频到画布:', videoUrl);
+                                                            }}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        >
+                                                            <video
+                                                                src={node.settings?.videoUrl || node.content}
+                                                                controls
+                                                                className="w-full h-full object-contain"
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`w-full aspect-video rounded border-2 border-dashed flex items-center justify-center ${
+                                                            theme === 'dark' ? 'border-zinc-700' : 'border-zinc-300'
+                                                        }`}>
+                                                            <span className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                                                点击"生成"按钮开始生成
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 进度条显示 */}
+                                                    {node.settings?.isGenerating && (
+                                                        <div className="mb-2">
+                                                            <div className="text-[10px] mb-1 text-zinc-500">正在生成视频...</div>
+                                                            <div className={`w-full h-1.5 rounded-full overflow-hidden ${
+                                                                theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
+                                                            }`}>
+                                                                <div 
+                                                                    className="h-full bg-blue-500 transition-all duration-300"
+                                                                    style={{ width: `${node.settings?.progress || 0}%` }}
+                                                                />
+                                                            </div>
+                                                            <div className="text-[10px] text-zinc-500 mt-1">
+                                                                {node.settings?.progress || 0}% 完成
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 错误显示 */}
+                                                    {node.settings?.error && (
+                                                        <div className="text-[10px] text-red-500">
+                                                            {node.settings.error}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="px-3 py-2 border-t shrink-0">
+                                                    <button
+                                                        className={`w-full py-2 rounded text-xs font-medium transition-colors ${
+                                                            node.settings?.isGenerating
+                                                                ? 'bg-zinc-400 cursor-not-allowed text-white'
+                                                                : theme === 'dark'
+                                                                    ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white'
+                                                                    : 'bg-green-600 hover:bg-green-500 text-white'
+                                                        }`}
+                                                        disabled={node.settings?.isGenerating}
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                        onClick={async () => {
+                                                            const { videoPrompt, model, duration, ratio } = node.settings;
+                                                            
+                                                            // 检查是否有选中的图片（Image-to-Video模式）
+                                                            const selectedImageUrl = imageNode?.settings?.selectedImageIndex !== null && imageNode?.settings?.selectedImageIndex !== undefined
+                                                                ? (imageNode.settings?.imageUrls?.[imageNode.settings.selectedImageIndex] || imageNode.settings?.imageUrl || imageNode.content)
+                                                                : null;
+                                                            
+                                                            // 如果没有选中图片且没有提示词，则提示
+                                                            if (!selectedImageUrl && (!videoPrompt || videoPrompt.trim().length === 0)) {
+                                                                alert('请先输入提示词或在上方图片生成节点中选中一张图片');
+                                                                return;
+                                                            }
+                                                            
+                                                            // 获取API配置
+                                                            const apiConfig = apiConfigsMap.get(model || 'sora-2');
+                                                            if (!apiConfig) {
+                                                                alert('未找到模型配置');
+                                                                return;
+                                                            }
+                                                            
+                                                            const apiKey = apiConfig.key || globalApiKey;
+                                                            if (!apiKey) {
+                                                                alert('请先配置API Key');
+                                                                setSettingsOpen(true);
+                                                                return;
+                                                            }
+                                                            
+                                                            // 更新节点状态
+                                                            updateNodeSettings(node.id, { 
+                                                                isGenerating: true, 
+                                                                error: null,
+                                                                progress: 0
+                                                            });
+                                                            
+                                                            try {
+                                                                console.log('[Sora 2 视频生成] 开始生成，模型:', model, '提示词:', videoPrompt?.substring(0, 50));
+                                                                
+                                                                // 确定输入源：优先使用选中的图片，其次使用参考图
+                                                                let sourceImages = [];
+                                                                if (selectedImageUrl) {
+                                                                    sourceImages = [selectedImageUrl];
+                                                                    console.log('[Sora 2 视频生成] Image-to-Video模式：使用选中的图片:', selectedImageUrl.substring(0, 50));
+                                                                } else {
+                                                                    // Text-to-Video模式：使用参考图（如果有）
+                                                                    const referenceImages = node.settings?.referenceImages || descriptionNode?.settings?.referenceImages || [];
+                                                                    if (referenceImages.length > 0) {
+                                                                        sourceImages = [referenceImages[0]];
+                                                                        console.log('[Sora 2 视频生成] Text-to-Video模式：使用参考图');
+                                                                    } else {
+                                                                        console.log('[Sora 2 视频生成] Text-to-Video模式：纯文本生成');
+                                                                    }
+                                                                }
+                                                                
+                                                                // 复用通用视频生成接口 startGeneration
+                                                                await startGeneration(
+                                                                    videoPrompt || '',
+                                                                    'video',
+                                                                    sourceImages,
+                                                                    node.id,
+                                                                    {
+                                                                        model: model || 'sora-2',
+                                                                        ratio: ratio || '16:9',
+                                                                        resolution: 'Auto',
+                                                                        duration: (duration || '15s').replace('s', '') + 's',
+                                                                        isHD: node.settings?.isHD || false
+                                                                    }
+                                                                );
+                                                                
+                                                                console.log('[Sora 2 视频生成] 已调用通用接口 startGeneration，等待结果...');
+                                                                
+                                                            } catch (error) {
+                                                                console.error('[Sora 2 视频生成] 失败:', error);
+                                                                updateNodeSettings(node.id, { 
+                                                                    isGenerating: false, 
+                                                                    progress: 0,
+                                                                    error: error.message 
+                                                                });
+                                                                
+                                                                // 添加失败记录到历史
+                                                                setHistory(prev => {
+                                                                    const newHistory = [...prev, {
+                                                                        id: `history-${Date.now()}`,
+                                                                        type: 'video',
+                                                                        prompt: videoPrompt,
+                                                                        error: error.message,
+                                                                        status: 'failed',
+                                                                        progress: 0,
+                                                                        modelId: model,
+                                                                        timestamp: Date.now()
+                                                                    }];
+                                                                    try {
+                                                                        localStorage.setItem('tapnow_history', JSON.stringify(newHistory));
+                                                                    } catch (e) {
+                                                                        console.error('保存历史记录失败:', e);
+                                                                    }
+                                                                    return newHistory;
+                                                                });
+                                                                
+                                                                alert(`生成失败: ${error.message}`);
+                                                            }
+                                                        }}
+                                                    >
+                                                        {node.settings?.isGenerating ? '生成中...' : '生成视频'}
+                                                    </button>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+
+                            {(node.type === 'generate-character-image' || node.type === 'generate-scene-image') && (
+                                <div
+                                    className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
+                                        theme === 'dark'
+                                            ? 'bg-zinc-900/80'
+                                            : 'bg-zinc-100'
+                                    }`}
+                                >
+                                    <div className={`flex items-center gap-1.5 px-3 py-2 border-b text-xs font-semibold shrink-0 ${
+                                        theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
+                                    }`}>
+                                        <FileText size={12} className="text-blue-500" />
+                                        <span>{node.type === 'generate-character-image' ? '生成角色图片' : '生成场景图片'}</span>
+                                    </div>
+                                    
+                                    <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
+                                        {/* 大模型选择 - 用于提示词过滤 */}
+                                        {(() => {
+                                            // 从上游节点获取模型选择（extract-characters-scenes节点）
+                                            const extractNode = connections
+                                                .filter(c => {
+                                                    const fromNode = nodesMap.get(c.from);
+                                                    return fromNode?.type === 'extract-characters-scenes';
+                                                })
+                                                .map(c => {
+                                                    const fromNode = nodesMap.get(c.from);
+                                                    const toNode = nodesMap.get(c.to);
+                                                    // 检查是否连接到当前节点或其上游节点
+                                                    if (toNode?.id === node.id || 
+                                                        ((toNode?.type === 'character-description' || toNode?.type === 'scene-description') && 
+                                                         connections.some(conn => conn.from === toNode.id && conn.to === node.id))) {
+                                                        return fromNode;
+                                                    }
+                                                    return null;
+                                                })
+                                                .find(n => n !== null);
+                                            
+                                            const defaultChatModel = extractNode?.settings?.model || '';
+                                            const isSceneImage = node.type === 'generate-scene-image';
+                                            
+                                            return (
+                                                <div>
+                                                    <label className="text-[10px] block mb-1 text-zinc-500">
+                                                        {isSceneImage ? '大模型选择（用于过滤人物、字符描述）' : '大模型选择（用于提示词过滤）'}
+                                                    </label>
+                                                    <select
+                                                        value={node.settings?.chatModel || defaultChatModel}
+                                                        onChange={(e) => updateNodeSettings(node.id, { chatModel: e.target.value })}
+                                                        className={`w-full px-2 py-1 rounded text-xs border ${
+                                                            theme === 'dark'
+                                                                ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                                : 'bg-white border-zinc-300 text-zinc-800'
+                                                        }`}
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                    >
+                                                        <option value="">选择大模型（可选）</option>
+                                                        {apiConfigs
+                                                            .filter(c => c.type === 'Chat')
+                                                            .map(c => (
+                                                                <option key={c.id} value={c.id}>{c.provider}</option>
+                                                            ))}
+                                                    </select>
+                                                </div>
+                                            );
+                                        })()}
+                                        
+                                        {/* 模型选择 */}
+                                        <div>
+                                            <label className="text-[10px] block mb-1 text-zinc-500">选择模型</label>
+                                            <select
+                                                value={node.settings?.model || ''}
+                                                onChange={(e) => updateNodeSettings(node.id, { model: e.target.value })}
+                                                className={`w-full px-2 py-1 rounded text-xs border ${
+                                                    theme === 'dark'
+                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                }`}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            >
+                                                <option value="">选择模型</option>
+                                                {apiConfigs
+                                                    .filter(c => c.type === 'Image')
+                                                    .map(c => (
+                                                        <option key={c.id} value={c.id}>{c.provider}</option>
+                                                    ))}
+                                            </select>
+                                        </div>
+                                        
+                                        {/* 参考图引用标识 - 只有当referenceImages有值时才显示 */}
+                                        {(() => {
+                                            const hasRefImages = node.settings?.referenceImages && 
+                                                                Array.isArray(node.settings.referenceImages) && 
+                                                                node.settings.referenceImages.length > 0;
+                                            return hasRefImages ? (
+                                                <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] ${
+                                                    theme === 'dark' ? 'bg-green-900/30 border border-green-700' : 'bg-green-50 border border-green-200'
+                                                }`}>
+                                                    <span className="text-green-500">✅</span>
+                                                    <span className={theme === 'dark' ? 'text-green-400' : 'text-green-700'}>
+                                                        引用图片成功 ({node.settings.referenceImages.length}张)
+                                                    </span>
+                                                </div>
+                                            ) : null;
+                                        })()}
+                                        
+                                        {/* 比例选择 */}
+                                        <div>
+                                            <label className="text-[10px] block mb-1 text-zinc-500">比例</label>
+                                            <select
+                                                value={node.settings?.ratio || '16:9'}
+                                                onChange={(e) => updateNodeSettings(node.id, { ratio: e.target.value })}
+                                                className={`w-full px-2 py-1 rounded text-xs border ${
+                                                    theme === 'dark'
+                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                        : 'bg-white border-zinc-300 text-zinc-800'
+                                                }`}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            >
+                                                <option value="16:9">16:9</option>
+                                                <option value="9:16">9:16</option>
+                                                <option value="1:1">1:1</option>
+                                            </select>
+                                        </div>
+                                        
+                                        {/* 提示词 */}
+                                        <div>
+                                            <label className="text-[10px] block mb-1 text-zinc-500">提示词</label>
+                                            <textarea
+                                                value={node.settings?.prompt || ''}
+                                                onChange={(e) => updateNodeSettings(node.id, { prompt: e.target.value })}
+                                                placeholder="输入图片生成提示词..."
+                                                className={`w-full h-20 resize-none outline-none text-sm p-2 rounded border ${
+                                                    theme === 'dark'
+                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
+                                                        : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
+                                                }`}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            />
+                                        </div>
+                                        
+                                        {/* 预览区域 - 支持多图显示（grid布局），复用AI绘图预览窗口逻辑 */}
+                                        {(() => {
+                                            const imageUrls = node.settings?.imageUrls || (node.settings?.imageUrl || node.content ? [node.settings?.imageUrl || node.content] : []);
+                                            const selectedImageIndex = node.settings?.selectedImageIndex ?? null;
+                                            
+                                            return imageUrls.length > 0 ? (
+                                                <div className="relative w-full">
+                                                    {imageUrls.length > 1 ? (
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {imageUrls.map((url, idx) => (
+                                                                <div 
+                                                                    key={idx} 
+                                                                    className={`relative aspect-square bg-black rounded-lg overflow-hidden cursor-pointer transition-all ${
+                                                                        selectedImageIndex === idx
+                                                                            ? 'ring-2 ring-blue-500 ring-offset-2'
+                                                                            : 'hover:ring-1 hover:ring-zinc-400'
+                                                                    }`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const newIndex = selectedImageIndex === idx ? null : idx;
+                                                                        updateNodeSettings(node.id, { selectedImageIndex: newIndex });
+                                                                    }}
+                                                                    onDoubleClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        // 双击打开大图预览
+                                                                        setLightboxItem({ id: `preview-${node.id}-${idx}`, url: url, type: 'image', mjImages: imageUrls, selectedMjImageIndex: idx });
+                                                                        setLightboxOpen(true);
+                                                                    }}
+                                                                    onContextMenu={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        // 右键发送到画布
+                                                                        const world = screenToWorld(e.clientX, e.clientY);
+                                                                        const dims = { w: 400, h: 300 };
+                                                                        addNode('input-image', world.x, world.y, null, url, dims);
+                                                                        console.log('[右键菜单] 已发送图片到画布:', url);
+                                                                    }}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <img 
+                                                                        src={url} 
+                                                                        alt={`Generated ${node.type === 'generate-character-image' ? 'character' : 'scene'} ${idx + 1}`} 
+                                                                        className="w-full h-full object-contain"
+                                                                    />
+                                                                    <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1 py-0.5 rounded">
+                                                                        {idx + 1}/{imageUrls.length}
+                                                                    </div>
+                                                                    {selectedImageIndex === idx && (
+                                                                        <div className="absolute top-1 right-1 bg-blue-500 text-white text-[10px] px-1 py-0.5 rounded">
+                                                                            ✓ 已选中
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div 
+                                                            className="relative w-full aspect-video bg-black rounded-lg overflow-hidden cursor-pointer"
+                                                            onDoubleClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                // 双击打开大图预览
+                                                                setLightboxItem({ id: `preview-${node.id}`, url: imageUrls[0], type: 'image' });
+                                                                setLightboxOpen(true);
+                                                            }}
+                                                            onContextMenu={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                // 右键发送到画布
+                                                                const world = screenToWorld(e.clientX, e.clientY);
+                                                                const dims = { w: 400, h: 300 };
+                                                                addNode('input-image', world.x, world.y, null, imageUrls[0], dims);
+                                                                console.log('[右键菜单] 已发送图片到画布:', imageUrls[0]);
+                                                            }}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        >
+                                                            <img 
+                                                                src={imageUrls[0]} 
+                                                                alt={`Generated ${node.type === 'generate-character-image' ? 'character' : 'scene'}`} 
+                                                                className="w-full h-full object-contain"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {imageUrls.length > 1 && (
+                                                        <div className={`mt-2 px-2 py-1 rounded text-[10px] ${
+                                                            theme === 'dark' ? 'bg-zinc-800/50 border border-zinc-700' : 'bg-zinc-100 border border-zinc-300'
+                                                        }`}>
+                                                            <span className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>
+                                                                💡 请选择一张图片用于生成视频，不选则默认文生视频（右键图片可发送到画布，双击打开大图）
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {selectedImageIndex !== null && imageUrls[selectedImageIndex] && (
+                                                        <div className={`mt-2 px-2 py-1 rounded text-[10px] ${
+                                                            theme === 'dark' ? 'bg-blue-900/30 border border-blue-700' : 'bg-blue-50 border border-blue-200'
+                                                        }`}>
+                                                            <span className={theme === 'dark' ? 'text-blue-400' : 'text-blue-700'}>
+                                                                📷 已选中图片 {selectedImageIndex + 1}，将用于视频生成
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className={`w-full aspect-video rounded border-2 border-dashed flex items-center justify-center ${
+                                                    theme === 'dark' ? 'border-zinc-700' : 'border-zinc-300'
+                                                }`}>
+                                                    <span className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                                        点击"生成"按钮开始生成
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
+                                        
+                                        {/* 进度条显示 */}
+                                        {node.settings?.isGenerating && (
+                                            <div className="mb-2">
+                                                <div className="text-[10px] mb-1 text-zinc-500">正在生成图片...</div>
+                                                <div className={`w-full h-1.5 rounded-full overflow-hidden ${
+                                                    theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
+                                                }`}>
+                                                    <div 
+                                                        className="h-full bg-blue-500 transition-all duration-300"
+                                                        style={{ width: `${node.settings?.progress || 0}%` }}
+                                                    />
+                                                </div>
+                                                <div className="text-[10px] text-zinc-500 mt-1">
+                                                    {node.settings?.progress || 0}% 完成
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* 错误显示 */}
+                                        {node.settings?.error && (
+                                            <div className="text-[10px] text-red-500">
+                                                {node.settings.error}
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="px-3 py-2 border-t shrink-0">
+                                        <button
+                                            className={`w-full py-2 rounded text-xs font-medium transition-colors ${
+                                                node.settings?.isGenerating
+                                                    ? 'bg-zinc-400 cursor-not-allowed text-white'
+                                                    : theme === 'dark'
+                                                        ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                            }`}
+                                            disabled={node.settings?.isGenerating}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onClick={async () => {
+                                                const { prompt, model, ratio, resolution, referenceImages } = node.settings;
+                                                const isSceneImage = node.type === 'generate-scene-image';
+                                                
+                                                if (!prompt || prompt.trim().length === 0) {
+                                                    alert('请先输入提示词');
+                                                    return;
+                                                }
+                                                
+                                                // 获取API配置
+                                                const apiConfig = apiConfigsMap.get(model || '');
+                                                if (!apiConfig) {
+                                                    alert('请先选择模型');
+                                                    return;
+                                                }
+                                                
+                                                const apiKey = apiConfig.key || globalApiKey;
+                                                if (!apiKey) {
+                                                    alert('请先配置API Key');
+                                                    setSettingsOpen(true);
+                                                    return;
+                                                }
+                                                
+                                                // 更新节点状态
+                                                updateNodeSettings(node.id, { 
+                                                    isGenerating: true, 
+                                                    error: null,
+                                                    progress: 5
+                                                });
+                                                
+                                                try {
+                                                    console.log(`[生成${isSceneImage ? '场景' : '角色'}图片] 开始生成，模型:`, model, '比例:', ratio);
+                                                    
+                                                    // 过滤提示词
+                                                    // 使用节点设置中的chatModel，如果没有则使用默认的Chat模型
+                                                    const chatModelForFilter = node.settings?.chatModel || apiConfigs.find(c => c.type === 'Chat')?.id;
+                                                    let filteredPrompt = prompt;
+                                                    if (chatModelForFilter) {
+                                                        try {
+                                                            if (isSceneImage) {
+                                                                // 场景图片：过滤掉人物、字符描述
+                                                                filteredPrompt = await filterScenePrompt(prompt);
+                                                                console.log('[生成场景图片] 过滤后的提示词:', filteredPrompt);
+                                                            } else {
+                                                                // 角色图片：过滤提示词，确保白色背景
+                                                                filteredPrompt = await filterCharacterPrompt(prompt);
+                                                                console.log('[生成角色图片] 过滤后的提示词:', filteredPrompt);
+                                                            }
+                                                        } catch (e) {
+                                                            console.warn('提示词过滤失败，使用原始提示词:', e);
+                                                        }
+                                                    }
+                                                    
+                                                    // 准备参考图
+                                                    const sourceImages = referenceImages && referenceImages.length > 0 ? referenceImages : [];
+                                                    
+                                                    // 使用通用的 startGeneration 函数
+                                                    await startGeneration(
+                                                        filteredPrompt,
+                                                        'image',
+                                                        sourceImages,
+                                                        node.id,
+                                                        {
+                                                            model: model,
+                                                            ratio: ratio || '16:9',
+                                                            resolution: resolution || 'Auto'
+                                                        }
+                                                    );
+                                                    
+                                                    console.log(`[生成${isSceneImage ? '场景' : '角色'}图片] 已调用通用接口 startGeneration`);
+                                                    
+                                                } catch (error) {
+                                                    console.error(`[生成${isSceneImage ? '场景' : '角色'}图片] 失败:`, error);
+                                                    updateNodeSettings(node.id, { 
+                                                        isGenerating: false, 
+                                                        progress: 0,
+                                                        error: error.message 
+                                                    });
+                                                    
+                                                    alert(`生成失败: ${error.message}`);
+                                                }
+                                            }}
+                                        >
+                                            {node.settings?.isGenerating 
+                                                ? '生成中...' 
+                                                : (node.type === 'generate-scene-image' ? '生成场景图片' : '生成角色图片')
+                                            }
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -11455,15 +14501,17 @@ You must design a visual composition that tells the story through **8 distinct p
                                                                                                         </button>
                                                                                                         <button
                                                                                                             onClick={() => {
-                                                                                                                const world = screenToWorld(node.x + node.width + 100, node.y + node.height / 2);
+                                                                                                                // node.x/node.y 为 world 坐标，不能再 screenToWorld
+                                                                                                                const worldX = node.x + node.width + 100;
+                                                                                                                const worldY = node.y + node.height / 2;
                                                                                                                 const newNodeId = `node-${Date.now()}`;
                                                                                                                 
                                                                                                                 // 创建图生图节点
                                                                                                                 const genImageNode = {
                                                                                                                     id: newNodeId,
                                                                                                                     type: 'gen-image',
-                                                                                                                    x: world.x - 180,
-                                                                                                                    y: world.y - 170,
+                                                                                                                    x: worldX - 180,
+                                                                                                                    y: worldY - 170,
                                                                                                                     width: 360,
                                                                                                                     height: 340,
                                                                                                                     settings: { 
@@ -11478,13 +14526,14 @@ You must design a visual composition that tells the story through **8 distinct p
                                                                                                                 
                                                                                                                 // 创建预览节点并连接
                                                                                                                 setTimeout(() => {
-                                                                                                                    const previewWorld = screenToWorld(node.x + node.width + 200, node.y + node.height / 2);
+                                                                                                                    const previewWorldX = node.x + node.width + 200;
+                                                                                                                    const previewWorldY = node.y + node.height / 2;
                                                                                                                     const previewNodeId = `node-${Date.now() + 1}`;
                                                                                                                     const previewNode = {
                                                                                                                         id: previewNodeId,
                                                                                                                         type: 'preview',
-                                                                                                                        x: previewWorld.x - 160,
-                                                                                                                        y: previewWorld.y - 130,
+                                                                                                                        x: previewWorldX - 160,
+                                                                                                                        y: previewWorldY - 130,
                                                                                                                         width: 320,
                                                                                                                         height: 260
                                                                                                                     };
@@ -12152,7 +15201,23 @@ You must design a visual composition that tells the story through **8 distinct p
                                 </div>
                             )}
 
-                            {node.type === 'preview' && (
+                            {node.type === 'preview' && (() => {
+                                // 获取预览内容：优先使用连接的图片，其次使用node.content
+                                const previewConnectedImages = connectedImages.length > 0 ? connectedImages : [];
+                                const hasContent = node.content || (node.previewMjImages && node.previewMjImages.length > 0) || previewConnectedImages.length > 0;
+                                const allPreviewImages = node.previewMjImages && node.previewMjImages.length > 0 
+                                    ? node.previewMjImages 
+                                    : previewConnectedImages.length > 0 
+                                        ? previewConnectedImages 
+                                        : (node.content ? [node.content] : []);
+                                // 优先使用连接的图片，其次使用node.content
+                                const primaryPreviewUrl = previewConnectedImages.length > 0 
+                                    ? previewConnectedImages[0] 
+                                    : (node.content || (allPreviewImages.length > 0 ? allPreviewImages[0] : null));
+                                const isMultiImage = allPreviewImages.length > 1;
+                                const hasVideo = allPreviewImages.some(url => isVideoUrl(url));
+                                
+                                return (
                                 <div className="flex flex-col h-full pointer-events-auto">
                                     <div
                                         className={`flex items-center justify-between px-3 py-2 border-b text-xs font-semibold ${
@@ -12166,7 +15231,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                             <span>预览窗口</span>
                                         </div>
                                         <span className="text-[10px] text-zinc-500">
-                                            {node.previewType === 'video' ? '视频预览' : '图片预览'}
+                                            {hasVideo ? '视频预览' : isMultiImage ? `${allPreviewImages.length}张图片` : '图片预览'}
                                         </span>
                                     </div>
                                     <div className="flex-1 flex flex-col p-2 gap-2 min-h-0">
@@ -12175,36 +15240,62 @@ You must design a visual composition that tells the story through **8 distinct p
                                                 theme === 'dark' ? 'bg-zinc-900' : 'bg-zinc-100'
                                             }`}
                                             onContextMenu={(e) => {
-                                                const previewUrl = node.content || (node.previewMjImages && node.previewMjImages[0]);
-                                                if (previewUrl) {
-                                                    handlePreviewRightClick(e, { url: previewUrl, type: node.previewType || (isVideoUrl(previewUrl) ? 'video' : 'image'), sourceNode: node });
+                                                if (primaryPreviewUrl) {
+                                                    handlePreviewRightClick(e, { url: primaryPreviewUrl, type: node.previewType || (isVideoUrl(primaryPreviewUrl) ? 'video' : 'image'), sourceNode: node });
                                                 }
                                             }}
                                             onDoubleClick={(e) => {
                                                 e.stopPropagation();
                                                 e.preventDefault();
-                                                const previewUrl = node.content || (node.previewMjImages && node.previewMjImages[0]);
-                                                if (previewUrl) {
-                                                    setLightboxItem({ url: previewUrl, type: node.previewType || (isVideoUrl(previewUrl) ? 'video' : 'image') });
+                                                if (primaryPreviewUrl) {
+                                                    setLightboxItem({ url: primaryPreviewUrl, type: node.previewType || (isVideoUrl(primaryPreviewUrl) ? 'video' : 'image') });
                                                 }
                                             }}
                                         >
-                                            {node.content || (node.previewMjImages && node.previewMjImages.length > 0) ? (
-                                                isVideoUrl(node.content) || node.previewType === 'video' ? (
+                                            {hasContent ? (
+                                                isVideoUrl(primaryPreviewUrl) || node.previewType === 'video' ? (
                                                     <video
-                                                        src={node.content}
+                                                        src={primaryPreviewUrl}
                                                         className="w-full h-full object-contain bg-black"
                                                         controls
                                                         draggable={false}
                                                     />
-                                                ) : node.previewMjImages && (node.previewMjImages.length === 4 || node.previewMjImages.length > 1) ? (
-                                                    // 多张图片网格显示（即梦回传的四张图）
-                                                    <div className={`w-full h-full grid gap-0.5 p-0.5 ${node.previewMjImages.length === 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
-                                                        {node.previewMjImages.map((imgUrl, idx) => (
+                                                ) : isMultiImage ? (
+                                                    // 多张图片网格显示（支持连接的多图和即梦回传的四张图）
+                                                    <div className={`w-full h-full grid gap-0.5 p-0.5 ${allPreviewImages.length === 4 ? 'grid-cols-2 grid-rows-2' : allPreviewImages.length <= 2 ? 'grid-cols-2' : 'grid-cols-2'}`} style={{ gridAutoRows: allPreviewImages.length > 4 ? 'minmax(0, 1fr)' : undefined }}>
+                                                        {allPreviewImages.map((imgUrl, idx) => {
+                                                            const isSelected = node.selectedPreviewImage === imgUrl || (!node.selectedPreviewImage && idx === 0);
+                                                            return (
                                                             <div
                                                                 key={idx}
-                                                                className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center group"
+                                                                className={`relative w-full h-full overflow-hidden bg-black flex items-center justify-center group cursor-pointer transition-all ${
+                                                                    isSelected ? 'ring-2 ring-blue-500 ring-inset' : 'hover:ring-1 hover:ring-white/30 hover:ring-inset'
+                                                                }`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // 选择此图片作为输出
+                                                                    setNodes(prev => prev.map(n => 
+                                                                        n.id === node.id 
+                                                                            ? { ...n, selectedPreviewImage: imgUrl }
+                                                                            : n
+                                                                    ));
+                                                                }}
                                                             >
+                                                                {/* 选中标记 */}
+                                                                {isSelected && (
+                                                                    <div className="absolute top-1 left-1 z-30 bg-blue-500 text-white text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
+                                                                        <Check size={10} />
+                                                                        引用
+                                                                    </div>
+                                                                )}
+                                                                {/* 序号标记 */}
+                                                                <div className={`absolute top-1 right-1 z-30 text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                                                    isSelected 
+                                                                        ? 'bg-blue-500/80 text-white' 
+                                                                        : theme === 'dark' ? 'bg-black/60 text-white/70' : 'bg-white/60 text-zinc-700'
+                                                                }`}>
+                                                                    {idx + 1}
+                                                                </div>
                                                                 <img 
                                                                     src={imgUrl} 
                                                                     className="max-w-full max-h-full w-auto h-auto object-contain" 
@@ -12303,6 +15394,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                                                         imageUrl={node.maskingImageUrl}
                                                                         imageDimensions={node.maskingImageDimensions}
                                                                         isActive={node.isMasking}
+                                                                        isPerformanceMode={isPerformanceMode}
                                                                         onClose={() => {
                                                                             setNodes((prev) => prev.map((n) => 
                                                                                 n.id === node.id 
@@ -12326,11 +15418,12 @@ You must design a visual composition that tells the story through **8 distinct p
                                                                     />
                                                                 )}
                                                             </div>
-                                                        ))}
+                                                        );
+                                                        })}
                                                     </div>
                                                 ) : (
                                                     <img
-                                                        src={node.content}
+                                                        src={primaryPreviewUrl}
                                                         className="max-w-full max-h-full w-auto h-auto object-contain bg-black"
                                                         draggable={false}
                                                         onLoad={(e) => {
@@ -12378,9 +15471,9 @@ You must design a visual composition that tells the story through **8 distinct p
                                                 }`}
                                                 onMouseDown={(e) => e.stopPropagation()}
                                                 onClick={async () => {
-                                                    if (!node.content) return;
+                                                    if (!primaryPreviewUrl) return;
                                                     try {
-                                                        await navigator.clipboard.writeText(node.content);
+                                                        await navigator.clipboard.writeText(primaryPreviewUrl);
                                                     } catch {}
                                                 }}
                                             >
@@ -12394,17 +15487,19 @@ You must design a visual composition that tells the story through **8 distinct p
                                                         : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
                                                 }`}
                                                 onMouseDown={(e) => e.stopPropagation()}
+                                                type="button"
                                                 onClick={async () => {
-                                                    if (!node.content) return;
-                                                    const world = screenToWorld(node.x + node.width + 100, node.y + node.height / 2);
+                                                    if (!primaryPreviewUrl) return;
+                                                    const worldX = node.x + node.width + 100;
+                                                    const worldY = node.y + node.height / 2;
                                                     let dims;
-                                                    if (!isVideoUrl(node.content)) {
+                                                    if (!isVideoUrl(primaryPreviewUrl)) {
                                                         try {
-                                                            const real = await getImageDimensions(node.content);
+                                                            const real = await getImageDimensions(primaryPreviewUrl);
                                                             if (real?.w && real?.h) dims = { w: real.w, h: real.h };
                                                         } catch {}
                                                     }
-                                                    addNode('input-image', world.x, world.y, null, node.content, dims);
+                                                    addNode('input-image', worldX, worldY, null, primaryPreviewUrl, dims);
                                                 }}
                                             >
                                                 <ArrowRightSquare size={13} />
@@ -12418,13 +15513,13 @@ You must design a visual composition that tells the story through **8 distinct p
                                                 }`}
                                                 onMouseDown={(e) => e.stopPropagation()}
                                                 onClick={() => {
-                                                    if (!node.content) return;
+                                                    if (!primaryPreviewUrl) return;
                                                     const newFile = {
-                                                        name: node.previewType === 'video' ? 'Preview.mp4' : 'Preview.png',
-                                                        type: node.previewType === 'video' ? 'video/mp4' : 'image/png',
-                                                        content: node.content,
-                                                        isImage: node.previewType !== 'video',
-                                                        isVideo: node.previewType === 'video',
+                                                        name: hasVideo ? 'Preview.mp4' : 'Preview.png',
+                                                        type: hasVideo ? 'video/mp4' : 'image/png',
+                                                        content: primaryPreviewUrl,
+                                                        isImage: !hasVideo,
+                                                        isVideo: hasVideo,
                                                         isAudio: false,
                                                         fromPreview: true
                                                     };
@@ -12436,6 +15531,326 @@ You must design a visual composition that tells the story through **8 distinct p
                                                 发送到对话
                                             </button>
                                         </div>
+                                    </div>
+                                </div>
+                                );
+                            })()}
+
+                            {node.type === 'local-save' && (
+                                <div className="flex flex-col h-full pointer-events-auto">
+                                    <div
+                                        className={`flex items-center justify-between px-3 py-2 border-b text-xs font-semibold ${
+                                            theme === 'dark'
+                                                ? 'border-zinc-800 text-zinc-200'
+                                                : 'border-zinc-200 text-zinc-700'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <FolderOpen size={13} className="text-green-500" />
+                                            <span>保存到本地</span>
+                                        </div>
+                                        <div className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
+                                            node.settings?.serverStatus === 'connected' 
+                                                ? 'bg-green-500/20 text-green-400' 
+                                                : node.settings?.serverStatus === 'error'
+                                                    ? 'bg-red-500/20 text-red-400'
+                                                    : 'bg-zinc-500/20 text-zinc-400'
+                                        }`}>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${
+                                                node.settings?.serverStatus === 'connected' 
+                                                    ? 'bg-green-400' 
+                                                    : node.settings?.serverStatus === 'error'
+                                                        ? 'bg-red-400'
+                                                        : 'bg-zinc-400'
+                                            }`} />
+                                            {node.settings?.serverStatus === 'connected' ? '已连接' : 
+                                             node.settings?.serverStatus === 'error' ? '未连接' : '检测中'}
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 flex flex-col p-3 gap-2 overflow-auto">
+                                        <div className="space-y-2">
+                                            <label className={`text-[10px] font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                                服务器地址
+                                            </label>
+                                            <div className="flex gap-1">
+                                                <input
+                                                    type="text"
+                                                    value={node.settings?.serverUrl || 'http://127.0.0.1:9527'}
+                                                    onChange={(e) => updateNodeSettings(node.id, { serverUrl: e.target.value })}
+                                                    placeholder="http://127.0.0.1:9527"
+                                                    className={`flex-1 px-2 py-1.5 text-xs rounded border outline-none ${
+                                                        theme === 'dark'
+                                                            ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                            : 'bg-white border-zinc-300 text-zinc-800'
+                                                    }`}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                />
+                                                <button
+                                                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                                        theme === 'dark'
+                                                            ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+                                                            : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+                                                    }`}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onClick={async () => {
+                                                        const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
+                                                        try {
+                                                            const response = await fetch(`${serverUrl}/ping`, { method: 'GET' });
+                                                            if (response.ok) {
+                                                                const data = await response.json();
+                                                                updateNodeSettings(node.id, { 
+                                                                    serverStatus: 'connected',
+                                                                    savePath: data.save_path || ''
+                                                                });
+                                                            } else {
+                                                                updateNodeSettings(node.id, { serverStatus: 'error' });
+                                                            }
+                                                        } catch (e) {
+                                                            updateNodeSettings(node.id, { serverStatus: 'error' });
+                                                        }
+                                                    }}
+                                                >
+                                                    测试
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className={`text-[10px] font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                                子文件夹（可选）
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={node.settings?.subfolder || ''}
+                                                    onChange={(e) => updateNodeSettings(node.id, { subfolder: e.target.value })}
+                                                    placeholder="例如: project1/images"
+                                                    className={`w-full px-2 py-1.5 text-xs rounded border outline-none ${
+                                                        theme === 'dark'
+                                                            ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                                            : 'bg-white border-zinc-300 text-zinc-800'
+                                                    }`}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    list={`folder-history-${node.id}`}
+                                                />
+                                                {savedFolderHistory.length > 0 && (
+                                                    <datalist id={`folder-history-${node.id}`}>
+                                                        {savedFolderHistory.map((folder, idx) => (
+                                                            <option key={idx} value={folder} />
+                                                        ))}
+                                                    </datalist>
+                                                )}
+                                            </div>
+                                            {savedFolderHistory.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    {savedFolderHistory.slice(0, 5).map((folder, idx) => (
+                                                        <button
+                                                            key={idx}
+                                                            className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                                                                    : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300'
+                                                            } ${node.settings?.subfolder === folder ? 'ring-1 ring-green-500' : ''}`}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                            onClick={() => updateNodeSettings(node.id, { subfolder: folder })}
+                                                            title={folder}
+                                                        >
+                                                            {folder.length > 12 ? folder.slice(0, 12) + '...' : folder}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                id={`auto-save-${node.id}`}
+                                                checked={node.settings?.autoSave || false}
+                                                onChange={(e) => updateNodeSettings(node.id, { autoSave: e.target.checked })}
+                                                className="w-3.5 h-3.5 rounded"
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            />
+                                            <label 
+                                                htmlFor={`auto-save-${node.id}`}
+                                                className={`text-[10px] ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}
+                                            >
+                                                有新输入时自动保存
+                                            </label>
+                                        </div>
+                                        {node.settings?.savePath && (
+                                            <div className={`text-[10px] p-2 rounded ${
+                                                theme === 'dark' ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600'
+                                            }`}>
+                                                保存路径: {node.settings.savePath}
+                                            </div>
+                                        )}
+                                        {connectedImages.length > 0 && (
+                                            <div className={`p-2 rounded border ${
+                                                theme === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'
+                                            }`}>
+                                                <div className={`text-[10px] font-medium mb-1.5 ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                                                    待保存文件 ({connectedImages.length})
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {connectedImages.slice(0, 6).map((img, idx) => {
+                                                        const isVideo = isVideoUrl(img);
+                                                        return isVideo ? (
+                                                            <div key={idx} className={`w-8 h-8 rounded flex items-center justify-center ${
+                                                                theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
+                                                            }`}>
+                                                                <Video size={14} className="text-blue-400" />
+                                                            </div>
+                                                        ) : (
+                                                            <img key={idx} src={img} className="w-8 h-8 rounded object-cover" />
+                                                        );
+                                                    })}
+                                                    {connectedImages.length > 6 && (
+                                                        <div className={`w-8 h-8 rounded flex items-center justify-center text-[10px] ${
+                                                            theme === 'dark' ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-600'
+                                                        }`}>
+                                                            +{connectedImages.length - 6}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {node.settings?.lastSaved && (
+                                            <div className={`text-[10px] ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>
+                                                ✓ 上次保存: {new Date(node.settings.lastSaved).toLocaleTimeString()}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className={`px-3 py-2 border-t ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
+                                        <button
+                                            className={`w-full px-3 py-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                                                node.settings?.serverStatus === 'connected'
+                                                    ? theme === 'dark'
+                                                        ? 'bg-green-600 hover:bg-green-500 text-white'
+                                                        : 'bg-green-500 hover:bg-green-600 text-white'
+                                                    : theme === 'dark'
+                                                        ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
+                                                        : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
+                                            }`}
+                                            disabled={node.settings?.serverStatus !== 'connected'}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onClick={async () => {
+                                                if (node.settings?.serverStatus !== 'connected') {
+                                                    alert('请先连接本地服务器！\n\n运行 "启动本地接收器.bat" 启动服务。');
+                                                    return;
+                                                }
+                                                if (connectedImages.length === 0) {
+                                                    alert('没有可保存的图片。请将图片节点连接到此节点。');
+                                                    return;
+                                                }
+                                                const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
+                                                const subfolder = node.settings?.subfolder || '';
+                                                const files = [];
+                                                
+                                                // PNG转高质量JPG的辅助函数
+                                                const convertToJpg = async (imgUrl) => {
+                                                    return new Promise(async (resolve) => {
+                                                        try {
+                                                            const img = new Image();
+                                                            img.crossOrigin = 'anonymous';
+                                                            img.onload = () => {
+                                                                const canvas = document.createElement('canvas');
+                                                                canvas.width = img.naturalWidth;
+                                                                canvas.height = img.naturalHeight;
+                                                                const ctx = canvas.getContext('2d');
+                                                                ctx.fillStyle = '#FFFFFF';
+                                                                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                                                ctx.drawImage(img, 0, 0);
+                                                                // 使用95%质量的JPG，接近无损
+                                                                const jpgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                                                                resolve(jpgDataUrl);
+                                                            };
+                                                            img.onerror = () => resolve(null);
+                                                            img.src = imgUrl;
+                                                        } catch (e) {
+                                                            resolve(null);
+                                                        }
+                                                    });
+                                                };
+                                                
+                                                for (let i = 0; i < connectedImages.length; i++) {
+                                                    const imgUrl = connectedImages[i];
+                                                    const isVideo = isVideoUrl(imgUrl);
+                                                    try {
+                                                        let content = imgUrl;
+                                                        let ext = '.jpg';
+                                                        
+                                                        if (isVideo) {
+                                                            // 视频直接保存，不转换
+                                                            ext = '.mp4';
+                                                            if (!imgUrl.startsWith('data:')) {
+                                                                const response = await fetch(imgUrl);
+                                                                const blob = await response.blob();
+                                                                content = await new Promise((resolve) => {
+                                                                    const reader = new FileReader();
+                                                                    reader.onloadend = () => resolve(reader.result);
+                                                                    reader.readAsDataURL(blob);
+                                                                });
+                                                            }
+                                                        } else {
+                                                            // 图片转换为高质量JPG
+                                                            const jpgContent = await convertToJpg(imgUrl);
+                                                            if (jpgContent) {
+                                                                content = jpgContent;
+                                                            } else if (!imgUrl.startsWith('data:')) {
+                                                                // 转换失败时回退到原始格式
+                                                                const response = await fetch(imgUrl);
+                                                                const blob = await response.blob();
+                                                                content = await new Promise((resolve) => {
+                                                                    const reader = new FileReader();
+                                                                    reader.onloadend = () => resolve(reader.result);
+                                                                    reader.readAsDataURL(blob);
+                                                                });
+                                                                ext = '.png';
+                                                            }
+                                                        }
+                                                        const timestamp = Date.now();
+                                                        files.push({
+                                                            filename: `tapnow_${timestamp}_${i}${ext}`,
+                                                            content: content
+                                                        });
+                                                    } catch (e) {
+                                                        console.error('处理文件失败:', e);
+                                                    }
+                                                }
+                                                if (files.length === 0) {
+                                                    alert('没有可保存的文件');
+                                                    return;
+                                                }
+                                                try {
+                                                    const response = await fetch(`${serverUrl}/save-batch`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ files, subfolder })
+                                                    });
+                                                    const result = await response.json();
+                                                    if (result.success) {
+                                                        updateNodeSettings(node.id, { 
+                                                            lastSaved: new Date().toISOString(),
+                                                            savedFiles: result.results || [],
+                                                            lastSavedUrls: [...connectedImages]
+                                                        });
+                                                        // 保存成功后，将子文件夹添加到历史记录
+                                                        if (subfolder && subfolder.trim() !== '') {
+                                                            addFolderToHistory(subfolder.trim());
+                                                        }
+                                                        alert(`保存成功！\n${result.message}`);
+                                                    } else {
+                                                        alert(`保存失败: ${result.error || '未知错误'}`);
+                                                    }
+                                                } catch (e) {
+                                                    console.error('保存请求失败:', e);
+                                                    alert('保存失败: 无法连接到本地服务器');
+                                                    updateNodeSettings(node.id, { serverStatus: 'error' });
+                                                }
+                                            }}
+                                        >
+                                            <Save size={14} />
+                                            保存到本地
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -12695,6 +16110,98 @@ You must design a visual composition that tells the story through **8 distinct p
                                                             {isExpanded ? '收起' : `+${characterLibrary.length - maxVisible}`}
                                                         </button>
                                                     )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Veo 3.1 首尾帧 UI（仅 veo3.1 且开启“首尾帧”时显示） */}
+                                    {node.type === 'gen-video' && (() => {
+                                        const currentModel = apiConfigsMap.get(node.settings?.model);
+                                        const isVeo31 = currentModel?.modelName === 'veo3.1';
+                                        if (!isVeo31 || !node.settings?.veoFramesMode) return null;
+
+                                        const startFrame = getConnectedImageForInput(node.id, 'veo_start');
+                                        const endFrame = getConnectedImageForInput(node.id, 'veo_end');
+
+                                        return (
+                                            <div
+                                                className={`mb-2 rounded-lg border p-3 space-y-2 ${
+                                                    theme === 'dark'
+                                                        ? 'bg-zinc-900/40 border-emerald-500/20'
+                                                        : 'bg-emerald-50 border-emerald-200'
+                                                }`}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            >
+                                                <div className={`text-[11px] font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>
+                                                    Veo 3.1 首尾帧
+                                                </div>
+                                                <div className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                                                    第一张为首帧，第二张为尾帧（最多 2 张）
+                                                </div>
+
+                                                {/* 首帧 */}
+                                                <div className="relative flex items-center gap-2">
+                                                    <div
+                                                        className={`input-point ${startFrame ? 'connected' : ''} ${connectingTarget === node.id && connectingInputType === 'veo_start' ? 'active' : ''}`}
+                                                        title="首帧输入"
+                                                        onMouseDown={(e) => {
+                                                            e.stopPropagation();
+                                                            e.preventDefault();
+                                                            const world = screenToWorld(e.clientX, e.clientY);
+                                                            setMousePos(world);
+                                                            setConnectingTarget(node.id);
+                                                            setConnectingInputType('veo_start');
+                                                        }}
+                                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'veo_start')}
+                                                        data-input-type="veo_start"
+                                                        style={{ position: 'absolute', top: '50%', left: '-0.25rem', transform: 'translateY(-50%)', width: '0.5rem', height: '0.5rem', zIndex: 20, cursor: 'crosshair' }}
+                                                    />
+                                                    <div className="flex items-center justify-between flex-1 ml-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-[10px] font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>首帧</span>
+                                                            {startFrame && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}
+                                                        </div>
+                                                        {startFrame ? (
+                                                            <div className="w-8 h-8 rounded overflow-hidden border border-zinc-700/40">
+                                                                <img src={startFrame} className="w-full h-full object-cover" />
+                                                            </div>
+                                                        ) : (
+                                                            <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>未连接</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* 尾帧 */}
+                                                <div className="relative flex items-center gap-2">
+                                                    <div
+                                                        className={`input-point ${endFrame ? 'connected' : ''} ${connectingTarget === node.id && connectingInputType === 'veo_end' ? 'active' : ''}`}
+                                                        title="尾帧输入"
+                                                        onMouseDown={(e) => {
+                                                            e.stopPropagation();
+                                                            e.preventDefault();
+                                                            const world = screenToWorld(e.clientX, e.clientY);
+                                                            setMousePos(world);
+                                                            setConnectingTarget(node.id);
+                                                            setConnectingInputType('veo_end');
+                                                        }}
+                                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'veo_end')}
+                                                        data-input-type="veo_end"
+                                                        style={{ position: 'absolute', top: '50%', left: '-0.25rem', transform: 'translateY(-50%)', width: '0.5rem', height: '0.5rem', zIndex: 20, cursor: 'crosshair' }}
+                                                    />
+                                                    <div className="flex items-center justify-between flex-1 ml-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-[10px] font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>尾帧</span>
+                                                            {endFrame && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}
+                                                        </div>
+                                                        {endFrame ? (
+                                                            <div className="w-8 h-8 rounded overflow-hidden border border-zinc-700/40">
+                                                                <img src={endFrame} className="w-full h-full object-cover" />
+                                                            </div>
+                                                        ) : (
+                                                            <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>未连接</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -13213,6 +16720,30 @@ You must design a visual composition that tells the story through **8 distinct p
                                                             <span>HD</span>
                                                         </label>
                                                     )}
+                                                    {node.type === 'gen-video' && (() => {
+                                                        const currentModel = apiConfigsMap.get(node.settings?.model);
+                                                        const isVeo31 = currentModel?.modelName === 'veo3.1';
+                                                        if (!isVeo31) return null;
+                                                        return (
+                                                            <label className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] border cursor-pointer transition-colors ${
+                                                                theme === 'dark'
+                                                                    ? node.settings?.veoFramesMode ? 'bg-emerald-600/25 border-emerald-500 text-emerald-200' : 'bg-zinc-800/50 hover:bg-zinc-800 text-zinc-400 border-zinc-700/50'
+                                                                    : node.settings?.veoFramesMode ? 'bg-emerald-500/20 border-emerald-300 text-emerald-700' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 border-zinc-300'
+                                                            }`} onClick={e => e.stopPropagation()}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={node.settings?.veoFramesMode || false}
+                                                                    onChange={(e) => {
+                                                                        e.stopPropagation();
+                                                                        updateNodeSettings(node.id, { veoFramesMode: e.target.checked });
+                                                                    }}
+                                                                    className="w-3 h-3 cursor-pointer"
+                                                                    onMouseDown={e => e.stopPropagation()}
+                                                                />
+                                                                <span>首尾帧</span>
+                                                            </label>
+                                                        );
+                                                    })()}
                                                 </>
                                                     ) : null;
                                                 })()
@@ -13273,7 +16804,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                     theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'
                                 }`}
                             >
-                                Tapnow Studio
+                                tapnow
                             </span>
                             {/* 功能4：项目名称编辑 */}
                             {isEditingProjectName ? (
@@ -13319,6 +16850,23 @@ You must design a visual composition that tells the story through **8 distinct p
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            {/* 性能模式开关 */}
+                            <button
+                                onClick={() => setPerformanceMode(!isPerformanceMode)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                                    isPerformanceMode
+                                        ? theme === 'dark'
+                                            ? 'bg-blue-600 border-blue-500 text-white hover:bg-blue-500'
+                                            : 'bg-blue-500 border-blue-400 text-white hover:bg-blue-600'
+                                        : theme === 'dark'
+                                            ? 'bg-zinc-900 border-zinc-700 text-zinc-200 hover:bg-zinc-800'
+                                            : 'bg-zinc-100 border-zinc-300 text-zinc-700 hover:bg-zinc-200'
+                                }`}
+                                title="性能模式：禁用毛玻璃效果和阴影，优化渲染性能"
+                            >
+                                <span>⚡</span>
+                                <span>性能模式</span>
+                            </button>
                             {/* 功能1：下载按钮 */}
                             <button
                                 onClick={handleBatchDownload}
@@ -13436,6 +16984,17 @@ You must design a visual composition that tells the story through **8 distinct p
                             >
                                 <FolderOpen size={18} />
                             </button>
+                            <button
+                                onClick={handleImportWorkflow}
+                                className={`p-2.5 rounded-lg transition-all mb-2 ${
+                                    theme === 'dark'
+                                        ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                                        : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200'
+                                }`}
+                                title="导入工作流"
+                            >
+                                <Download size={18} />
+                            </button>
                         </div>
 
                             {/* History Panel */}
@@ -13458,6 +17017,56 @@ You must design a visual composition that tells the story through **8 distinct p
                                         生成历史
                                     </h3>
                                     <div className="flex items-center gap-2">
+                                        {/* 性能模式开关 - 三档切换：off -> normal -> ultra -> off */}
+                                        <button
+                                            onClick={() => {
+                                                const modes = ['off', 'normal', 'ultra'];
+                                                const currentIdx = modes.indexOf(historyPerformanceMode);
+                                                const nextIdx = (currentIdx + 1) % modes.length;
+                                                setHistoryPerformanceMode(modes[nextIdx]);
+                                            }}
+                                            className={`p-1.5 rounded transition-colors flex items-center gap-1 ${
+                                                historyPerformanceMode === 'ultra'
+                                                    ? theme === 'dark'
+                                                        ? 'text-orange-400 bg-orange-500/20 hover:bg-orange-500/30'
+                                                        : 'text-orange-600 bg-orange-100 hover:bg-orange-200'
+                                                    : historyPerformanceMode === 'normal'
+                                                        ? theme === 'dark'
+                                                            ? 'text-green-400 bg-green-500/20 hover:bg-green-500/30'
+                                                            : 'text-green-600 bg-green-100 hover:bg-green-200'
+                                                        : theme === 'dark'
+                                                            ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                                                            : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200'
+                                            }`}
+                                            title={
+                                                historyPerformanceMode === 'ultra' ? '极致性能模式（点击关闭）' 
+                                                : historyPerformanceMode === 'normal' ? '普通性能模式（点击切换极致）' 
+                                                : '性能模式已关闭（点击开启）'
+                                            }
+                                        >
+                                            <Zap size={14} />
+                                            {historyPerformanceMode === 'ultra' && (
+                                                <span className="text-[9px] font-bold">MAX</span>
+                                            )}
+                                        </button>
+                                        {/* 本地缓存设置 */}
+                                        {localCacheServerConnected && (
+                                            <button
+                                                onClick={() => setLocalCacheSettingsOpen(!localCacheSettingsOpen)}
+                                                className={`p-1.5 rounded transition-colors ${
+                                                    localCacheSettingsOpen
+                                                        ? theme === 'dark'
+                                                            ? 'text-blue-400 bg-blue-500/20 hover:bg-blue-500/30'
+                                                            : 'text-blue-600 bg-blue-100 hover:bg-blue-200'
+                                                        : theme === 'dark'
+                                                            ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                                                            : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200'
+                                                }`}
+                                                title="本地缓存设置"
+                                            >
+                                                <FolderCog size={14} />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => {
                                                 setBatchModalOpen(true);
@@ -13480,6 +17089,123 @@ You must design a visual composition that tells the story through **8 distinct p
                                         </button>
                                     </div>
                                 </div>
+                                {/* 本地缓存状态提示 */}
+                                {localCacheServerConnected && (
+                                    <div className={`px-3 py-1.5 text-[10px] flex items-center gap-1.5 border-b ${
+                                        theme === 'dark' ? 'bg-green-500/10 border-zinc-800 text-green-400' : 'bg-green-50 border-zinc-200 text-green-600'
+                                    }`}>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-400"></div>
+                                        本地缓存已连接 - 图片将优先从本地读取
+                                    </div>
+                                )}
+                                {/* 本地缓存设置面板 */}
+                                {localCacheSettingsOpen && localCacheServerConnected && (
+                                    <div className={`p-3 border-b space-y-3 ${
+                                        theme === 'dark' ? 'bg-zinc-900/50 border-zinc-800' : 'bg-zinc-100 border-zinc-200'
+                                    }`}>
+                                        <div className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">本地缓存设置</div>
+                                        {/* 图片保存路径 */}
+                                        <div className="space-y-1">
+                                            <label className={`text-[10px] ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                                图片保存路径
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={localServerConfig.imageSavePath}
+                                                onChange={(e) => setLocalServerConfig(prev => ({ ...prev, imageSavePath: e.target.value }))}
+                                                onBlur={(e) => updateLocalServerConfig({ image_save_path: e.target.value })}
+                                                placeholder="例如: D:/Pictures/TapnowImages"
+                                                className={`w-full px-2 py-1.5 text-[11px] rounded border ${
+                                                    theme === 'dark' 
+                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500' 
+                                                        : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
+                                                }`}
+                                            />
+                                        </div>
+                                        {/* 视频保存路径 */}
+                                        <div className="space-y-1">
+                                            <label className={`text-[10px] ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                                视频保存路径
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={localServerConfig.videoSavePath}
+                                                onChange={(e) => setLocalServerConfig(prev => ({ ...prev, videoSavePath: e.target.value }))}
+                                                onBlur={(e) => updateLocalServerConfig({ video_save_path: e.target.value })}
+                                                placeholder="例如: D:/Videos/TapnowVideos"
+                                                className={`w-full px-2 py-1.5 text-[11px] rounded border ${
+                                                    theme === 'dark' 
+                                                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500' 
+                                                        : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
+                                                }`}
+                                            />
+                                        </div>
+                                        {/* PNG转JPG开关 */}
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-0.5">
+                                                <div className={`text-[10px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                                                    PNG转高质量JPG
+                                                </div>
+                                                <div className={`text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    {localServerConfig.pilAvailable ? '自动转换PNG为JPG节省空间' : 'PIL未安装，功能不可用'}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const newValue = !localServerConfig.convertPngToJpg;
+                                                    setLocalServerConfig(prev => ({ ...prev, convertPngToJpg: newValue }));
+                                                    updateLocalServerConfig({ convert_png_to_jpg: newValue });
+                                                }}
+                                                disabled={!localServerConfig.pilAvailable}
+                                                className={`w-10 h-5 rounded-full transition-colors relative ${
+                                                    !localServerConfig.pilAvailable 
+                                                        ? 'bg-zinc-700 cursor-not-allowed opacity-50'
+                                                        : localServerConfig.convertPngToJpg
+                                                            ? 'bg-green-500'
+                                                            : theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
+                                                }`}
+                                            >
+                                                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                                                    localServerConfig.convertPngToJpg ? 'translate-x-5' : 'translate-x-0.5'
+                                                }`}></div>
+                                            </button>
+                                        </div>
+                                        {/* 刷新缓存按钮 */}
+                                        <div className="pt-2 border-t border-zinc-700/50">
+                                            <button
+                                                onClick={async () => {
+                                                    if (!confirm('确定要重新缓存所有素材吗？这将清除本地缓存记录并重新下载到新路径。')) return;
+                                                    
+                                                    // 清除所有历史记录的本地缓存URL
+                                                    setHistory(prev => prev.map(item => ({
+                                                        ...item,
+                                                        localCacheUrl: null,
+                                                        mjLocalUrls: null,
+                                                        thumbnailUrl: null,
+                                                        mjThumbnails: null
+                                                    })));
+                                                    
+                                                    // 提示用户
+                                                    alert('缓存记录已清除，素材将在下次访问时重新缓存到新路径。');
+                                                }}
+                                                className={`w-full py-2 px-3 text-[11px] rounded flex items-center justify-center gap-2 transition-colors ${
+                                                    theme === 'dark'
+                                                        ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
+                                                        : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                                                }`}
+                                            >
+                                                <RefreshCw size={12} />
+                                                刷新缓存（重新下载到新路径）
+                                            </button>
+                                        </div>
+                                        {/* 提示信息 */}
+                                        <div className={`text-[9px] p-2 rounded ${
+                                            theme === 'dark' ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'
+                                        }`}>
+                                            提示：设置路径后，点击刷新缓存可将素材重新保存到新文件夹
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
                                     {history.map((item) => (
                                         <HistoryItem
@@ -13489,7 +17215,9 @@ You must design a visual composition that tells the story through **8 distinct p
                                             lightboxItem={lightboxItem}
                                             onDelete={deleteHistoryItem}
                                             onClick={() => {
-                                                if (item.url) {
+                                                // 支持本地缓存：如果有url或localCacheUrl都可以打开
+                                                const displayUrl = item.localCacheUrl || item.url || item.originalUrl;
+                                                if (displayUrl) {
                                                     const currentIndex = item.mjImages && item.mjImages.length > 1 
                                                         ? (item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : 0)
                                                         : 0;
@@ -13497,7 +17225,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                                         ...item,
                                                         url: item.mjImages && item.mjImages.length > 1 
                                                             ? item.mjImages[currentIndex] 
-                                                            : item.url,
+                                                            : displayUrl,
                                                         selectedMjImageIndex: currentIndex
                                                     });
                                                 }
@@ -13528,6 +17256,9 @@ You must design a visual composition that tells the story through **8 distinct p
                                             Loader2={Loader2}
                                             Trash2={Trash2}
                                             RefreshCw={RefreshCw}
+                                            performanceMode={historyPerformanceMode}
+                                            thumbnailUrl={item.thumbnailUrl}
+                                            localCacheUrl={item.localCacheUrl}
                                         />
                                     ))}
                                 </div>
@@ -13622,18 +17353,29 @@ You must design a visual composition that tells the story through **8 distinct p
                                                     }}
                                                 >
                                                     <div className="aspect-square bg-zinc-800 relative group/char">
-                                                        {character.profile_picture_url ? (
+                                                        {character.profile_picture_url || character.localCacheUrl ? (
                                                             <img
-                                                                src={character.profile_picture_url}
+                                                                src={character.localCacheUrl || character.profile_picture_url}
                                                                 alt={character.username}
                                                                 className="w-full h-full object-cover"
                                                                 onError={(e) => {
-                                                                    e.target.style.display = 'none';
+                                                                    // 如果本地缓存失败，尝试原始URL
+                                                                    if (character.localCacheUrl && e.target.src === character.localCacheUrl && character.profile_picture_url) {
+                                                                        e.target.src = character.profile_picture_url;
+                                                                    } else {
+                                                                        e.target.style.display = 'none';
+                                                                    }
                                                                 }}
                                                             />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center text-zinc-500">
                                                                 <User size={24} />
+                                                            </div>
+                                                        )}
+                                                        {/* 本地缓存标识 */}
+                                                        {character.localCacheUrl && (
+                                                            <div className="absolute top-1 left-1 px-1 py-0.5 rounded text-[8px] bg-green-500/80 text-white">
+                                                                本地
                                                             </div>
                                                         )}
                                                         {/* 删除按钮 */}
@@ -13756,35 +17498,111 @@ You must design a visual composition that tells the story through **8 distinct p
                                                     }`}
                                                 />
                                             ) : (
-                                                <select
-                                                    value={createCharacterSelectedTaskId}
-                                                    onChange={(e) => {
-                                                        const taskId = e.target.value;
-                                                        setCreateCharacterSelectedTaskId(taskId);
-                                                        // 当选中历史视频时，自动获取视频URL并填充到URL输入框
-                                                        if (taskId) {
-                                                            const selectedHistoryItem = historyMap.get(taskId);
-                                                            if (selectedHistoryItem && selectedHistoryItem.url) {
-                                                                // 切换到URL输入模式并填充URL
-                                                                setCreateCharacterVideoSourceType('url');
-                                                                setCreateCharacterVideoUrl(selectedHistoryItem.url);
-                                                                setCreateCharacterSelectedTaskId(''); // 清空选择
+                                                <div className="relative">
+                                                    {/* 自定义下拉框触发器 */}
+                                                    <div
+                                                        onClick={() => setCreateCharacterHistoryDropdownOpen(!createCharacterHistoryDropdownOpen)}
+                                                        className={`w-full px-3 py-2 text-xs rounded border outline-none cursor-pointer flex items-center justify-between ${
+                                                            theme === 'dark'
+                                                                ? 'bg-zinc-900 border-zinc-700 text-zinc-200'
+                                                                : 'bg-white border-zinc-300 text-zinc-800'
+                                                        }`}
+                                                    >
+                                                        <span className={createCharacterSelectedTaskId ? '' : 'opacity-60'}>
+                                                            {createCharacterSelectedTaskId 
+                                                                ? (() => {
+                                                                    const item = historyMap.get(createCharacterSelectedTaskId);
+                                                                    return item ? `${item.prompt?.slice(0, 40) || '未命名'} - ${item.time}` : '选择历史记录中的视频...';
+                                                                })()
+                                                                : '选择历史记录中的视频...'
                                                             }
-                                                        }
-                                                    }}
-                                                    className={`w-full px-3 py-2 text-xs rounded border outline-none ${
-                                                        theme === 'dark'
-                                                            ? 'bg-zinc-900 border-zinc-700 text-zinc-200'
-                                                            : 'bg-white border-zinc-300 text-zinc-800'
-                                                    }`}
-                                                >
-                                                    <option value="">选择历史记录中的视频...</option>
-                                                    {history.filter(h => h.type === 'video' && h.status === 'completed' && h.url).map(item => (
-                                                        <option key={item.id} value={item.id}>
-                                                            {item.prompt?.slice(0, 50) || 'Untitled'} - {item.time}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                        </span>
+                                                        <ChevronDown size={14} className={`transition-transform ${createCharacterHistoryDropdownOpen ? 'rotate-180' : ''}`} />
+                                                    </div>
+                                                    
+                                                    {/* 下拉列表 - 带缩略图 */}
+                                                    {createCharacterHistoryDropdownOpen && (
+                                                        <div className={`absolute z-50 w-full mt-1 rounded-lg border shadow-xl max-h-80 overflow-y-auto custom-scrollbar ${
+                                                            theme === 'dark'
+                                                                ? 'bg-zinc-900 border-zinc-700'
+                                                                : 'bg-white border-zinc-300'
+                                                        }`}>
+                                                            {history.filter(h => h.type === 'video' && h.status === 'completed' && h.url).length === 0 ? (
+                                                                <div className={`p-4 text-xs text-center ${
+                                                                    theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
+                                                                }`}>
+                                                                    暂无已完成的视频
+                                                                </div>
+                                                            ) : (
+                                                                history.filter(h => h.type === 'video' && h.status === 'completed' && h.url).map(item => (
+                                                                    <div
+                                                                        key={item.id}
+                                                                        onClick={() => {
+                                                                            setCreateCharacterSelectedTaskId(item.id);
+                                                                            setCreateCharacterHistoryDropdownOpen(false);
+                                                                            // 自动填充URL
+                                                                            if (item.url) {
+                                                                                setCreateCharacterVideoSourceType('url');
+                                                                                setCreateCharacterVideoUrl(item.url);
+                                                                                setCreateCharacterSelectedTaskId('');
+                                                                            }
+                                                                        }}
+                                                                        className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
+                                                                            theme === 'dark'
+                                                                                ? 'hover:bg-zinc-800'
+                                                                                : 'hover:bg-zinc-100'
+                                                                        }`}
+                                                                    >
+                                                                        {/* 视频缩略图 */}
+                                                                        <div className={`w-20 h-12 flex-shrink-0 rounded overflow-hidden ${
+                                                                            theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
+                                                                        }`}>
+                                                                            <video
+                                                                                src={item.localCacheUrl || item.url || item.originalUrl}
+                                                                                className="w-full h-full object-cover"
+                                                                                muted
+                                                                                preload="metadata"
+                                                                                onLoadedMetadata={(e) => {
+                                                                                    // 跳到第一帧作为缩略图
+                                                                                    e.target.currentTime = 0.1;
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                        {/* 视频信息 */}
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className={`text-xs font-medium truncate ${
+                                                                                theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'
+                                                                            }`}>
+                                                                                {item.prompt?.slice(0, 50) || '未命名视频'}
+                                                                            </div>
+                                                                            <div className={`text-[10px] mt-0.5 flex items-center gap-2 ${
+                                                                                theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
+                                                                            }`}>
+                                                                                <span>{item.modelName || '未知模型'}</span>
+                                                                                <span>•</span>
+                                                                                <span>{item.time}</span>
+                                                                                {item.localCacheUrl && (
+                                                                                    <>
+                                                                                        <span>•</span>
+                                                                                        <span className="text-green-500">本地缓存</span>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 点击外部关闭下拉框 */}
+                                                    {createCharacterHistoryDropdownOpen && (
+                                                        <div 
+                                                            className="fixed inset-0 z-40" 
+                                                            onClick={() => setCreateCharacterHistoryDropdownOpen(false)}
+                                                        />
+                                                    )}
+                                                </div>
                                             )}
                                             
                                             {/* 视频预览区域 */}
@@ -13964,7 +17782,7 @@ You must design a visual composition that tells the story through **8 distinct p
                         {/* Main Canvas Area */}
                         <div className="flex-1 relative overflow-hidden flex">
                              <div ref={canvasRef} id="canvas-bg" className="flex-1 h-full cursor-default relative"
-                                onMouseDown={handleMouseDown} onClick={handleBackgroundClick} onDoubleClick={handleDoubleClick}
+                                onMouseDown={handleMouseDown} onClick={handleBackgroundClick} onDoubleClick={handleDoubleClick} onContextMenu={handleCanvasContextMenu}
                                 style={{ 
                                     backgroundImage: theme === 'dark' 
                                         ? 'radial-gradient(#27272a 1px, transparent 1px)' 
@@ -14249,7 +18067,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                                         {msg.isError ? (
                                                             <span className="text-red-500 select-text cursor-text" style={{ userSelect: 'text', cursor: 'text' }}>{msg.content}</span>
                                                         ) : msg.content ? (
-                                                            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} style={{ userSelect: 'text', cursor: 'text' }}></div>
+                                                            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} style={{ userSelect: 'text', cursor: 'text' }}></div>
                                                         ) : null}
                                                     </div>
                                                 )}
@@ -14437,6 +18255,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                         {[
                                             { type: 'input-image', label: '图片输入' },
                                             { type: 'text-node', label: '文字节点' },
+                                            { type: 'novel-input', label: '小说输入' },
                                             { type: 'video-input', label: '视频输入' },
                                             { type: 'video-analyze', label: '视频拆解 / 提示词反推' },
                                             { type: 'storyboard-node', label: '智能分镜表' },
@@ -14444,6 +18263,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                             { type: 'gen-video', label: 'AI 视频' },
                                             { type: 'image-compare', label: '图像对比' },
                                             { type: 'preview', label: '预览窗口' },
+                                            { type: 'local-save', label: '保存到本地' },
                                         ].map(item => (
                                             <button
                                                 key={item.type}
@@ -14756,6 +18576,35 @@ You must design a visual composition that tells the story through **8 distinct p
                                 </div>
                             )}
 
+                            {/* 框选节点右键菜单 */}
+                            {selectionContextMenu.visible && (
+                                <div
+                                    className={`fixed z-[120] w-52 rounded-lg shadow-2xl py-1 animate-in fade-in duration-100 border ${
+                                        theme === 'dark' ? 'bg-[#18181b] border-zinc-700' : 'bg-white border-zinc-200'
+                                    }`}
+                                    style={{ left: selectionContextMenu.x, top: selectionContextMenu.y }}
+                                    onMouseLeave={() => setSelectionContextMenu({ visible: false, x: 0, y: 0 })}
+                                >
+                                    <div
+                                        className={`px-3 py-1.5 text-[10px] font-medium border-b mb-1 ${
+                                            theme === 'dark' ? 'text-zinc-500 border-zinc-800' : 'text-zinc-500 border-zinc-200'
+                                        }`}
+                                    >
+                                        选中 {selectedNodeIds.size > 0 ? selectedNodeIds.size : (selectedNodeId ? 1 : 0)} 个节点
+                                    </div>
+                                    <button
+                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
+                                            theme === 'dark'
+                                                ? 'text-zinc-300 hover:bg-zinc-800'
+                                                : 'text-zinc-700 hover:bg-zinc-100'
+                                        }`}
+                                        onClick={handleSaveSelectedWorkflow}
+                                    >
+                                        <Save size={14} className="text-blue-500" /> 保存当前选取工作流
+                                    </button>
+                                </div>
+                            )}
+
                             <Lightbox 
                                 item={lightboxItem} 
                                 onClose={() => setLightboxItem(null)}
@@ -14996,12 +18845,41 @@ You must design a visual composition that tells the story through **8 distinct p
                                                 {batchSelectedIds.size === history.length ? '取消全选' : '全选'}
                                             </button>
                                             <button
-                                                onClick={() => {
+                                                onClick={async () => {
                                                     if (batchSelectedIds.size === 0) return;
-                                                    if (confirm(`确定要删除选中的 ${batchSelectedIds.size} 项吗？`)) {
+                                                    const selectedItems = history.filter(item => batchSelectedIds.has(item.id));
+                                                    const hasLocalFiles = selectedItems.some(item => item.localCacheUrl || item.localFilePath);
+                                                    
+                                                    const confirmMsg = hasLocalFiles 
+                                                        ? `确定要删除选中的 ${batchSelectedIds.size} 项吗？\n\n注意：将同时删除本地文件！`
+                                                        : `确定要删除选中的 ${batchSelectedIds.size} 项吗？`;
+                                                    
+                                                    if (confirm(confirmMsg)) {
+                                                        // 先删除本地文件
+                                                        if (hasLocalFiles) {
+                                                            try {
+                                                                const filesToDelete = selectedItems
+                                                                    .filter(item => item.localCacheUrl || item.localFilePath)
+                                                                    .map(item => ({ url: item.localCacheUrl, path: item.localFilePath }));
+                                                                
+                                                                if (filesToDelete.length > 0) {
+                                                                    console.log('[批量删除] 删除本地文件:', filesToDelete);
+                                                                    const response = await fetch('http://127.0.0.1:9527/delete-batch', {
+                                                                        method: 'POST',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({ files: filesToDelete })
+                                                                    });
+                                                                    const result = await response.json();
+                                                                    console.log('[批量删除] 服务器响应:', result);
+                                                                }
+                                                            } catch (e) {
+                                                                console.error('[批量删除] 删除本地文件失败:', e);
+                                                            }
+                                                        }
+                                                        
+                                                        // 删除历史记录
                                                         setHistory(prev => {
                                                             const filtered = prev.filter(item => !batchSelectedIds.has(item.id));
-                                                            // 立即保存到 localStorage，不等待防抖
                                                             try {
                                                                 localStorage.setItem('tapnow_history', JSON.stringify(filtered));
                                                             } catch (e) {
@@ -15027,7 +18905,125 @@ You must design a visual composition that tells the story through **8 distinct p
                                             <button
                                                 onClick={async () => {
                                                     if (batchSelectedIds.size === 0) return;
-                                                    const selectedItems = history.filter(item => batchSelectedIds.has(item.id) && item.url);
+                                                    const selectedItems = history.filter(item => batchSelectedIds.has(item.id));
+                                                    // 统计缓存类型：有后端URL的项目数，有本地缓存的项目数
+                                                    const itemsWithRemoteCache = selectedItems.filter(item => item.url && !item.url.startsWith('http://127.0.0.1:9527'));
+                                                    const itemsWithLocalCache = selectedItems.filter(item => item.localCacheUrl || item.localFilePath);
+                                                    
+                                                    // 优先清理后端缓存（只清除URL引用，不删除记录，保留本地缓存）
+                                                    const hasRemoteCache = itemsWithRemoteCache.length > 0;
+                                                    const hasLocalCache = itemsWithLocalCache.length > 0;
+                                                    
+                                                    if (!hasRemoteCache && !hasLocalCache) {
+                                                        alert('选中的项目中没有可清理的缓存');
+                                                        return;
+                                                    }
+                                                    
+                                                    // 让用户选择清理哪种缓存
+                                                    let clearRemote = false;
+                                                    let deleteLocalFiles = false;
+                                                    
+                                                    if (hasRemoteCache && hasLocalCache) {
+                                                        // 两种缓存都有，让用户选择
+                                                        const choice = confirm(`选中的项目包含：\n- 后端缓存: ${itemsWithRemoteCache.length} 项\n- 本地素材: ${itemsWithLocalCache.length} 项\n\n点击"确定"清理后端缓存\n点击"取消"删除本地素材`);
+                                                        if (choice) {
+                                                            clearRemote = true;
+                                                        } else {
+                                                            deleteLocalFiles = true;
+                                                        }
+                                                    } else if (hasRemoteCache) {
+                                                        clearRemote = true;
+                                                    } else {
+                                                        deleteLocalFiles = true;
+                                                    }
+                                                    
+                                                    const cacheType = clearRemote ? '后端缓存' : '本地素材';
+                                                    const itemsToClear = clearRemote ? itemsWithRemoteCache : itemsWithLocalCache;
+                                                    
+                                                    const confirmMsg = deleteLocalFiles 
+                                                        ? `将删除 ${itemsToClear.length} 项本地素材文件（同时删除本地文件和历史记录引用）。\n\n确定继续？`
+                                                        : `将清理 ${itemsToClear.length} 项${cacheType}的URL引用（不删除历史记录）。\n\n确定继续？`;
+                                                    
+                                                    if (confirm(confirmMsg)) {
+                                                        console.log('[删除] deleteLocalFiles:', deleteLocalFiles, 'clearRemote:', clearRemote);
+                                                        // 如果是删除本地文件，先调用本地服务器API
+                                                        if (deleteLocalFiles) {
+                                                            try {
+                                                                const filesToDelete = itemsToClear
+                                                                    .filter(item => item.localCacheUrl || item.localFilePath)
+                                                                    .map(item => ({ url: item.localCacheUrl, path: item.localFilePath }));
+                                                                
+                                                                console.log('[删除] 准备删除的文件:', filesToDelete);
+                                                                console.log('[删除] itemsToClear:', itemsToClear.map(i => ({ id: i.id, localCacheUrl: i.localCacheUrl, localFilePath: i.localFilePath })));
+                                                                
+                                                                if (filesToDelete.length > 0) {
+                                                                    console.log('[删除] 发送删除请求到服务器...');
+                                                                    const response = await fetch('http://127.0.0.1:9527/delete-batch', {
+                                                                        method: 'POST',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({ files: filesToDelete })
+                                                                    });
+                                                                    const result = await response.json();
+                                                                    console.log('[删除] 服务器响应:', result);
+                                                                    
+                                                                    // 检查删除结果
+                                                                    if (result.results) {
+                                                                        const failed = result.results.filter(r => !r.success);
+                                                                        if (failed.length > 0) {
+                                                                            console.warn('[删除] 部分文件删除失败:', failed);
+                                                                        }
+                                                                    }
+                                                                } else {
+                                                                    console.log('[删除] 没有找到要删除的文件');
+                                                                }
+                                                            } catch (e) {
+                                                                console.error('[删除] 删除本地文件失败:', e);
+                                                                // 继续清理引用，即使本地文件删除失败
+                                                            }
+                                                        } else {
+                                                            console.log('[删除] 跳过本地文件删除（deleteLocalFiles=false）');
+                                                        }
+                                                        
+                                                        setHistory(prev => {
+                                                            const updated = prev.map(item => {
+                                                                if (!batchSelectedIds.has(item.id)) return item;
+                                                                
+                                                                if (clearRemote && item.url && !item.url.startsWith('http://127.0.0.1:9527')) {
+                                                                    // 清理后端缓存：清除远程URL但保留本地缓存，同时保存原始URL用于后续本地缓存检测
+                                                                    return { ...item, originalUrl: item.url, url: null, mjImages: null };
+                                                                } else if (!clearRemote && (item.localCacheUrl || item.localFilePath)) {
+                                                                    // 清理本地素材：清除本地缓存URL和文件路径
+                                                                    return { ...item, localCacheUrl: null, localFilePath: null, mjLocalUrls: null };
+                                                                }
+                                                                return item;
+                                                            });
+                                                            try {
+                                                                localStorage.setItem('tapnow_history', JSON.stringify(updated));
+                                                            } catch (e) {
+                                                                console.error('保存历史记录失败:', e);
+                                                            }
+                                                            return updated;
+                                                        });
+                                                        setBatchSelectedIds(new Set());
+                                                        alert(`已清理 ${itemsToClear.length} 项${cacheType}`);
+                                                    }
+                                                }}
+                                                disabled={batchSelectedIds.size === 0}
+                                                className={`px-3 py-1.5 text-xs rounded transition-colors flex items-center gap-1.5 ${
+                                                    batchSelectedIds.size === 0
+                                                        ? theme === 'dark'
+                                                            ? 'bg-zinc-800/50 text-zinc-600 cursor-not-allowed'
+                                                            : 'bg-zinc-100 text-zinc-400 cursor-not-allowed'
+                                                        : 'bg-orange-600 text-white hover:bg-orange-700'
+                                                }`}
+                                            >
+                                                <HardDrive size={14} />
+                                                清理缓存
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    if (batchSelectedIds.size === 0) return;
+                                                    const selectedItems = history.filter(item => batchSelectedIds.has(item.id) && (item.url || item.originalUrl || item.localCacheUrl));
                                                     if (selectedItems.length === 0) {
                                                         alert('选中的项目中没有有效的素材');
                                                         return;
@@ -15045,7 +19041,7 @@ You must design a visual composition that tells the story through **8 distinct p
                                                         const offsetX = (index % 5) * 20; // 每行5个，横向偏移
                                                         const offsetY = Math.floor(index / 5) * 20; // 纵向偏移
                                                         
-                                                        let content = item.url;
+                                                        let content = item.url || item.originalUrl || item.localCacheUrl;
                                                         if (item.type === 'video' && !isVideoUrl(content)) {
                                                             content += (content.includes('?') ? '&' : '?') + 'force_video_display=true';
                                                         }
@@ -15102,9 +19098,28 @@ You must design a visual composition that tells the story through **8 distinct p
                                         <div className="grid grid-cols-4 gap-4">
                                             {history.map((item) => {
                                                 const isSelected = batchSelectedIds.has(item.id);
-                                                const displayUrl = item.mjImages && item.mjImages.length > 1 
-                                                    ? (item.mjImages[item.selectedMjImageIndex || 0] || item.mjImages[0])
-                                                    : item.url;
+                                                // 判断是否是MJ/Jimeng四宫格图片
+                                                const hasFourImages = item.mjImages && item.mjImages.length === 4;
+                                                // 优先使用本地缓存URL，如果远程URL被清理则回退到本地缓存
+                                                const getLocalUrl = (url) => {
+                                                    // 如果有本地缓存，优先返回本地缓存
+                                                    if (item.localCacheUrl) return item.localCacheUrl;
+                                                    if (!url) return url;
+                                                    // 检查mjLocalUrls
+                                                    if (item.mjLocalUrls && item.mjImages) {
+                                                        const idx = item.mjImages.indexOf(url);
+                                                        if (idx !== -1 && item.mjLocalUrls[idx]) {
+                                                            return item.mjLocalUrls[idx];
+                                                        }
+                                                    }
+                                                    return url;
+                                                };
+                                                // 计算显示URL：优先本地缓存，其次远程URL，最后尝试originalUrl
+                                                const displayUrl = hasFourImages 
+                                                    ? null // 四宫格不使用单一URL
+                                                    : item.mjImages && item.mjImages.length > 1 
+                                                        ? getLocalUrl(item.mjImages[item.selectedMjImageIndex || 0] || item.mjImages[0])
+                                                        : (item.localCacheUrl || item.url || item.originalUrl); // 优先本地缓存
                                                 
                                                 return (
                                                     <div
@@ -15123,7 +19138,9 @@ You must design a visual composition that tells the story through **8 distinct p
                                                             // 准备要显示的item，确保包含正确的url和selectedMjImageIndex
                                                             const displayItem = {
                                                                 ...item,
-                                                                url: displayUrl,
+                                                                url: hasFourImages 
+                                                                    ? getLocalUrl(item.mjImages[item.selectedMjImageIndex || 0])
+                                                                    : displayUrl,
                                                                 selectedMjImageIndex: item.mjImages && item.mjImages.length > 1 
                                                                     ? (item.selectedMjImageIndex || 0)
                                                                     : undefined
@@ -15138,6 +19155,27 @@ You must design a visual composition that tells the story through **8 distinct p
                                                                     : 'border-zinc-200 hover:border-zinc-300'
                                                         }`}
                                                     >
+                                                        {/* 缓存标识 - 左上角 */}
+                                                        {item.status === 'completed' && (
+                                                            <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+                                                                {/* 后端缓存标识 - 有远程URL且不是本地服务器URL时显示 */}
+                                                                {item.url && !item.url.startsWith('http://127.0.0.1:9527') && (
+                                                                    <span className="px-1.5 py-0.5 text-[10px] rounded bg-orange-500/90 text-white backdrop-blur-sm">
+                                                                        后端缓存
+                                                                    </span>
+                                                                )}
+                                                                {/* 本地素材标识 - 有本地缓存URL或本地文件路径时显示 */}
+                                                                {(item.localCacheUrl || item.localFilePath) && (
+                                                                    <span 
+                                                                        className="px-1.5 py-0.5 text-[10px] rounded bg-green-500/90 text-white backdrop-blur-sm cursor-help"
+                                                                        title={item.localFilePath || (item.localCacheUrl ? '本地缓存' : '')}
+                                                                    >
+                                                                        本地素材
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        
                                                         {/* 选中标记和查看按钮 */}
                                                         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
                                                             {isSelected && (
@@ -15145,14 +19183,16 @@ You must design a visual composition that tells the story through **8 distinct p
                                                                     <Check size={16} className="text-white" />
                                                                 </div>
                                                             )}
-                                                            {item.status === 'completed' && displayUrl && (
+                                                            {item.status === 'completed' && (displayUrl || hasFourImages) && (
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         // 准备要显示的item，确保包含正确的url和selectedMjImageIndex
                                                                         const displayItem = {
                                                                             ...item,
-                                                                            url: displayUrl,
+                                                                            url: hasFourImages 
+                                                                                ? getLocalUrl(item.mjImages[item.selectedMjImageIndex || 0])
+                                                                                : displayUrl,
                                                                             selectedMjImageIndex: item.mjImages && item.mjImages.length > 1 
                                                                                 ? (item.selectedMjImageIndex || 0)
                                                                                 : undefined
@@ -15171,37 +19211,109 @@ You must design a visual composition that tells the story through **8 distinct p
                                                             )}
                                                         </div>
                                                         
-                                                        {/* 缩略图 */}
+                                                        {/* 缩略图 - 四宫格或单图 */}
                                                         <div className={`relative ${
-                                                            ((item.mjImages && (item.mjImages.length === 4 || item.mjImages.length > 1)) || (item.mjNeedsSplit && item.apiConfig?.modelId?.includes('mj')))
-                                                                ? (() => {
-                                                                    const ratio = item.mjRatio || '1:1';
-                                                                    if (ratio === '16:9') return 'aspect-video';
-                                                                    if (ratio === '9:16') return 'aspect-[9/16]';
-                                                                    if (ratio === '4:3') return 'aspect-[4/3]';
-                                                                    if (ratio === '3:4') return 'aspect-[3/4]';
-                                                                    if (ratio === '21:9') return 'aspect-[21/9]';
-                                                                    return 'aspect-square';
-                                                                })()
-                                                                : 'aspect-video'
+                                                            hasFourImages
+                                                                ? 'aspect-square'
+                                                                : ((item.mjImages && item.mjImages.length > 1) || (item.mjNeedsSplit && item.apiConfig?.modelId?.includes('mj')))
+                                                                    ? (() => {
+                                                                        const ratio = item.mjRatio || '1:1';
+                                                                        if (ratio === '16:9') return 'aspect-video';
+                                                                        if (ratio === '9:16') return 'aspect-[9/16]';
+                                                                        if (ratio === '4:3') return 'aspect-[4/3]';
+                                                                        if (ratio === '3:4') return 'aspect-[3/4]';
+                                                                        if (ratio === '21:9') return 'aspect-[21/9]';
+                                                                        return 'aspect-square';
+                                                                    })()
+                                                                    : 'aspect-video'
                                                         } ${theme === 'dark' ? 'bg-zinc-900' : 'bg-zinc-100'}`}>
-                                                            {item.status === 'completed' && displayUrl ? (
-                                                                item.type === 'video' || isVideoUrl(displayUrl) ? (
-                                                                    <video
-                                                                        src={displayUrl}
-                                                                        className="w-full h-full object-contain"
-                                                                        muted
-                                                                        playsInline
-                                                                    />
+                                                            {item.status === 'completed' ? (
+                                                                hasFourImages ? (
+                                                                    // 四宫格显示
+                                                                    <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5">
+                                                                        {item.mjImages.map((imgUrl, idx) => {
+                                                                            const localImgUrl = getLocalUrl(imgUrl);
+                                                                            return (
+                                                                                <div 
+                                                                                    key={idx} 
+                                                                                    className={`relative overflow-hidden cursor-pointer transition-all ${
+                                                                                        item.selectedMjImageIndex === idx 
+                                                                                            ? 'ring-2 ring-blue-500 ring-inset' 
+                                                                                            : 'hover:brightness-110'
+                                                                                    }`}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        // 更新选中的图片索引
+                                                                                        setHistory(prev => prev.map(h => 
+                                                                                            h.id === item.id 
+                                                                                                ? { ...h, selectedMjImageIndex: idx, url: imgUrl }
+                                                                                                : h
+                                                                                        ));
+                                                                                    }}
+                                                                                    onDoubleClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setLightboxItem({
+                                                                                            ...item,
+                                                                                            url: localImgUrl,
+                                                                                            selectedMjImageIndex: idx
+                                                                                        });
+                                                                                    }}
+                                                                                >
+                                                                                    <img
+                                                                                        src={localImgUrl}
+                                                                                        className="w-full h-full object-cover"
+                                                                                        alt={`生成图 ${idx + 1}`}
+                                                                                        onError={(e) => {
+                                                                                            // 本地失败时回退到原始URL
+                                                                                            if (e.target.src !== imgUrl) {
+                                                                                                e.target.src = imgUrl;
+                                                                                            } else {
+                                                                                                e.target.style.display = 'none';
+                                                                                            }
+                                                                                        }}
+                                                                                    />
+                                                                                    {/* 图片序号 */}
+                                                                                    <div className={`absolute bottom-0.5 left-0.5 text-[9px] px-1 rounded ${
+                                                                                        theme === 'dark' ? 'bg-black/60 text-white' : 'bg-white/80 text-zinc-700'
+                                                                                    }`}>
+                                                                                        {idx + 1}
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ) : displayUrl ? (
+                                                                    item.type === 'video' || isVideoUrl(displayUrl) ? (
+                                                                        <video
+                                                                            src={displayUrl}
+                                                                            className="w-full h-full object-contain"
+                                                                            muted
+                                                                            playsInline
+                                                                        />
+                                                                    ) : (
+                                                                        <img
+                                                                            src={displayUrl}
+                                                                            className="w-full h-full object-contain"
+                                                                            alt="生成图"
+                                                                            onError={(e) => {
+                                                                                // 本地失败时回退到原始URL
+                                                                                const originalUrl = item.mjImages && item.mjImages.length > 1 
+                                                                                    ? (item.mjImages[item.selectedMjImageIndex || 0] || item.mjImages[0])
+                                                                                    : item.url;
+                                                                                if (e.target.src !== originalUrl && originalUrl) {
+                                                                                    e.target.src = originalUrl;
+                                                                                } else {
+                                                                                    e.target.style.display = 'none';
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                    )
                                                                 ) : (
-                                                                    <img
-                                                                        src={displayUrl}
-                                                                        className="w-full h-full object-contain"
-                                                                        alt="生成图"
-                                                                        onError={(e) => {
-                                                                            e.target.style.display = 'none';
-                                                                        }}
-                                                                    />
+                                                                    <div className={`w-full h-full flex items-center justify-center ${
+                                                                        theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'
+                                                                    }`}>
+                                                                        <FileImage size={24} />
+                                                                    </div>
                                                                 )
                                                             ) : (
                                                                 <div className={`w-full h-full flex items-center justify-center ${
@@ -15224,6 +19336,15 @@ You must design a visual composition that tells the story through **8 distinct p
                                                             <div className="text-[10px] opacity-70 mt-0.5">
                                                                 {item.modelName || '未知模型'} • {item.time}
                                                             </div>
+                                                            {/* 本地路径显示 */}
+                                                            {item.localFilePath && (
+                                                                <div 
+                                                                    className="text-[9px] opacity-50 mt-0.5 truncate cursor-help"
+                                                                    title={item.localFilePath}
+                                                                >
+                                                                    📁 {item.localFilePath.split(/[/\\]/).pop()}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 );
@@ -15239,8 +19360,4 @@ You must design a visual composition that tells the story through **8 distinct p
             );
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<TapnowApp />);
-    </script>
-</body>
-</html>
+export default TapnowApp;

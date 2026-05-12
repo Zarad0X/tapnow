@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Tapnow Studio 本地接收器
+tapnow 本地接收器
 用于接收浏览器发送的文件保存请求，实现本地文件操作
 
 使用方法：
 1. 运行此脚本：python tapnow-local-server.py
-2. 在 Tapnow Studio 中使用"保存到本地"节点
+2. 在 tapnow 中使用"保存到本地"节点
 3. 文件将保存到指定的本地路径
 
 端口：9527（可通过命令行参数修改）
@@ -34,7 +34,7 @@ except ImportError:
 
 # 默认配置
 DEFAULT_PORT = 9527
-DEFAULT_SAVE_PATH = os.path.expanduser("~/Downloads/TapnowStudio")
+DEFAULT_SAVE_PATH = os.path.expanduser("~/Downloads/tapnow")
 
 # 全局配置
 config = {
@@ -852,7 +852,7 @@ def run_server(port, save_path):
     httpd = HTTPServer(server_address, TapnowHandler)
     
     print("=" * 50)
-    print("  Tapnow Studio 本地接收器")
+    print("  tapnow 本地接收器")
     print("=" * 50)
     print(f"  服务地址: http://127.0.0.1:{port}")
     print(f"  保存路径: {config['save_path']}")
@@ -882,7 +882,7 @@ def run_server(port, save_path):
         httpd.shutdown()
 
 def main():
-    parser = argparse.ArgumentParser(description='Tapnow Studio 本地接收器')
+    parser = argparse.ArgumentParser(description='tapnow 本地接收器')
     parser.add_argument('-p', '--port', type=int, default=DEFAULT_PORT,
                         help=f'监听端口 (默认: {DEFAULT_PORT})')
     parser.add_argument('-d', '--dir', type=str, default=DEFAULT_SAVE_PATH,
