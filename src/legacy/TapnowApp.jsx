@@ -83,6 +83,7 @@ import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
 import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
+import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
@@ -252,16 +253,29 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
             const [historyOpen, setHistoryOpen] = useState(false);
             const [charactersOpen, setCharactersOpen] = useState(false);
             const [characterLibrary, setCharacterLibrary] = useCharacterLibrary();
-            const [createCharacterOpen, setCreateCharacterOpen] = useState(false);
-            const [createCharacterVideoSourceType, setCreateCharacterVideoSourceType] = useState('url');
-            const [createCharacterVideoUrl, setCreateCharacterVideoUrl] = useState('');
-            const [createCharacterSelectedTaskId, setCreateCharacterSelectedTaskId] = useState('');
-            const [createCharacterHistoryDropdownOpen, setCreateCharacterHistoryDropdownOpen] = useState(false);
-            const [createCharacterStartSecond, setCreateCharacterStartSecond] = useState(1);
-            const [createCharacterEndSecond, setCreateCharacterEndSecond] = useState(3);
-            const [createCharacterEndpoint, setCreateCharacterEndpoint] = useState('');
-            const [createCharacterSubmitting, setCreateCharacterSubmitting] = useState(false);
-            const [createCharacterVideoError, setCreateCharacterVideoError] = useState(null);
+            const {
+                createCharacterOpen,
+                setCreateCharacterOpen,
+                createCharacterVideoSourceType,
+                setCreateCharacterVideoSourceType,
+                createCharacterVideoUrl,
+                setCreateCharacterVideoUrl,
+                createCharacterSelectedTaskId,
+                setCreateCharacterSelectedTaskId,
+                createCharacterHistoryDropdownOpen,
+                setCreateCharacterHistoryDropdownOpen,
+                createCharacterStartSecond,
+                setCreateCharacterStartSecond,
+                createCharacterEndSecond,
+                setCreateCharacterEndSecond,
+                createCharacterEndpoint,
+                setCreateCharacterEndpoint,
+                createCharacterSubmitting,
+                setCreateCharacterSubmitting,
+                createCharacterVideoError,
+                setCreateCharacterVideoError,
+                resetCreateCharacterForm
+            } = useCreateCharacterForm();
             const [characterReferenceBarExpanded, setCharacterReferenceBarExpanded] = useState({});
             const [batchModalOpen, setBatchModalOpen] = useState(false);
             const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
@@ -6684,13 +6698,7 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                         setCharacterLibrary(updated);
                         alert(`角色 "${data.username}" 创建成功！`);
                         setCreateCharacterOpen(false);
-                        // 重置表单
-                        setCreateCharacterVideoSourceType('url');
-                        setCreateCharacterVideoUrl('');
-                        setCreateCharacterSelectedTaskId('');
-                        setCreateCharacterStartSecond(1);
-                        setCreateCharacterEndSecond(3);
-                        setCreateCharacterEndpoint('');
+                        resetCreateCharacterForm();
                     } else {
                         throw new Error('返回数据缺少 id 或 username');
                     }
