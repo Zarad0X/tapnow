@@ -1,22 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import './styles.css';
 import './app.css';
-import { renderMarkdown } from '../shared/markdown.js';
 import {
   ArrowRightSquare,
-  Bot,
   Brush,
   Camera,
   Check,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   ClipboardCopy,
   Code,
   CopyPlus,
   Download,
   Eraser,
-  FileAudio,
   FileSearch,
   FileText,
   FileVideo,
@@ -34,13 +30,11 @@ import {
   Mic2,
   Moon,
   MousePointer2,
-  Paperclip,
   Play,
   Plus,
   Save,
   Settings,
   Scissors,
-  Send,
   Sparkles,
   Sun,
   Trash2,
@@ -80,7 +74,6 @@ import {
   ImageCompareView,
   Button,
   debounce,
-  Modal,
   Lightbox
 } from './support.jsx';
 import { useLocalStorage } from './hooks/useLocalStorage.js';
@@ -120,11 +113,13 @@ import {
   parseDurationSeconds,
   submitGenerationRequest
 } from './services/generationService.js';
-import {
-  getCompletedVideoHistory
-} from './history/historyUtils.js';
 import { BatchHistoryModal } from './history/BatchHistoryModal.jsx';
 import { HistoryPanel } from './history/HistoryPanel.jsx';
+import { CharacterPanel } from './characters/CharacterPanel.jsx';
+import { CreateCharacterModal } from './characters/CreateCharacterModal.jsx';
+import { ApiSettingsModal } from './settings/ApiSettingsModal.jsx';
+import { ChatSidebar } from './chat/ChatSidebar.jsx';
+import { LocalSaveNode } from './nodes/LocalSaveNode.jsx';
 
         function TapnowApp() {
             const [theme, setTheme] = useLocalStorage('tapnow_theme', 'dark', {
@@ -166,7 +161,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
             const [apiConfigs, setApiConfigs] = useApiConfigs();
             const [globalApiKey, setGlobalApiKey] = useState(() => localStorage.getItem('tapnow_global_key') || '');
-            
+
             // 即梦图生图使用本地文件设置（默认true，强制使用本地文件而不是URL）
             const [jimengUseLocalFile, setJimengUseLocalFile] = useLocalStorage('tapnow_jimeng_use_local_file', true, {
                 serialize: String,
@@ -276,7 +271,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
             // 历史保存文件夹记忆
             const [savedFolderHistory, setSavedFolderHistory] = useLocalStorage('tapnow_saved_folder_history', []);
-            
+
             // 框选节点右键菜单
             const [selectionContextMenu, setSelectionContextMenu] = useState({ visible: false, x: 0, y: 0 });
 
@@ -290,7 +285,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     return value || 'normal';
                 }
             });
-            
+
             const {
                 localCacheServerConnected,
                 localServerConfig,
@@ -328,17 +323,17 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     return [folder, ...filtered].slice(0, 10); // 最多保存10个
                 });
             }, []);
-            
+
             // 性能模式变化时，为历史记录生成缩略图
             useEffect(() => {
                 if (historyPerformanceMode === 'off') return;
-                
+
                 const generateThumbnailsForHistory = async () => {
                     const quality = historyPerformanceMode; // 'normal' 或 'ultra'
-                    const config = quality === 'ultra' 
+                    const config = quality === 'ultra'
                         ? { maxSize: 80, jpegQuality: 0.3 }
                         : { maxSize: 150, jpegQuality: 0.6 };
-                    
+
                     // 生成单张缩略图的辅助函数
                     const genThumb = (url) => new Promise((resolve) => {
                         const img = new Image();
@@ -361,22 +356,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         img.onerror = () => resolve(null);
                         img.src = url;
                     });
-                    
+
                     // 找出需要生成缩略图的项（已完成且有图片但没有缩略图的）
-                    const itemsNeedThumbnail = history.filter(item => 
-                        item.status === 'completed' && 
-                        item.type === 'image' && 
-                        (item.url || item.originalUrl) && 
+                    const itemsNeedThumbnail = history.filter(item =>
+                        item.status === 'completed' &&
+                        item.type === 'image' &&
+                        (item.url || item.originalUrl) &&
                         !item.thumbnailUrl
                     );
-                    
+
                     // 批量生成缩略图（每次最多处理5个，避免卡顿）
                     const batchSize = 5;
                     for (let i = 0; i < Math.min(itemsNeedThumbnail.length, batchSize); i++) {
                         const item = itemsNeedThumbnail[i];
                         try {
                             const thumbnail = await genThumb(item.url || item.originalUrl);
-                            
+
                             // 如果有MJ多图，也生成缩略图
                             let mjThumbnails = null;
                             if (item.mjImages && item.mjImages.length > 0) {
@@ -384,11 +379,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     item.mjImages.map(url => genThumb(url))
                                 );
                             }
-                            
+
                             if (thumbnail || mjThumbnails) {
-                                setHistory(prev => prev.map(h => 
-                                    h.id === item.id ? { 
-                                        ...h, 
+                                setHistory(prev => prev.map(h =>
+                                    h.id === item.id ? {
+                                        ...h,
                                         thumbnailUrl: thumbnail || h.thumbnailUrl,
                                         mjThumbnails: mjThumbnails || h.mjThumbnails
                                     } : h
@@ -399,26 +394,26 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         }
                     }
                 };
-                
+
                 // 延迟执行，避免阻塞UI
                 const timer = setTimeout(generateThumbnailsForHistory, 100);
                 return () => clearTimeout(timer);
             }, [historyPerformanceMode, history.length]);
-            
+
             // 全局 Delete 键删除节点
             useEffect(() => {
                 const handleDeleteKey = (e) => {
                     // 防止在输入框中触发
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-                    
+
                     // 检查是否按下了 Delete 或 Del 键
                     if (e.key === 'Delete' || e.key === 'Del') {
                         e.preventDefault();
                         e.stopPropagation();
-                        
+
                         const currentSelectedId = selectedNodeIdRef.current;
                         const currentSelectedIds = selectedNodeIdsRef.current;
-                        
+
                         // 删除选中的节点
                         if (currentSelectedId) {
                             deleteNode(currentSelectedId);
@@ -430,7 +425,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         }
                     }
                 };
-                
+
                 window.addEventListener('keydown', handleDeleteKey);
                 return () => {
                     window.removeEventListener('keydown', handleDeleteKey);
@@ -446,9 +441,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             }, 1000), []);
 
             useEffect(() => { debouncedSaveGlobalKey(globalApiKey); }, [globalApiKey, debouncedSaveGlobalKey]);
-            
-            useEffect(() => { 
-                nodesRef.current = nodes; 
+
+            useEffect(() => {
+                nodesRef.current = nodes;
                 selectedNodeIdRef.current = selectedNodeId;
                 selectedNodeIdsRef.current = selectedNodeIds; // 同步更新多选节点ref
                 connectionsRef.current = connections;
@@ -498,7 +493,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             useEffect(() => {
                 viewRef.current = view;
             }, [view]);
-            
+
             // 媒体降载：当节点完全离开视口时，隐藏其内部 img/video（保留骨架 DOM，不影响 React 状态）
             // 注意：节点本身仍由 visibleNodes 控制渲染范围（含 padding），这里只处理“仍在 padding 内但已离开可视区”的媒体开销
             const mediaObserverRef = useRef(null);
@@ -507,7 +502,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             useEffect(() => {
                 const rootEl = canvasRef.current;
                 if (!rootEl) return;
-                
+
                 if (!mediaObserverRef.current) {
                     mediaObserverRef.current = new IntersectionObserver((entries) => {
                         entries.forEach((entry) => {
@@ -524,9 +519,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         threshold: 0
                     });
                 }
-                
+
                 const obs = mediaObserverRef.current;
-                
+
                 // 节流扫描：避免在持续拖拽/缩放时频繁 querySelectorAll
                 if (mediaScanTimerRef.current) clearTimeout(mediaScanTimerRef.current);
                 mediaScanTimerRef.current = setTimeout(() => {
@@ -545,7 +540,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         }
                     });
                 }, 120);
-                
+
                 return () => {
                     if (mediaScanTimerRef.current) {
                         clearTimeout(mediaScanTimerRef.current);
@@ -565,7 +560,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         byNode.to.set(conn.to, []);
                     }
                     byNode.to.get(conn.to).push(conn);
-                    
+
                     if (!byNode.from.has(conn.from)) {
                         byNode.from.set(conn.from, []);
                     }
@@ -573,57 +568,57 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 });
                 return byNode;
             }, [connections]);
-            
+
             // 实时更新节点计时器
             useEffect(() => {
                 const interval = setInterval(() => {
                     const now = Date.now();
-                    const activeTasks = history.filter(h => 
-                        h.sourceNodeId && 
-                        h.status === 'generating' && 
+                    const activeTasks = history.filter(h =>
+                        h.sourceNodeId &&
+                        h.status === 'generating' &&
                         h.startTime
                     );
-                    
+
                     const newTimers = {};
                     activeTasks.forEach(task => {
                         const elapsed = Math.floor((now - task.startTime) / 100);
                         newTimers[task.sourceNodeId] = elapsed / 10; // 转换为秒，保留1位小数
                     });
-                    
+
                     setNodeTimers(newTimers);
                 }, 100); // 每100ms更新一次
-                
+
                 return () => clearInterval(interval);
             }, [history]);
-            
+
             // 自动保存功能：监听local-save节点的连接变化
             const autoSaveProcessingRef = useRef(new Set());
             useEffect(() => {
                 const localSaveNodes = nodes.filter(n => n.type === 'local-save' && n.settings?.autoSave && n.settings?.serverStatus === 'connected');
                 if (localSaveNodes.length === 0) return;
-                
+
                 localSaveNodes.forEach(async (node) => {
                     const connectedImgs = getConnectedInputImages(node.id);
                     if (connectedImgs.length === 0) return;
-                    
+
                     // 检查是否有新的图片（与上次保存的不同）
                     const lastSavedUrls = node.settings?.lastSavedUrls || [];
                     const newImages = connectedImgs.filter(img => !lastSavedUrls.includes(img));
-                    
+
                     if (newImages.length === 0) return;
-                    
+
                     // 防止重复处理
                     const processKey = `${node.id}-${newImages.join(',')}`;
                     if (autoSaveProcessingRef.current.has(processKey)) return;
                     autoSaveProcessingRef.current.add(processKey);
-                    
+
                     // 延迟执行，避免频繁触发
                     setTimeout(async () => {
                         try {
                             const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
                             const subfolder = node.settings?.subfolder || '';
                             const files = [];
-                            
+
                             // PNG转高质量JPG的辅助函数
                             const convertToJpg = async (imgUrl) => {
                                 return new Promise(async (resolve) => {
@@ -648,14 +643,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     }
                                 });
                             };
-                            
+
                             for (let i = 0; i < newImages.length; i++) {
                                 const imgUrl = newImages[i];
                                 const isVideo = isVideoUrl(imgUrl);
                                 try {
                                     let content = imgUrl;
                                     let ext = '.jpg';
-                                    
+
                                     if (isVideo) {
                                         ext = '.mp4';
                                         if (!imgUrl.startsWith('data:')) {
@@ -691,7 +686,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     console.error('自动保存处理文件失败:', e);
                                 }
                             }
-                            
+
                             if (files.length > 0) {
                                 const response = await fetch(`${serverUrl}/save-batch`, {
                                     method: 'POST',
@@ -700,7 +695,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 });
                                 const result = await response.json();
                                 if (result.success) {
-                                    updateNodeSettings(node.id, { 
+                                    updateNodeSettings(node.id, {
                                         lastSaved: new Date().toISOString(),
                                         savedFiles: result.results || [],
                                         lastSavedUrls: [...connectedImgs]
@@ -716,7 +711,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     }, 1000); // 延迟1秒执行
                 });
             }, [nodes, connections, getConnectedInputImages]);
-            
+
             // 检查并重新切割需要切割的Midjourney图片（使用useRef避免重复切割）
             const splittingRef = useRef(new Set());
             useEffect(() => {
@@ -727,7 +722,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             return;
                         }
                         splittingRef.current.add(item.id);
-                        
+
                         // 延迟切割，避免阻塞UI
                         setTimeout(() => {
                             // 获取比例信息
@@ -738,38 +733,38 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     ratio = arMatch[1];
                                 }
                             }
-                            
+
                             console.log(`Midjourney: 开始重新切割图片，任务ID: ${item.id}, 比例: ${ratio}`);
-                            
+
                             // 重新切割图片
                             splitMidjourneyImage(item.mjOriginalUrl, ratio).then((splitImages) => {
                                 const imageUrls = splitImages.map(img => typeof img === 'string' ? img : img.url);
                                 const firstImage = splitImages[0];
                                 const firstUrl = typeof firstImage === 'string' ? firstImage : firstImage.url;
-                                
-                                setHistory((prev) => prev.map((hItem) => 
-                                    hItem.id === item.id 
-                                        ? { 
-                                            ...hItem, 
-                                            mjImages: imageUrls, 
-                                            url: firstUrl, 
+
+                                setHistory((prev) => prev.map((hItem) =>
+                                    hItem.id === item.id
+                                        ? {
+                                            ...hItem,
+                                            mjImages: imageUrls,
+                                            url: firstUrl,
                                             selectedMjImageIndex: 0,
                                             mjRatio: ratio,
                                             mjNeedsSplit: false, // 标记已切割
                                             mjImageInfo: splitImages.map(img => typeof img === 'string' ? null : { width: img.width, height: img.height, ratio: img.ratio })
-                                        } 
+                                        }
                                         : hItem
                                 ));
-                                
+
                                 splittingRef.current.delete(item.id);
                                 console.log(`Midjourney: 重新切割完成，任务ID: ${item.id}`);
                             }).catch((err) => {
                                 console.error('Midjourney: 重新切割图片失败:', err);
                                 splittingRef.current.delete(item.id);
                                 // 保持原图显示，标记需要重新切割
-                                setHistory((prev) => prev.map((hItem) => 
-                                    hItem.id === item.id 
-                                        ? { ...hItem, mjNeedsSplit: true } 
+                                setHistory((prev) => prev.map((hItem) =>
+                                    hItem.id === item.id
+                                        ? { ...hItem, mjNeedsSplit: true }
                                         : hItem
                                 ));
                             });
@@ -778,7 +773,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 });
             }, [history]);
 
-            const handleChatResizeStart = (e) => { e.preventDefault(); setIsResizingChat(true); }; 
+            const handleChatResizeStart = (e) => { e.preventDefault(); setIsResizingChat(true); };
             const [isResizingChat, setIsResizingChat] = useState(false);
 
             const handleChatResizeMove = useCallback((e) => {
@@ -795,28 +790,28 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             useEffect(() => {
                 const originalError = console.error;
                 const originalWarn = console.warn;
-                
+
                 const shouldFilter = (args) => {
                     const msg = args.map(arg => {
                         if (typeof arg === 'string') return arg;
                         if (arg && arg.toString) return arg.toString();
                         return '';
                     }).join(' ');
-                    return msg.includes('Unable to preventDefault') || 
+                    return msg.includes('Unable to preventDefault') ||
                            msg.includes('passive event listener') ||
                            (msg.includes('preventDefault') && msg.includes('passive'));
                 };
-                
+
                 console.error = function(...args) {
                     if (shouldFilter(args)) return;
                     originalError.apply(console, args);
                 };
-                
+
                 console.warn = function(...args) {
                     if (shouldFilter(args)) return;
                     originalWarn.apply(console, args);
                 };
-                
+
                 return () => {
                     console.error = originalError;
                     console.warn = originalWarn;
@@ -867,14 +862,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         target: e.target,
                         boundaryElement: canvasElement,
                     });
-                    
+
                     // 如果在节点内且找到可滚动元素，则滚动该元素而不是缩放画布
                     if (scrollableElement) {
                         preventCancelableEvent(e, { stopPropagation: true });
                         scrollElementByWheel(scrollableElement, e.deltaY);
                         return;
                     }
-                    
+
                     // 否则正常缩放画布
                     preventCancelableEvent(e);
                     const rect = canvasElement.getBoundingClientRect();
@@ -925,14 +920,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     target: e.target,
                     boundaryElement: e.currentTarget,
                 });
-                
+
                 // 如果在节点内且找到可滚动元素，则滚动该元素而不是缩放画布
                 if (scrollableElement) {
                     preventCancelableEvent(e, { stopPropagation: true });
                     scrollElementByWheel(scrollableElement, e.deltaY);
                     return;
                 }
-                
+
                 // 否则正常缩放画布
                 preventCancelableEvent(e);
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -949,7 +944,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         if (selection && selection.toString().length > 0) {
                             return; // 如果有文本选择，不处理拖动
                         }
-                        
+
                         // 检查是否点击在可交互元素上（input, textarea, select, button等）
                         const target = e.target;
                         if (target && (
@@ -962,7 +957,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         )) {
                             return; // 如果点击在可交互元素上，不处理拖动
                         }
-                        
+
                         // 检测Ctrl+鼠标左键，开始框选
                         if (e.button === 0 && (e.ctrlKey || e.metaKey)) {
                             e.preventDefault();
@@ -999,7 +994,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const updates = multiNodeUpdateRef.current;
                     // 处理大量节点时的性能优化：使用 Map 优化查找（O(1) 而不是 O(n)）
                     const nodeIdMap = new Map(updates.map(({ nodeId }) => [nodeId, true]));
-                    
+
                     setNodes((prev) => {
                         // 对于大量节点（50+），使用更高效的更新策略
                         if (prev.length > 50 && updates.length > 10) {
@@ -1010,7 +1005,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     nodeIndexMap.set(node.id, idx);
                                 }
                             });
-                            
+
                             // 批量更新，减少数组操作
                             const next = [...prev];
                             let hasChanges = false;
@@ -1046,7 +1041,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     nodeUpdateRaf.current = null;
                     return;
                 }
-                
+
                 if (!nodeUpdateRef.current) {
                     nodeUpdateRaf.current = null;
                     return;
@@ -1081,17 +1076,17 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     // 合并更新：对于相同的 nodeId，使用最新的 updater
                     const existingUpdates = multiNodeUpdateRef.current;
                     const updateMap = new Map();
-                    
+
                     // 先添加现有更新
                     existingUpdates.forEach(({ nodeId, updater }) => {
                         updateMap.set(nodeId, updater);
                     });
-                    
+
                     // 然后添加新更新（会覆盖相同 nodeId 的旧更新）
                     updates.forEach(({ nodeId, updater }) => {
                         updateMap.set(nodeId, updater);
                     });
-                    
+
                     // 转换回数组格式
                     multiNodeUpdateRef.current = Array.from(updateMap.entries()).map(([nodeId, updater]) => ({
                         nodeId,
@@ -1101,7 +1096,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     // 没有待处理的更新，直接设置
                     multiNodeUpdateRef.current = updates;
                 }
-                
+
                 if (!nodeUpdateRaf.current) {
                     nodeUpdateRaf.current = requestAnimationFrame(flushNodeUpdate);
                 }
@@ -1121,7 +1116,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             // 使用 requestAnimationFrame 节流框选逻辑
             const selectionRafRef = useRef(null);
             const pendingSelectionUpdate = useRef(null);
-            
+
             // 画布拖动微型节流：避免 rAF 包装 setView 导致的状态抖动（目标 ~10ms 一次）
             const panThrottleLastTsRef = useRef(0);
 
@@ -1140,40 +1135,40 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const rect = canvasRef.current?.getBoundingClientRect();
                     const endX = clientX - (rect?.left || 0);
                     const endY = clientY - (rect?.top || 0);
-                    
+
                     // 立即更新框选框位置（视觉反馈）
                     setSelectionBox(prev => {
                         if (!prev) return null;
                         return { ...prev, endX, endY };
                     });
-                    
+
                     // 节流节点选择计算
                     pendingSelectionUpdate.current = { endX, endY, rect };
-                    
+
                     if (!selectionRafRef.current) {
                         selectionRafRef.current = requestAnimationFrame(() => {
                             if (!pendingSelectionUpdate.current) {
                                 selectionRafRef.current = null;
                                 return;
                             }
-                            
+
                             const { endX, endY, rect } = pendingSelectionUpdate.current;
                             const currentSelectionBox = selectionBox;
                             if (!currentSelectionBox) {
                                 selectionRafRef.current = null;
                                 return;
                             }
-                            
+
                             // 计算被框选的节点
                             const boxStartX = Math.min(currentSelectionBox.startX, endX);
                             const boxStartY = Math.min(currentSelectionBox.startY, endY);
                             const boxEndX = Math.max(currentSelectionBox.startX, endX);
                             const boxEndY = Math.max(currentSelectionBox.startY, endY);
-                            
+
                             // 将屏幕坐标转换为世界坐标
                             const worldStart = screenToWorld(boxStartX + (rect?.left || 0), boxStartY + (rect?.top || 0));
                             const worldEnd = screenToWorld(boxEndX + (rect?.left || 0), boxEndY + (rect?.top || 0));
-                            
+
                             // 使用 ref 获取最新的 nodes，避免闭包问题
                             const currentNodes = nodesRef.current;
                             const selected = new Set();
@@ -1187,7 +1182,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 }
                             });
                             setSelectedNodeIds(selected);
-                            
+
                             pendingSelectionUpdate.current = null;
                             selectionRafRef.current = null;
                         });
@@ -1201,12 +1196,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     setIsDragging(true);
                     const dx = clientX - lastMousePos.current.x;
                     const dy = clientY - lastMousePos.current.y;
-                    
+
                     // 添加阈值判断，忽略微小移动（<1px）避免不必要的重渲染
                     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
                         return;
                     }
-                    
+
                     // 微型节流（约 10ms）：累积移动距离，确保 setView 更新频率低于浏览器渲染频率，减少抖动
                     if (pendingPanUpdate.current) {
                         pendingPanUpdate.current.dx += dx;
@@ -1214,7 +1209,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     } else {
                         pendingPanUpdate.current = { dx, dy };
                     }
-                    
+
                     const nowTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
                     const lastTs = panThrottleLastTsRef.current || 0;
                     if (nowTs - lastTs >= 10 && pendingPanUpdate.current) {
@@ -1233,7 +1228,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         pendingPanUpdate.current = null;
                         panThrottleLastTsRef.current = nowTs;
                     }
-                    
+
                     lastMousePos.current = { x: clientX, y: clientY };
                     return;
                 }
@@ -1256,7 +1251,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     if (Math.abs(deltaX) < threshold && Math.abs(deltaY) < threshold) {
                         return;
                     }
-                    
+
                     // 使用 ref 获取最新的多选节点集合，避免闭包问题
                     const currentSelectedNodeIds = selectedNodeIdsRef.current;
                     // 如果有多选节点（大于1个）且被拖动的节点在选中集合中，同时拖动所有选中的节点
@@ -1279,11 +1274,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             };
                         }
                         lastZoomRef.current = currentZoom;
-                        
+
                         // 计算从起始位置到当前位置的总偏移量（世界坐标）
                         const totalDeltaX = (clientX - multiNodeDragStartPos.current.mouseX) / currentZoom;
                         const totalDeltaY = (clientY - multiNodeDragStartPos.current.mouseY) / currentZoom;
-                        
+
                         // 使用起始位置 + 总偏移量，避免累积误差
                         const updates = Array.from(multiNodeDragStartPos.current.nodes.entries()).map(([nodeId, startPos]) => ({
                             nodeId,
@@ -1331,14 +1326,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     });
                     pendingPanUpdate.current = null;
                 }
-                
+
                 // 确保多节点更新被刷新（处理待处理的更新）
                 if (multiNodeUpdateRef.current && nodeUpdateRaf.current) {
                     // 取消当前的 RAF，立即执行更新
                     cancelAnimationFrame(nodeUpdateRaf.current);
                     flushNodeUpdate();
                 }
-                
+
                 // 结束框选
                 if (isSelecting || isSelectingRef.current) {
                     setIsSelecting(false);
@@ -1361,7 +1356,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     lastZoomRef.current = null;
                     return;
                 }
-                
+
                 if (isPanning || isPanningRef.current) {
                     setIsPanning(false);
                     isPanningRef.current = false;
@@ -1374,8 +1369,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         setHistoryContextMenu(prev => ({ ...prev, visible: false }));
                     }
                 }
-                if (!connectingSource && !connectingTarget) { 
-                    setDragNodeId(null); 
+                if (!connectingSource && !connectingTarget) {
+                    setDragNodeId(null);
                     setResizingNodeId(null);
                     // 清理多节点拖动状态
                     multiNodeDragStartPos.current = null;
@@ -1447,21 +1442,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 从输出端口连接到输入端口（原有逻辑）
                 if (connectingSource && connectingSource !== targetId) {
                     // 检查是否已存在相同输入点的连接
-                    const exists = connections.some((c) => 
-                        c.from === connectingSource && 
-                        c.to === targetId && 
+                    const exists = connections.some((c) =>
+                        c.from === connectingSource &&
+                        c.to === targetId &&
                         (c.inputType || 'default') === inputType
                     );
                     if (!exists) {
                         // 如果连接到特定输入点，先删除该输入点的旧连接
                         if (inputType !== 'default') {
-                            setConnections((prev) => prev.filter((c) => 
+                            setConnections((prev) => prev.filter((c) =>
                                 !(c.to === targetId && (c.inputType || 'default') === inputType)
                             ));
                         }
-                        setConnections((prev) => [...prev, { 
-                            id: `conn-${Date.now()}`, 
-                            from: connectingSource, 
+                        setConnections((prev) => [...prev, {
+                            id: `conn-${Date.now()}`,
+                            from: connectingSource,
                             to: targetId,
                             inputType: inputType !== 'default' ? inputType : undefined
                         }]);
@@ -1472,21 +1467,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     // 使用connectingInputType而不是inputType参数（因为是从输入端口开始的连接）
                     const actualInputType = connectingInputType || inputType;
                     // 检查是否已存在相同输入点的连接
-                    const exists = connections.some((c) => 
-                        c.from === targetId && 
-                        c.to === connectingTarget && 
+                    const exists = connections.some((c) =>
+                        c.from === targetId &&
+                        c.to === connectingTarget &&
                         (c.inputType || 'default') === actualInputType
                     );
                     if (!exists) {
                         // 如果连接到特定输入点，先删除该输入点的旧连接
                         if (actualInputType !== 'default') {
-                            setConnections((prev) => prev.filter((c) => 
+                            setConnections((prev) => prev.filter((c) =>
                                 !(c.to === connectingTarget && (c.inputType || 'default') === actualInputType)
                             ));
                         }
-                        setConnections((prev) => [...prev, { 
-                            id: `conn-${Date.now()}`, 
-                            from: targetId, 
+                        setConnections((prev) => [...prev, {
+                            id: `conn-${Date.now()}`,
+                            from: targetId,
                             to: connectingTarget,
                             inputType: actualInputType !== 'default' ? actualInputType : undefined
                         }]);
@@ -1521,7 +1516,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     setContextMenu({ visible: true, x: e.clientX, y: e.clientY, worldX: world.x, worldY: world.y, sourceNodeId: undefined });
                 }
             };
-            
+
             // 使用 useMemo 缓存连接图片的计算结果，避免重复计算
             const connectedImagesCache = useMemo(() => {
                 const cache = new Map(); // nodeId -> { inputType -> images[] }
@@ -1538,8 +1533,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     if (sourceNode) {
                         let images = [];
                         if (sourceNode.type === 'video-input') {
-                            const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0 
-                                ? sourceNode.selectedKeyframes.map(f => f.url) 
+                            const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
+                                ? sourceNode.selectedKeyframes.map(f => f.url)
                                 : [];
                             if (selected.length > 0) {
                                 images = selected;
@@ -1644,8 +1639,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         if (sourceNode) {
                             let imageUrl = null;
                             if (sourceNode.type === 'video-input') {
-                                const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0 
-                                    ? sourceNode.selectedKeyframes[0].url 
+                                const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
+                                    ? sourceNode.selectedKeyframes[0].url
                                     : null;
                                 if (selected) {
                                     imageUrl = selected;
@@ -1716,37 +1711,37 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 使用 ref 获取最新的 connections 状态，避免闭包问题
                 const latestConnections = connectionsRef.current;
                 console.log('[Tapnow] updatePreviewFromTask: 更新预览窗口', { taskId, url, contentType, sourceNodeId, mjImages, connectionsCount: latestConnections.length });
-                
+
                 // 使用函数式更新，确保获取最新的 connections 状态
                 setNodes((prevNodes) => {
                     // 使用 ref 中的最新 connections
                     const targetIds = latestConnections
                         .filter((c) => c.from === sourceNodeId)
                         .map((c) => c.to);
-                    
-                    console.log('[Tapnow] updatePreviewFromTask: 检查连接', { 
-                        sourceNodeId, 
+
+                    console.log('[Tapnow] updatePreviewFromTask: 检查连接', {
+                        sourceNodeId,
                         allConnectionsFromSource: latestConnections.filter(c => c.from === sourceNodeId),
                         targetIds,
                         allNodes: prevNodes.map(n => ({ id: n.id, type: n.type }))
                     });
-                    
+
                     if (!targetIds.length) {
-                        console.warn('[Tapnow] updatePreviewFromTask: 未找到连接到预览窗口的连接', { 
-                            sourceNodeId, 
+                        console.warn('[Tapnow] updatePreviewFromTask: 未找到连接到预览窗口的连接', {
+                            sourceNodeId,
                             connectionsFromSource: latestConnections.filter(c => c.from === sourceNodeId),
                             allConnections: latestConnections
                         });
                         return prevNodes;
                     }
-                    
+
                     const previewNodes = prevNodes.filter(n => targetIds.includes(n.id) && n.type === 'preview');
-                    console.log('[Tapnow] updatePreviewFromTask: 找到预览节点', { 
-                        targetIds, 
+                    console.log('[Tapnow] updatePreviewFromTask: 找到预览节点', {
+                        targetIds,
                         previewNodes: previewNodes.map(n => ({ id: n.id, type: n.type }))
                     });
-                    
-                    return prevNodes.map((n) => 
+
+                    return prevNodes.map((n) =>
                         targetIds.includes(n.id) && n.type === 'preview'
                             ? { ...n, content: url || (mjImages && mjImages.length > 0 ? mjImages[0] : url), previewType: contentType, previewMjImages: mjImages }
                             : n
@@ -1846,7 +1841,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     reader.onload = (ev) => {
                         const content = ev.target.result;
                         const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-                        
+
                         // 判断文件类型
                         const isImage = file.type.startsWith('image/');
                         const isVideo = file.type.startsWith('video/');
@@ -1855,11 +1850,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         const isDoc = ['doc', 'docx'].includes(fileExt) || file.type.includes('word');
                         const isExcel = ['xls', 'xlsx'].includes(fileExt) || file.type.includes('excel') || file.type.includes('spreadsheet');
                         const isCode = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'cpp', 'c', 'html', 'css', 'json', 'xml', 'yaml', 'yml', 'md', 'txt', 'sh', 'bash'].includes(fileExt);
-                        
+
                         setChatFiles(prev => [...prev, {
                             name: file.name,
                             type: file.type,
-                            content: content, 
+                            content: content,
                             isImage,
                             isVideo,
                             isAudio,
@@ -1870,7 +1865,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             fileExt
                         }]);
                     };
-                    
+
                     // 根据文件类型选择读取方式
                     if (file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')) {
                         reader.readAsDataURL(file);
@@ -1917,11 +1912,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     role: 'user',
                     content: chatInput,
-                    files: [...chatFiles], 
+                    files: [...chatFiles],
                     timestamp: Date.now(),
                     modelId: chatModel // 保存发送消息时使用的模型ID
                 };
-                
+
                 setChatSessions(prev => prev.map(s => {
                     if (s.id === chatIdToUse) {
                         return { ...s, messages: [...s.messages, newUserMsg], title: s.messages.length === 0 ? chatInput.slice(0, 20) : s.title };
@@ -1952,7 +1947,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 const currentContent = [];
                 if (newUserMsg.content) currentContent.push({ type: "text", text: newUserMsg.content });
-                
+
                 newUserMsg.files.forEach(f => {
                     const isGeminiLike = (config?.modelName ?? '').toLowerCase().includes('gemini');
 
@@ -2012,7 +2007,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         body: JSON.stringify({
                             model: config?.modelName || 'gemini-3-pro-preview',
                             messages: apiMessages,
-                            stream: false 
+                            stream: false
                         })
                     });
 
@@ -2055,7 +2050,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         // 嵌套 data.result 格式
                         aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
                     }
-                    
+
                     if (!aiContent || aiContent.trim() === '') {
                         console.error('[聊天] API 响应内容为空:', data);
                         aiContent = "No response";
@@ -2114,7 +2109,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     reader.onloadend = () => {
                         const res = reader.result;
                         // 返回纯 Base64 部分
-                        resolve(res.split(',')[1]); 
+                        resolve(res.split(',')[1]);
                     };
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
@@ -2159,42 +2154,42 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 return new Promise((resolve, reject) => {
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
-                    
+
                     img.onload = () => {
                         const originalWidth = img.width;
                         const originalHeight = img.height;
-                        
+
                         // 计算缩放后的尺寸，保持宽高比
                         let newWidth = originalWidth;
                         let newHeight = originalHeight;
-                        
+
                         if (originalWidth > maxSize || originalHeight > maxSize) {
                             const scale = maxSize / Math.max(originalWidth, originalHeight);
                             newWidth = Math.floor(originalWidth * scale);
                             newHeight = Math.floor(originalHeight * scale);
                             console.log(`Midjourney: 缩放图片 ${originalWidth}x${originalHeight} -> ${newWidth}x${newHeight}`);
                         }
-                        
+
                         // 创建canvas并绘制
                         const canvas = document.createElement('canvas');
                         canvas.width = newWidth;
                         canvas.height = newHeight;
                         const ctx = canvas.getContext('2d');
-                        
+
                         // 使用高质量绘制
                         ctx.imageSmoothingEnabled = true;
                         ctx.imageSmoothingQuality = 'high';
                         ctx.drawImage(img, 0, 0, newWidth, newHeight);
-                        
+
                         // 转换为base64，使用JPEG格式压缩
                         // 从高质量开始，如果文件太大则降低质量
                         let quality = 0.92;
                         let dataUrl = canvas.toDataURL('image/jpeg', quality);
-                        
+
                         // 检查文件大小（base64编码后的大小约为原始大小的133%）
                         const base64Length = dataUrl.split(',')[1]?.length || 0;
                         const fileSizeMB = (base64Length * 3 / 4) / (1024 * 1024);
-                        
+
                         // 如果文件太大，降低质量
                         if (fileSizeMB > maxFileSizeMB) {
                             console.log(`Midjourney: 图片文件大小 ${fileSizeMB.toFixed(2)}MB 超过限制，降低质量...`);
@@ -2204,16 +2199,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             const newFileSizeMB = (newBase64Length * 3 / 4) / (1024 * 1024);
                             console.log(`Midjourney: 降低质量后文件大小 ${newFileSizeMB.toFixed(2)}MB`);
                         }
-                        
+
                         resolve(dataUrl);
                     };
-                    
+
                     img.onerror = (error) => {
                         console.error('Midjourney: 图片加载失败', error);
                         // 如果加载失败，返回原图
                         resolve(imageUrl);
                     };
-                    
+
                     img.src = imageUrl;
                 });
             };
@@ -2250,7 +2245,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             }
                         })
                     );
-                    
+
                     // 清理base64数组，确保每个元素都是纯base64字符串
                     const cleanedBase64Array = processedImages.map((base64, index) => {
                         // 如果是data URL，提取base64部分
@@ -2258,7 +2253,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         if (typeof cleaned !== 'string') {
                             throw new Error(`base64[${index}]不是字符串类型`);
                         }
-                        
+
                         // 如果是data URL，提取base64部分
                         if (cleaned.includes(',')) {
                             // 直接提取逗号后的部分（base64数据）
@@ -2267,7 +2262,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             // 如果没有逗号但有data:前缀，使用正则提取
                             cleaned = cleaned.replace(/^data:[^;]*;base64,?/i, '');
                         }
-                        
+
                         // 严格清理：移除所有非base64字符（包括空白字符和不可见字符）
                         // 只保留有效的base64字符：A-Z, a-z, 0-9, +, /, =
                         const beforeClean = cleaned.length;
@@ -2276,11 +2271,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         if (beforeClean !== afterClean) {
                             console.log(`Midjourney: base64[${index}]清理了 ${beforeClean - afterClean} 个非法字符`);
                         }
-                        
+
                         if (!cleaned || cleaned.length < 100) {
                             throw new Error(`base64[${index}]无效或太短，长度: ${cleaned?.length || 0}`);
                         }
-                        
+
                         // 验证base64格式：只包含 base64 字符（A-Z, a-z, 0-9, +, /, =）
                         // 注意：base64字符串可能以0-2个=结尾作为填充
                         const base64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -2288,7 +2283,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             console.error(`Midjourney: base64[${index}]格式验证失败，长度: ${cleaned.length}, 前50字符: ${cleaned.substring(0, 50)}`);
                             throw new Error(`invalid_base64_format: base64[${index}]格式无效`);
                         }
-                        
+
                         // 验证base64长度是否为4的倍数（base64编码要求）
                         // 如果不是4的倍数，添加填充
                         const padding = cleaned.length % 4;
@@ -2296,14 +2291,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             // 移除现有的填充字符，然后重新添加正确的填充
                             cleaned = cleaned.replace(/=+$/, '');
                             cleaned += '='.repeat(4 - padding);
-                            
+
                             // 填充后再次验证
                             if (!base64Regex.test(cleaned)) {
                                 console.error(`Midjourney: base64[${index}]填充后验证失败，长度: ${cleaned.length}`);
                                 throw new Error(`invalid_base64_format: base64[${index}]填充后格式无效`);
                             }
                         }
-                        
+
                         // 测试base64是否能正确解码（确保base64有效）
                         try {
                             const testDecode = atob(cleaned);
@@ -2315,19 +2310,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             console.error(`Midjourney: base64[${index}]解码测试失败:`, decodeError);
                             throw new Error(`invalid_base64_format: base64[${index}]无法解码`);
                         }
-                        
+
                         // 根据API文档，base64Array需要完整的data URL格式：data:image/png;base64,xxx
                         // 而不是纯base64字符串
                         const dataUrl = `data:image/jpeg;base64,${cleaned}`;
                         console.log(`Midjourney: base64[${index}]清理完成，长度: ${cleaned.length}, 前20字符: ${cleaned.substring(0, 20)}`);
                         return dataUrl;
                     });
-                    
+
                     // 使用Midjourney的上传接口：/mj/submit/upload-discord-images
                     const uploadEndpoint = `${baseUrl}/mj/submit/upload-discord-images`;
-                    
+
                     console.log('Midjourney: 上传图片，base64数组长度:', cleanedBase64Array.length, '第一个data URL长度:', cleanedBase64Array[0]?.length, '前50字符:', cleanedBase64Array[0]?.substring(0, 50));
-                    
+
                     // 最终验证所有data URL字符串（现在返回的是完整的data URL格式）
                     cleanedBase64Array.forEach((dataUrl, idx) => {
                         if (!dataUrl || typeof dataUrl !== 'string') {
@@ -2344,7 +2339,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         } else {
                             throw new Error(`base64[${idx}]data URL格式不正确，缺少逗号`);
                         }
-                        
+
                         if (!base64Part || base64Part.length < 100) {
                             throw new Error(`base64[${idx}]无效或太短`);
                         }
@@ -2365,16 +2360,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             throw new Error(`base64[${idx}]无法解码: ${e.message}`);
                         }
                     });
-                    
+
                     // 构建请求体
                     const requestBody = {
                         base64Array: cleanedBase64Array
                     };
-                    
+
                     // 验证JSON序列化后的数据
                     const jsonString = JSON.stringify(requestBody);
                     console.log('Midjourney: 请求体JSON长度:', jsonString.length, 'base64数组长度:', cleanedBase64Array.length);
-                    
+
                     const uploadResp = await fetch(uploadEndpoint, {
                         method: 'POST',
                         headers: {
@@ -2383,7 +2378,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         },
                         body: jsonString
                     });
-                    
+
                     if (!uploadResp.ok) {
                         let errorText = '';
                         try {
@@ -2399,10 +2394,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             throw new Error(`上传失败: ${uploadResp.status} - ${error.message || errorText}`);
                         }
                     }
-                    
+
                     const uploadData = await uploadResp.json();
                     console.log('Midjourney: 上传响应:', uploadData);
-                    
+
                     // 检查响应格式
                     if (uploadData.code === 1 && uploadData.result && Array.isArray(uploadData.result)) {
                         console.log('Midjourney: 图片上传成功，获取URLs:', uploadData.result);
@@ -2447,12 +2442,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         // 先清理所有非base64字符（包括所有空白字符和不可见字符）
                         // 这是最严格的方式：只保留有效的base64字符
                         base64Data = base64Data.replace(/[^A-Za-z0-9+/=]/g, '');
-                        
+
                         if (!base64Data || base64Data.length < 100) {
                             console.error('拓展图片: base64数据无效或太短，长度:', base64Data?.length);
                             return null;
                         }
-                        
+
                         // 验证base64格式：只包含 base64 字符（A-Z, a-z, 0-9, +, /, =）
                         const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
                         if (!base64Regex.test(base64Data)) {
@@ -2464,22 +2459,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 return null;
                             }
                         }
-                        
+
                         // 验证base64长度是否为4的倍数（base64编码要求）
                         const padding = base64Data.length % 4;
                         if (padding !== 0) {
                             console.warn('拓展图片: base64长度不是4的倍数，添加填充:', padding);
                             base64Data += '='.repeat(4 - padding);
                         }
-                        
+
                         // 最终验证
                         if (!base64Regex.test(base64Data)) {
                             console.error('拓展图片: 最终验证失败');
                             return null;
                         }
-                        
+
                         console.log('拓展图片: 提取的base64数据长度:', base64Data.length, '前50字符:', base64Data.substring(0, 50), '后10字符:', base64Data.substring(base64Data.length - 10), '格式验证通过:', base64Regex.test(base64Data));
-                        
+
                         // 优先使用 Midjourney 官方上传接口
                         try {
                             // 确保 baseUrl 格式正确（移除末尾斜杠）
@@ -2490,7 +2485,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             };
 
                             console.log('拓展图片: 使用 Midjourney 上传接口上传图片...', uploadEndpoint, 'base64长度:', base64Data.length);
-                            
+
                             const uploadResp = await fetch(uploadEndpoint, {
                                 method: 'POST',
                                 headers: {
@@ -2527,7 +2522,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 if (uploadData.code === 1) {
                                     // 尝试多种可能的响应格式
                                     let httpUrl = null;
-                                    
+
                                     // 格式1: result 是数组
                                     if (uploadData.result && Array.isArray(uploadData.result) && uploadData.result.length > 0) {
                                         httpUrl = uploadData.result[0];
@@ -2544,7 +2539,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     else if (uploadData.url) {
                                         httpUrl = uploadData.url;
                                     }
-                                    
+
                                     if (httpUrl && (httpUrl.startsWith('http://') || httpUrl.startsWith('https://'))) {
                                         console.log('拓展图片: Midjourney 上传成功，获取HTTP URL:', httpUrl);
                                         return httpUrl;
@@ -2575,7 +2570,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         // 如果 Midjourney 上传失败，尝试使用图床服务作为备选
                         const mimeMatch = imageUrl.match(/data:([^;]+);base64/);
                         const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-                        
+
                         // 将base64转换为Blob
                         const byteCharacters = atob(base64Data);
                         const byteNumbers = new Array(byteCharacters.length);
@@ -2597,16 +2592,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                         for (const service of imageBedServices) {
                             if (service.skip) continue;
-                            
+
                             try {
                                 const formData = new FormData();
                                 formData.append(service.fieldName, blob, 'image.png');
-                                
+
                                 const resp = await fetch(service.url, {
                                     method: 'POST',
                                     body: formData
                                 });
-                                
+
                                 if (resp.ok) {
                                     const data = await resp.json();
                                     const httpUrl = service.parseResponse(data);
@@ -2639,11 +2634,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 return new Promise((resolve, reject) => {
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
-                    
+
                     img.onload = () => {
                         const originalWidth = img.width;
                         const originalHeight = img.height;
-                        
+
                         // 如果图片尺寸已经小于等于目标尺寸，直接返回原图
                         if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
                             console.log(`Veo: 图片尺寸 ${originalWidth}x${originalHeight} 无需缩放`);
@@ -2657,44 +2652,44 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             }
                             return;
                         }
-                        
+
                         // 计算缩放后的尺寸，保持宽高比
                         let newWidth = originalWidth;
                         let newHeight = originalHeight;
-                        
+
                         if (originalWidth > maxWidth || originalHeight > maxHeight) {
                             const scale = Math.min(maxWidth / originalWidth, maxHeight / originalHeight);
                             newWidth = Math.round(originalWidth * scale);
                             newHeight = Math.round(originalHeight * scale);
-                            
+
                             // 确保尺寸是偶数（某些编码器要求）
                             newWidth = newWidth % 2 === 0 ? newWidth : newWidth - 1;
                             newHeight = newHeight % 2 === 0 ? newHeight : newHeight - 1;
                         }
-                        
+
                         console.log(`Veo: 缩放图片 ${originalWidth}x${originalHeight} -> ${newWidth}x${newHeight}`);
-                        
+
                         // 使用canvas缩放图片
                         const canvas = document.createElement('canvas');
                         canvas.width = newWidth;
                         canvas.height = newHeight;
                         const ctx = canvas.getContext('2d');
-                        
+
                         // 使用高质量缩放
                         ctx.imageSmoothingEnabled = true;
                         ctx.imageSmoothingQuality = 'high';
                         ctx.drawImage(img, 0, 0, newWidth, newHeight);
-                        
+
                         // 转换为data URL
                         const dataUrl = canvas.toDataURL('image/png', 0.95);
                         resolve(dataUrl);
                     };
-                    
+
                     img.onerror = (e) => {
                         console.error('Veo: 图片加载失败', e);
                         reject(new Error('图片加载失败'));
                     };
-                    
+
                     // 设置图片源
                     if (imageUrl.startsWith('data:')) {
                         img.src = imageUrl;
@@ -2826,7 +2821,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const convertTableToMarkdown = (table) => {
                 const rows = Array.from(table.querySelectorAll('tr'));
                 if (rows.length === 0) return '';
-                
+
                 const markdownRows = rows.map((row, rowIndex) => {
                     const cells = Array.from(row.querySelectorAll('td, th'));
                     const cellTexts = cells.map(cell => {
@@ -2835,14 +2830,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     });
                     return '| ' + cellTexts.join(' | ') + ' |';
                 });
-                
+
                 // 添加分隔行（第二行）
                 if (markdownRows.length > 0) {
                     const firstRowCells = markdownRows[0].split('|').filter(c => c.trim()).length - 2;
                     const separator = '| ' + Array(firstRowCells).fill('---').join(' | ') + ' |';
                     markdownRows.splice(1, 0, separator);
                 }
-                
+
                 return '\n' + markdownRows.join('\n') + '\n';
             };
 
@@ -2852,7 +2847,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const handleCopy = async (e) => {
                     const target = e.target;
                     const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-                    
+
                     // 优先级1：文本输入框 - 如果有选中文本，使用浏览器默认行为
                     if (isTextInput) {
                         const selection = window.getSelection();
@@ -2864,47 +2859,47 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         e.preventDefault();
                         return;
                     }
-                    
+
                     // 优先级2和3：节点复制（包括所有类型的节点）
                     const currentSelectedId = selectedNodeIdRef.current;
                     const currentSelectedIds = selectedNodeIdsRef.current;
                     const selectedIds = currentSelectedId ? [currentSelectedId] : (currentSelectedIds && currentSelectedIds.size > 0 ? Array.from(currentSelectedIds) : []);
-                    
+
                     if (selectedIds.length > 0) {
                         e.preventDefault();
                         e.stopPropagation();
                         const selectedNodes = nodesRef.current.filter(n => selectedIds.includes(n.id));
-                        const relatedConnections = connectionsRef.current.filter(c => 
+                        const relatedConnections = connectionsRef.current.filter(c =>
                             selectedIds.includes(c.from) || selectedIds.includes(c.to)
                         );
-                        
+
                         // 只保存选中的节点之间的连接
-                        const internalConnections = relatedConnections.filter(c => 
+                        const internalConnections = relatedConnections.filter(c =>
                             selectedIds.includes(c.from) && selectedIds.includes(c.to)
                         );
-                        
+
                         copiedNodesRef.current = {
                             nodes: selectedNodes.map(n => ({ ...n })),
                             connections: internalConnections.map(c => ({ ...c })),
                             timestamp: Date.now()
                         };
-                        
+
                         // 可选：给用户反馈
                         console.log(`已复制 ${selectedNodes.length} 个节点`);
                     }
                 };
-                
+
                 // 粘贴功能（Ctrl+V / Cmd+V）
                 const handlePaste = async (e) => {
                     const target = e.target;
                     const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-                    
+
                     // 优先级1：文本输入框 - 使用浏览器默认行为
                     if (isTextInput) {
                         // 让浏览器默认处理文本粘贴
                         return;
                     }
-                    
+
                     // 优先级2：图像节点截图粘贴
                     const currentSelectedId = selectedNodeIdRef.current;
                     let targetNode = null;
@@ -2916,7 +2911,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         const items = Array.from(e.clipboardData.items);
                         const imageItem = items.find(item => item.type.startsWith('image/'));
                         const videoItem = items.find(item => item.type.startsWith('video/'));
-                        
+
                         if (imageItem && targetNode.type === 'input-image') {
                             e.preventDefault();
                             const file = imageItem.getAsFile();
@@ -2925,12 +2920,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 reader.onload = async (ev) => {
                                     const content = ev.target.result;
                                     let dimensions = { w: 0, h: 0 };
-                                    try { 
+                                    try {
                                         dimensions = await getImageDimensions(content);
                                     } catch (e) {}
-                                    setNodes((prev) => prev.map((n) => 
-                                        n.id === targetNode.id 
-                                            ? { ...n, content: content, dimensions } 
+                                    setNodes((prev) => prev.map((n) =>
+                                        n.id === targetNode.id
+                                            ? { ...n, content: content, dimensions }
                                             : n
                                     ));
                                 };
@@ -2946,13 +2941,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             return;
                         }
                     }
-                    
+
                     // 优先级3：节点粘贴
                     if (copiedNodesRef.current && copiedNodesRef.current.nodes && copiedNodesRef.current.nodes.length > 0) {
                         e.preventDefault();
                         e.stopPropagation();
                         const copied = copiedNodesRef.current;
-                        
+
                         // 计算粘贴位置：使用视图中心或鼠标位置
                         const canvasElement = canvasRef.current;
                         let pasteX = 0, pasteY = 0;
@@ -2963,22 +2958,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             pasteX = centerX;
                             pasteY = centerY;
                         }
-                        
+
                         // 计算原节点的中心点
                         const originalNodes = copied.nodes;
                         if (originalNodes.length === 0) return;
-                        
+
                         const minX = Math.min(...originalNodes.map(n => n.x || 0));
                         const minY = Math.min(...originalNodes.map(n => n.y || 0));
                         const maxX = Math.max(...originalNodes.map(n => (n.x || 0) + (n.width || 0)));
                         const maxY = Math.max(...originalNodes.map(n => (n.y || 0) + (n.height || 0)));
                         const originalCenterX = (minX + maxX) / 2;
                         const originalCenterY = (minY + maxY) / 2;
-                        
+
                         // 计算偏移量，使新节点中心对齐到粘贴位置
                         const offsetX = pasteX - originalCenterX;
                         const offsetY = pasteY - originalCenterY;
-                        
+
                         // 创建新节点ID映射
                         const idMap = new Map();
                         const baseTime = Date.now();
@@ -2986,7 +2981,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             const newId = `node-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`;
                             idMap.set(node.id, newId);
                         });
-                        
+
                         // 创建新节点
                         const newNodes = copied.nodes.map(node => ({
                             ...node,
@@ -2994,7 +2989,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             x: node.x + offsetX,
                             y: node.y + offsetY
                         }));
-                        
+
                         // 创建新连接（只保留两个端点都在新节点中的连接）
                         const newConnections = (copied.connections || [])
                             .filter(conn => conn && idMap.has(conn.from) && idMap.has(conn.to))
@@ -3004,10 +2999,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 from: idMap.get(conn.from),
                                 to: idMap.get(conn.to)
                             }));
-                        
+
                         setNodes(prev => [...prev, ...newNodes]);
                         setConnections(prev => [...prev, ...newConnections]);
-                        
+
                         // 选中粘贴的节点
                         if (newNodes.length === 1) {
                             setSelectedNodeId(newNodes[0].id);
@@ -3016,16 +3011,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             setSelectedNodeId(null);
                             setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
                         }
-                        
+
                         console.log(`已粘贴 ${newNodes.length} 个节点`);
                     }
                 };
-                
+
                 // 添加keydown事件监听，确保Ctrl+V/Cmd+V能触发节点粘贴
                 const handleKeyDown = (e) => {
                     const target = e.target;
                     const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-                    
+
                     // 如果不在文本输入框中，且按下了Ctrl+V或Cmd+V
                     if (!isTextInput && (e.ctrlKey || e.metaKey) && e.key === 'v') {
                         // 先检查是否选中了图像节点，如果是，让paste事件处理图像粘贴
@@ -3037,14 +3032,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 return;
                             }
                         }
-                        
+
                         // 检查是否有复制的节点
                         if (copiedNodesRef.current && copiedNodesRef.current.nodes && copiedNodesRef.current.nodes.length > 0) {
                             e.preventDefault();
                             e.stopPropagation();
                             // 直接调用粘贴逻辑
                             const copied = copiedNodesRef.current;
-                            
+
                             // 计算粘贴位置：使用视图中心
                             const canvasElement = canvasRef.current;
                             let pasteX = 0, pasteY = 0;
@@ -3055,22 +3050,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 pasteX = centerX;
                                 pasteY = centerY;
                             }
-                            
+
                             // 计算原节点的中心点
                             const originalNodes = copied.nodes;
                             if (originalNodes.length === 0) return;
-                            
+
                             const minX = Math.min(...originalNodes.map(n => n.x || 0));
                             const minY = Math.min(...originalNodes.map(n => n.y || 0));
                             const maxX = Math.max(...originalNodes.map(n => (n.x || 0) + (n.width || 0)));
                             const maxY = Math.max(...originalNodes.map(n => (n.y || 0) + (n.height || 0)));
                             const originalCenterX = (minX + maxX) / 2;
                             const originalCenterY = (minY + maxY) / 2;
-                            
+
                             // 计算偏移量
                             const offsetX = pasteX - originalCenterX;
                             const offsetY = pasteY - originalCenterY;
-                            
+
                             // 创建新节点ID映射
                             const idMap = new Map();
                             const baseTime = Date.now();
@@ -3078,7 +3073,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 const newId = `node-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`;
                                 idMap.set(node.id, newId);
                             });
-                            
+
                             // 创建新节点
                             const newNodes = copied.nodes.map(node => ({
                                 ...node,
@@ -3086,7 +3081,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 x: node.x + offsetX,
                                 y: node.y + offsetY
                             }));
-                            
+
                         // 创建新连接（只保留两个端点都在新节点中的连接）
                         const newConnections = (copied.connections || [])
                             .filter(conn => conn && idMap.has(conn.from) && idMap.has(conn.to))
@@ -3096,10 +3091,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 from: idMap.get(conn.from),
                                 to: idMap.get(conn.to)
                             }));
-                        
+
                         setNodes(prev => [...prev, ...newNodes]);
                         setConnections(prev => [...prev, ...newConnections]);
-                            
+
                             // 选中粘贴的节点
                             if (newNodes.length === 1) {
                                 setSelectedNodeId(newNodes[0].id);
@@ -3108,16 +3103,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 setSelectedNodeId(null);
                                 setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
                             }
-                            
+
                             console.log(`已粘贴 ${newNodes.length} 个节点`);
                         }
                     }
                 };
-                
+
                 window.addEventListener('copy', handleCopy);
                 window.addEventListener('paste', handlePaste);
                 window.addEventListener('keydown', handleKeyDown);
-                
+
                 return () => {
                     window.removeEventListener('copy', handleCopy);
                     window.removeEventListener('paste', handlePaste);
@@ -3131,12 +3126,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 if (attempt > maxAttempts) {
                     setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: 'Veo 轮询超时' } : hItem));
-                    
+
                     // 检查是否是分镜表的任务，如果是则更新状态为 draft
                     const storyboardTask = storyboardTaskMapRef.current.get(taskId);
                     if (storyboardTask) {
                         console.log('[分镜表] Veo轮询超时，更新状态:', { taskId, nodeId: storyboardTask.nodeId, shotId: storyboardTask.shotId });
-                        updateShot(storyboardTask.nodeId, storyboardTask.shotId, { 
+                        updateShot(storyboardTask.nodeId, storyboardTask.shotId, {
                             status: 'draft'
                         });
                         // 清理任务映射
@@ -3182,12 +3177,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             const sourceNodeId = historyItem?.sourceNodeId;
                             const originalRatio = historyItem?.ratio;
                             const durationMs = endTime - (historyItem?.startTime || endTime);
-                            
+
                             console.log('[Tapnow] Veo: 从历史记录获取信息', { taskId, originalRatio, sourceNodeId, historyItem });
-                            
+
                             // 对于 veo3.1，尝试从实际视频获取真实尺寸
                             let finalW = w, finalH = h;
-                            
+
                             // 异步获取视频尺寸并更新（使用 Promise）
                             (async () => {
                                 try {
@@ -3196,7 +3191,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         console.log('[Tapnow] Veo: 获取到视频实际尺寸', { w: videoMeta.w, h: videoMeta.h, requestedRatio: originalRatio });
                                         const actualW = videoMeta.w;
                                         const actualH = videoMeta.h;
-                                        
+
                                         // 验证实际尺寸是否匹配请求的 aspect_ratio
                                         if (originalRatio === '16:9') {
                                             const actualRatio = actualW / actualH;
@@ -3233,21 +3228,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             finalW = actualW;
                                             finalH = actualH;
                                         }
-                                        
+
                                         // 更新历史记录
                                         setHistory((prevHistory) => {
-                                            return prevHistory.map((hItem) => 
-                                                hItem.id === taskId 
-                                                    ? { ...hItem, status: 'completed', progress: 100, url: videoUrl, width: finalW, height: finalH, durationMs, ratio: originalRatio || hItem.ratio } 
+                                            return prevHistory.map((hItem) =>
+                                                hItem.id === taskId
+                                                    ? { ...hItem, status: 'completed', progress: 100, url: videoUrl, width: finalW, height: finalH, durationMs, ratio: originalRatio || hItem.ratio }
                                                     : hItem
                                             );
                                         });
-                                        
+
                                         // 检查是否是分镜表的任务，如果是则回填到分镜表
                                         const storyboardTask = storyboardTaskMapRef.current.get(taskId);
                                         if (storyboardTask) {
                                             console.log('[分镜表] Veo任务完成，回填视频:', { taskId, nodeId: storyboardTask.nodeId, shotId: storyboardTask.shotId, videoUrl });
-                                            updateShot(storyboardTask.nodeId, storyboardTask.shotId, { 
+                                            updateShot(storyboardTask.nodeId, storyboardTask.shotId, {
                                                 video_url: videoUrl,
                                                 status: 'done'
                                             });
@@ -3296,21 +3291,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             fallbackW = Math.round(fallbackH * (9/16));
                                         }
                                     }
-                                    
+
                                     // 更新历史记录
                                     setHistory((prevHistory) => {
-                                        return prevHistory.map((hItem) => 
-                                            hItem.id === taskId 
-                                                ? { ...hItem, status: 'completed', progress: 100, url: videoUrl, width: fallbackW, height: fallbackH, durationMs, ratio: originalRatio || hItem.ratio } 
+                                        return prevHistory.map((hItem) =>
+                                            hItem.id === taskId
+                                                ? { ...hItem, status: 'completed', progress: 100, url: videoUrl, width: fallbackW, height: fallbackH, durationMs, ratio: originalRatio || hItem.ratio }
                                                 : hItem
                                         );
                                     });
-                                    
+
                                     // 检查是否是分镜表的任务，如果是则回填到分镜表
                                     const storyboardTask = storyboardTaskMapRef.current.get(taskId);
                                     if (storyboardTask) {
                                         console.log('[分镜表] Veo任务完成（fallback），回填视频:', { taskId, nodeId: storyboardTask.nodeId, shotId: storyboardTask.shotId, videoUrl });
-                                        updateShot(storyboardTask.nodeId, storyboardTask.shotId, { 
+                                        updateShot(storyboardTask.nodeId, storyboardTask.shotId, {
                                             video_url: videoUrl,
                                             status: 'done'
                                         });
@@ -3345,7 +3340,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     }
                                 }
                             })();
-                            
+
                             // 先返回原始状态，等待异步操作完成后再更新
                             return prev;
                         });
@@ -3381,9 +3376,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         console.log(`[Tapnow] Veo: 任务状态 ${status}，进度 ${progress}，继续等待...`);
                         // 对于 NOT_START 状态，进度更新更慢一些，避免频繁更新
                         const currentProgress = parseInt(progress) || 0;
-                        setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { 
-                            ...hItem, 
-                            status: 'generating', 
+                        setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? {
+                            ...hItem,
+                            status: 'generating',
                             progress: Math.max(5, currentProgress),
                             errorMsg: status === 'NOT_START' ? '任务已创建，等待处理中...' : undefined
                         } : hItem));
@@ -3407,12 +3402,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 if (attempt > maxAttempts) {
                     setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: 'Sora 轮询超时' } : hItem));
-                    
+
                     // 检查是否是分镜表的任务，如果是则更新状态为 draft
                     const storyboardTask = storyboardTaskMapRef.current.get(taskId);
                     if (storyboardTask) {
                         console.log('[分镜表] Sora轮询超时，更新状态:', { taskId, nodeId: storyboardTask.nodeId, shotId: storyboardTask.shotId });
-                        updateShot(storyboardTask.nodeId, storyboardTask.shotId, { 
+                        updateShot(storyboardTask.nodeId, storyboardTask.shotId, {
                             status: 'draft'
                         });
                         // 清理任务映射
@@ -3437,12 +3432,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 })
                 .then((text) => {
                     let data;
-                    try { 
-                        data = JSON.parse(text); 
-                    } catch (err) { 
+                    try {
+                        data = JSON.parse(text);
+                    } catch (err) {
                         console.error('[Tapnow] Sora/Grok Poll JSON 解析失败:', err, text);
-                        setTimeout(() => pollSoraJob(jobId, taskId, baseUrl, apiKey, w, h, modelId, attempt + 1), delayMs); 
-                        return; 
+                        setTimeout(() => pollSoraJob(jobId, taskId, baseUrl, apiKey, w, h, modelId, attempt + 1), delayMs);
+                        return;
                     }
 
                     console.log('[Tapnow] Sora/Grok Poll:', data);
@@ -3472,7 +3467,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             const storyboardTask = storyboardTaskMapRef.current.get(taskId);
                             if (storyboardTask) {
                                 console.log('[分镜表] Sora任务完成，回填视频:', { taskId, nodeId: storyboardTask.nodeId, shotId: storyboardTask.shotId, videoUrl });
-                                updateShot(storyboardTask.nodeId, storyboardTask.shotId, { 
+                                updateShot(storyboardTask.nodeId, storyboardTask.shotId, {
                                     video_url: videoUrl,
                                     status: 'done'
                                 });
@@ -3603,7 +3598,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
-                        
+
                         // 计算压缩后的尺寸
                         let width = img.width;
                         let height = img.height;
@@ -3612,10 +3607,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             width = Math.floor(width * scale);
                             height = Math.floor(height * scale);
                         }
-                        
+
                         canvas.width = width;
                         canvas.height = height;
-                        
+
                         // 绘制并压缩
                         ctx.drawImage(img, 0, 0, width, height);
                         // 使用JPEG格式压缩，减少文件大小
@@ -3631,28 +3626,28 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 return new Promise((resolve, reject) => {
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
-                    
+
                     // 设置超时，防止图片加载卡死
                     const timeout = setTimeout(() => {
                         reject(new Error('图片加载超时'));
                     }, 30000); // 30秒超时
-                    
+
                     img.onload = () => {
                         clearTimeout(timeout);
                         try {
                             const canvas = document.createElement('canvas');
                             const ctx = canvas.getContext('2d');
-                            
+
                             // Midjourney返回的是2x2网格，每张图是原图的1/4
                             // 计算每张图的尺寸（使用Math.floor确保整数像素）
                             const singleWidth = Math.floor(img.width / 2);
                             const singleHeight = Math.floor(img.height / 2);
-                            
+
                             // 计算实际每张图的比例
                             const actualRatio = singleWidth / singleHeight;
-                            
+
                             const images = [];
-                            
+
                             // 切割4张图：左上、右上、左下、右下
                             for (let row = 0; row < 2; row++) {
                                 for (let col = 0; col < 2; col++) {
@@ -3661,22 +3656,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     const cropY = Math.max(0, Math.min(row * singleHeight, img.height - singleHeight));
                                     const cropW = Math.min(singleWidth, img.width - cropX);
                                     const cropH = Math.min(singleHeight, img.height - cropY);
-                                    
+
                                     // 设置canvas尺寸
                                     canvas.width = cropW;
                                     canvas.height = cropH;
-                                    
+
                                     // 清空canvas并设置白色背景（防止透明区域）
                                     ctx.fillStyle = '#ffffff';
                                     ctx.fillRect(0, 0, cropW, cropH);
-                                    
+
                                     // 提取图片区域
                                     ctx.drawImage(
                                         img,
                                         cropX, cropY, cropW, cropH,
                                         0, 0, cropW, cropH
                                     );
-                                    
+
                                     // 使用PNG格式，保持图片质量
                                     const dataUrl = canvas.toDataURL('image/png');
                                     images.push({
@@ -3687,7 +3682,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     });
                                 }
                             }
-                            
+
                             console.log(`Midjourney: 切割图片完成，原图尺寸 ${img.width}x${img.height}，每张图尺寸 ${singleWidth}x${singleHeight}，比例 ${actualRatio.toFixed(2)}`);
                             resolve(images);
                         } catch (error) {
@@ -3695,13 +3690,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             reject(error);
                         }
                     };
-                    
+
                     img.onerror = (e) => {
                         clearTimeout(timeout);
                         console.error('Midjourney: Failed to load image for splitting:', e);
                         reject(new Error('图片加载失败'));
                     };
-                    
+
                     img.src = imageUrl;
                 });
             };
@@ -3714,9 +3709,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 if (attempt > maxAttempts) {
                     const timeoutSeconds = isBananaModel ? 800 : 1500;
-                    setHistory((prev) => prev.map((hItem) => 
-                        hItem.id === taskId 
-                            ? { ...hItem, status: 'failed', errorMsg: `图像生成轮询超时（已等待${timeoutSeconds}秒）` } 
+                    setHistory((prev) => prev.map((hItem) =>
+                        hItem.id === taskId
+                            ? { ...hItem, status: 'failed', errorMsg: `图像生成轮询超时（已等待${timeoutSeconds}秒）` }
                             : hItem
                     ));
                     return;
@@ -3727,7 +3722,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 fetch(pollUrl, {
                     method: 'GET',
-                    headers: { 
+                    headers: {
                         Authorization: `Bearer ${apiKey}`,
                         'Content-Type': 'application/json'
                     },
@@ -3735,31 +3730,31 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 .then((resp) => resp.text())
                 .then((text) => {
                     let data;
-                    try { 
-                        data = JSON.parse(text); 
-                    } catch (err) { 
+                    try {
+                        data = JSON.parse(text);
+                    } catch (err) {
                         console.error('[Async Image] Failed to parse response:', err);
-                        setTimeout(() => pollImageTask(taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt + 1, isBananaModel), delayMs); 
-                        return; 
+                        setTimeout(() => pollImageTask(taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt + 1, isBananaModel), delayMs);
+                        return;
                     }
 
                     console.log('[Async Image] Poll:', data);
-                    
+
                     // 根据API规范，响应格式可能有多种：
                     // 1. { code, message, data: { status, images: [...] } }
                     // 2. { status: "SUCCESS", data: { data: [{ url: "..." }] } }
                     // 3. { task_id: "...", status: "SUCCESS", data: { data: [{ url: "..." }] } }
                     const status = (data?.data?.status || data?.status || '').toUpperCase();
-                    console.log('[Async Image] 提取的状态:', status, '原始数据:', { 
-                        hasData: !!data?.data, 
+                    console.log('[Async Image] 提取的状态:', status, '原始数据:', {
+                        hasData: !!data?.data,
                         hasDataData: !!data?.data?.data,
                         hasDataStatus: !!data?.data?.status,
                         hasStatus: !!data?.status,
                         dataKeys: data ? Object.keys(data) : []
                     });
-                    
+
                     let images = [];
-                    
+
                     // 尝试多种方式提取图片数据（按优先级顺序）
                     // 方式1：data.data.data（嵌套格式，最常见）
                     if (data?.data?.data && Array.isArray(data.data.data) && data.data.data.length > 0) {
@@ -3781,7 +3776,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         images = data.data;
                         console.log('[Async Image] 从 data.data 提取到图片:', images.length, '张');
                     }
-                    
+
                     // 如果还是没有找到图片，尝试从revised_prompt中提取URL（备用方案）
                     if (images.length === 0) {
                         // 尝试从data.data.data[0].revised_prompt中提取
@@ -3812,7 +3807,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 console.log('[Async Image] 从 data.data.data 中重新提取到图片（二次尝试）:', images.length, '张');
                             }
                         }
-                        
+
                         // 如果任务状态是SUCCESS但还没找到图片，立即执行深度搜索（不等待后续处理）
                         if (images.length === 0 && (status === 'COMPLETED' || status === 'SUCCESS' || status === 'FINISHED' || status === 'DONE')) {
                             console.log('[Async Image] 任务状态为成功但图片数量为0，立即执行深度搜索');
@@ -3820,11 +3815,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             const deepSearchForUrl = (obj, depth = 0, visited = new WeakSet()) => {
                                 if (depth > 5) return null; // 防止无限递归
                                 if (!obj || typeof obj !== 'object') return null;
-                                
+
                                 // 防止循环引用
                                 if (visited.has(obj)) return null;
                                 visited.add(obj);
-                                
+
                                 // 优先检查当前对象的常见字段（避免不必要的递归）
                                 const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
                                 for (const field of urlFields) {
@@ -3832,13 +3827,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         return obj[field];
                                     }
                                 }
-                                
+
                                 // 如果是数组，优先检查第一个元素
                                 if (Array.isArray(obj) && obj.length > 0) {
                                     const result = deepSearchForUrl(obj[0], depth + 1, visited);
                                     if (result) return result;
                                 }
-                                
+
                                 // 递归搜索所有属性（但跳过已检查的常见字段）
                                 for (const key in obj) {
                                     if (obj.hasOwnProperty(key) && !urlFields.includes(key)) {
@@ -3846,10 +3841,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         if (result) return result;
                                     }
                                 }
-                                
+
                                 return null;
                             };
-                            
+
                             const foundUrl = deepSearchForUrl(data);
                             if (foundUrl) {
                                 images = [{ url: foundUrl }];
@@ -3859,7 +3854,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             }
                         }
                     }
-                    
+
                     const errorMsg = data?.message || data?.error || data?.fail_reason || '';
 
                     // 更新历史记录
@@ -3869,10 +3864,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 // 支持多种成功状态值
                                 if (status === 'COMPLETED' || status === 'SUCCESS' || status === 'FINISHED' || status === 'DONE') {
                                     console.log('[Async Image] 任务状态为成功:', status, '图片数量:', images.length);
-                                    
+
                                     // 保存sourceNodeId，用于后续更新预览窗口
                                     const savedSourceNodeId = hItem.sourceNodeId || sourceNodeId;
-                                    
+
                                     // 任务完成
                                     if (images && images.length > 0) {
                                         // 提取图片URL，支持多种字段名和格式
@@ -3880,19 +3875,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             if (typeof img === 'string') return img;
                                             return img?.url || img?.image_url || img?.imageUrl || '';
                                         }).filter(Boolean);
-                                        
+
                                         console.log('[Async Image] 提取到的图片URLs:', imageUrls);
-                                        
+
                                         if (imageUrls.length > 0) {
                                             const primaryUrl = imageUrls[0];
-                                            
+
                                             // 优先使用后端返回的实际花费时间（如果存在）
                                             // 后端可能返回的字段：duration, cost_time, elapsed_time, time_cost, spent_time 等（单位可能是秒或毫秒）
                                             let durationMs = null;
-                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time || 
-                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration || 
+                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time ||
+                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration ||
                                                                   data?.cost_time || data?.elapsed_time || data?.time_cost || data?.spent_time;
-                                            
+
                                             if (backendDuration !== null && backendDuration !== undefined) {
                                                 // 如果后端返回的是秒（数字<10000），转换为毫秒；否则认为是毫秒
                                                 if (typeof backendDuration === 'number') {
@@ -3912,33 +3907,33 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     }
                                                 }
                                             }
-                                            
+
                                             // 如果后端没有返回时间，使用前端计算的时间
                                             if (durationMs === null) {
                                                 const endTime = Date.now();
                                                 durationMs = endTime - (hItem.startTime || endTime);
                                             }
-                                            
-                                            console.log('[Async Image] 任务完成，准备更新UI:', { 
-                                                taskId, 
-                                                url: primaryUrl, 
-                                                sourceNodeId: savedSourceNodeId, 
+
+                                            console.log('[Async Image] 任务完成，准备更新UI:', {
+                                                taskId,
+                                                url: primaryUrl,
+                                                sourceNodeId: savedSourceNodeId,
                                                 imageCount: imageUrls.length,
                                                 durationMs,
                                                 backendDuration,
                                                 frontendCalculated: durationMs === null ? null : (Date.now() - (hItem.startTime || Date.now()))
                                             });
-                                            
+
                                             // 更新预览窗口（立即执行，不等待）
                                             // 即使savedSourceNodeId为空，也尝试调用updatePreviewFromTask，它会从history中查找
                                             const nodeIdToUse = savedSourceNodeId || hItem.sourceNodeId;
-                                            console.log('[Async Image] 准备更新预览窗口', { 
-                                                taskId, 
-                                                url: primaryUrl, 
-                                                sourceNodeId: nodeIdToUse, 
+                                            console.log('[Async Image] 准备更新预览窗口', {
+                                                taskId,
+                                                url: primaryUrl,
+                                                sourceNodeId: nodeIdToUse,
                                                 savedSourceNodeId,
                                                 hItemSourceNodeId: hItem.sourceNodeId,
-                                                imageCount: imageUrls.length 
+                                                imageCount: imageUrls.length
                                             });
                                             // 使用requestAnimationFrame确保在下一个渲染周期更新，但比setTimeout更快
                                             requestAnimationFrame(() => {
@@ -3966,11 +3961,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     }));
                                                 }
                                             });
-                                            
-                                            return { 
-                                                ...hItem, 
-                                                status: 'completed', 
-                                                progress: 100, 
+
+                                            return {
+                                                ...hItem,
+                                                status: 'completed',
+                                                progress: 100,
                                                 url: primaryUrl,
                                                 width: w,
                                                 height: h,
@@ -3989,12 +3984,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             hasDataData: !!data?.data?.data,
                                             fullData: JSON.stringify(data, null, 2).substring(0, 1000)
                                         });
-                                        
+
                                         // 最后备用方案：深度搜索整个响应对象，查找任何包含url的字段
                                         const deepSearchForUrl = (obj, depth = 0) => {
                                             if (depth > 5) return null; // 防止无限递归
                                             if (!obj || typeof obj !== 'object') return null;
-                                            
+
                                             // 检查当前对象是否有url字段
                                             if (obj.url && typeof obj.url === 'string' && obj.url.startsWith('http')) {
                                                 return obj.url;
@@ -4005,7 +4000,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             if (obj.imageUrl && typeof obj.imageUrl === 'string' && obj.imageUrl.startsWith('http')) {
                                                 return obj.imageUrl;
                                             }
-                                            
+
                                             // 递归搜索所有属性
                                             for (const key in obj) {
                                                 if (obj.hasOwnProperty(key)) {
@@ -4013,20 +4008,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     if (result) return result;
                                                 }
                                             }
-                                            
+
                                             return null;
                                         };
-                                        
+
                                         const foundUrl = deepSearchForUrl(data);
                                         if (foundUrl) {
                                             console.log('[Async Image] 通过深度搜索找到图片URL:', foundUrl);
-                                            
+
                                             // 优先使用后端返回的实际花费时间（如果存在）
                                             let durationMs = null;
-                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time || 
-                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration || 
+                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time ||
+                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration ||
                                                                   data?.cost_time || data?.elapsed_time || data?.time_cost || data?.spent_time;
-                                            
+
                                             if (backendDuration !== null && backendDuration !== undefined) {
                                                 if (typeof backendDuration === 'number') {
                                                     durationMs = backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
@@ -4044,19 +4039,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     }
                                                 }
                                             }
-                                            
+
                                             // 如果后端没有返回时间，使用前端计算的时间
                                             if (durationMs === null) {
                                                 const endTime = Date.now();
                                                 durationMs = endTime - (hItem.startTime || endTime);
                                             }
-                                            
+
                                             // 更新预览窗口（立即执行，不等待）
                                             // 即使savedSourceNodeId为空，也尝试调用updatePreviewFromTask，它会从history中查找
                                             const nodeIdToUse = savedSourceNodeId || hItem.sourceNodeId;
-                                            console.log('[Async Image] 准备更新预览窗口（深度搜索）', { 
-                                                taskId, 
-                                                url: foundUrl, 
+                                            console.log('[Async Image] 准备更新预览窗口（深度搜索）', {
+                                                taskId,
+                                                url: foundUrl,
                                                 sourceNodeId: nodeIdToUse,
                                                 savedSourceNodeId,
                                                 hItemSourceNodeId: hItem.sourceNodeId
@@ -4087,11 +4082,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     }));
                                                 }
                                             });
-                                            
-                                            return { 
-                                                ...hItem, 
-                                                status: 'completed', 
-                                                progress: 100, 
+
+                                            return {
+                                                ...hItem,
+                                                status: 'completed',
+                                                progress: 100,
                                                 url: foundUrl,
                                                 width: w,
                                                 height: h,
@@ -4101,24 +4096,24 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             };
                                         }
                                     }
-                                    
+
                                     // 如果所有方法都失败，标记为失败
-                                    return { 
-                                        ...hItem, 
-                                        status: 'failed', 
-                                        errorMsg: errorMsg || '任务完成但未返回图片，请检查控制台日志查看详细响应数据' 
+                                    return {
+                                        ...hItem,
+                                        status: 'failed',
+                                        errorMsg: errorMsg || '任务完成但未返回图片，请检查控制台日志查看详细响应数据'
                                     };
                                 } else if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED' || status === 'FAILURE') {
                                 // 任务失败
-                                return { 
-                                    ...hItem, 
-                                    status: 'failed', 
-                                    errorMsg: errorMsg || `任务失败: ${status}` 
+                                return {
+                                    ...hItem,
+                                    status: 'failed',
+                                    errorMsg: errorMsg || `任务失败: ${status}`
                                 };
                             } else if (status === 'PENDING' || status === 'PROCESSING' || status === 'GENERATING' || status === 'IN_PROGRESS' || status === 'RUNNING') {
                                 // 任务进行中，根据轮询次数和进度信息计算进度
                                 let progress = 10 + (attempt * 2); // 基础进度
-                                
+
                                 // 如果有进度百分比，使用实际进度
                                 if (data?.data?.progress) {
                                     const progressStr = String(data.data.progress);
@@ -4135,21 +4130,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         progress = data.progress;
                                     }
                                 }
-                                
+
                                 progress = Math.min(95, Math.max(10, progress)); // 限制在10-95%之间
-                                
-                                return { 
-                                    ...hItem, 
-                                    status: 'generating', 
+
+                                return {
+                                    ...hItem,
+                                    status: 'generating',
                                     progress,
                                     errorMsg: null
                                 };
                             } else {
                                 // 未知状态，继续轮询，但进度缓慢增加
                                 const progress = Math.min(90, 10 + (attempt * 1.5));
-                                return { 
-                                    ...hItem, 
-                                    status: 'generating', 
+                                return {
+                                    ...hItem,
+                                    status: 'generating',
                                     progress,
                                     errorMsg: null
                                 };
@@ -4157,13 +4152,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         }
                         return hItem;
                     });
-                    
+
                     // 获取更新后的进度，用于动态调整轮询间隔
                     const updatedItem = updated.find(h => h.id === taskId);
                     const currentProgress = updatedItem?.progress || 10;
                     const currentStatusForNode = updatedItem?.status;
                     const currentErrorForNode = updatedItem?.errorMsg;
-                    
+
                     // 同步进度到“生成角色/场景图片”节点（只同步这两类节点，避免影响现有 gen-image 行为）
                     if (sourceNodeId && (currentStatusForNode === 'generating' || currentStatusForNode === 'failed')) {
                         requestAnimationFrame(() => {
@@ -4184,7 +4179,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             }));
                         });
                     }
-                    
+
                     return updated;
                 });
 
@@ -4193,7 +4188,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const currentStatus = (data?.data?.status || data?.status || '').toUpperCase();
                     const isCompleted = currentStatus === 'COMPLETED' || currentStatus === 'SUCCESS' || currentStatus === 'FINISHED' || currentStatus === 'DONE';
                     const isFailed = currentStatus === 'FAILED' || currentStatus === 'ERROR' || currentStatus === 'CANCELLED' || currentStatus === 'FAILURE';
-                    
+
                     if (!isCompleted && !isFailed) {
                         // 动态轮询间隔策略：
                         // 1. 任务进度>90%：1秒间隔（快速检测完成）
@@ -4201,12 +4196,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         // 3. 任务进度>50%：3秒间隔（中等速度）
                         // 4. 任务进行中（<50%）：5秒间隔（基础间隔）
                         // 5. 长时间运行（>50次轮询且非banana模型）：10秒间隔（节省资源）
-                        
+
                         // 从更新后的history中获取最新进度来计算延迟
                         setHistory((prev) => {
                             const latestItem = prev.find(h => h.id === taskId);
                             const progress = latestItem?.progress || 10;
-                            
+
                             let adjustedDelay = baseDelayMs;
                             if (progress >= 90) {
                                 adjustedDelay = 1000; // 1秒：任务接近完成，快速检测
@@ -4217,12 +4212,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             } else if (attempt > 50 && !isBananaModel) {
                                 adjustedDelay = 10000; // 10秒：长时间运行，节省资源
                             }
-                            
+
                             // 在回调外执行setTimeout，避免闭包问题
                             setTimeout(() => {
                                 pollImageTask(taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt + 1, isBananaModel);
                             }, adjustedDelay);
-                            
+
                             return prev; // 不修改，只是读取
                         });
                     }
@@ -4239,9 +4234,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const delayMs = 5000; // 每5秒轮询一次
 
                 if (attempt > maxAttempts) {
-                    setHistory((prev) => prev.map((hItem) => 
-                        hItem.id === taskId 
-                            ? { ...hItem, status: 'failed', errorMsg: 'Midjourney 轮询超时' } 
+                    setHistory((prev) => prev.map((hItem) =>
+                        hItem.id === taskId
+                            ? { ...hItem, status: 'failed', errorMsg: 'Midjourney 轮询超时' }
                             : hItem
                     ));
                     return;
@@ -4249,7 +4244,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 fetch(`${baseUrl}/${mjMode}/mj/task/${jobId}/fetch`, {
                     method: 'GET',
-                    headers: { 
+                    headers: {
                         Authorization: `Bearer ${apiKey}`,
                         'Content-Type': 'application/json'
                     },
@@ -4257,16 +4252,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 .then((resp) => resp.text())
                 .then((text) => {
                     let data;
-                    try { 
-                        data = JSON.parse(text); 
-                    } catch (err) { 
+                    try {
+                        data = JSON.parse(text);
+                    } catch (err) {
                         console.error('Midjourney: Failed to parse response:', err);
-                        setTimeout(() => pollMidjourneyJob(jobId, taskId, baseUrl, apiKey, mjMode, w, h, attempt + 1), delayMs); 
-                        return; 
+                        setTimeout(() => pollMidjourneyJob(jobId, taskId, baseUrl, apiKey, mjMode, w, h, attempt + 1), delayMs);
+                        return;
                     }
 
                     console.log('[Tapnow] Midjourney Poll:', data);
-                    
+
                     const status = data?.status || '';
                     const progress = data?.progress || '0%';
                     const imageUrl = data?.imageUrl || '';
@@ -4292,7 +4287,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 newStatus = 'completed';
                                 newProgress = 100;
                                 newErrorMsg = null;
-                                
+
                                 // 如果是Midjourney任务且有图片URL，切割成4张图（拓展图片任务不需要切割）
                                 if (imageUrl && hItem.apiConfig?.modelId?.includes('mj') && hItem.apiConfig?.modelId !== 'mj-zoom') {
                                     // 获取比例信息（从prompt中提取或使用默认值）
@@ -4303,15 +4298,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             ratio = arMatch[1];
                                         }
                                     }
-                                    
+
                                     // 异步切割图片，不阻塞状态更新
                                     // 先更新状态，显示原图，避免白屏
-                                    setHistory((prev) => prev.map((hItem) => 
-                                        hItem.id === taskId 
-                                            ? { ...hItem, url: imageUrl, mjRatio: ratio, mjOriginalUrl: imageUrl, mjNeedsSplit: true } 
+                                    setHistory((prev) => prev.map((hItem) =>
+                                        hItem.id === taskId
+                                            ? { ...hItem, url: imageUrl, mjRatio: ratio, mjOriginalUrl: imageUrl, mjNeedsSplit: true }
                                             : hItem
                                     ));
-                                    
+
                                     // 立即将完整原图同步到预览窗口（不裁剪）
                                     // 直接传入 sourceNodeId，避免依赖可能未更新的 history 状态
                                     // 使用 setTimeout 确保在下一个事件循环中执行，避免状态更新冲突
@@ -4324,7 +4319,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     } else {
                                         console.warn('[Tapnow] Midjourney: 未找到 sourceNodeId，无法更新预览窗口', { taskId, hItem });
                                     }
-                                    
+
                                     // 延迟切割，确保UI先更新显示原图，避免白屏
                                     setTimeout(() => {
                                         splitMidjourneyImage(imageUrl, ratio).then((splitImages) => {
@@ -4332,41 +4327,41 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             const imageUrls = splitImages.map(img => typeof img === 'string' ? img : img.url);
                                             const firstImage = splitImages[0];
                                             const firstUrl = typeof firstImage === 'string' ? firstImage : firstImage.url;
-                                            
-                                            setHistory((prev) => prev.map((hItem) => 
-                                                hItem.id === taskId 
-                                                    ? { 
-                                                        ...hItem, 
-                                                        mjImages: imageUrls, 
-                                                        url: firstUrl, 
+
+                                            setHistory((prev) => prev.map((hItem) =>
+                                                hItem.id === taskId
+                                                    ? {
+                                                        ...hItem,
+                                                        mjImages: imageUrls,
+                                                        url: firstUrl,
                                                         selectedMjImageIndex: 0,
                                                         mjRatio: ratio,
                                                         mjOriginalUrl: imageUrl, // 保存原图URL
                                                         mjNeedsSplit: false, // 标记已切割
                                                         mjImageInfo: splitImages.map(img => typeof img === 'string' ? null : { width: img.width, height: img.height, ratio: img.ratio })
-                                                    } 
+                                                    }
                                                     : hItem
                                             ));
                                         }).catch((err) => {
                                             console.error('Midjourney: Failed to split image:', err);
                                             // 如果切割失败，保持原图显示，标记需要重新切割
-                                            setHistory((prev) => prev.map((hItem) => 
-                                                hItem.id === taskId 
-                                                    ? { ...hItem, url: imageUrl, mjRatio: ratio, mjOriginalUrl: imageUrl, mjNeedsSplit: true } 
+                                            setHistory((prev) => prev.map((hItem) =>
+                                                hItem.id === taskId
+                                                    ? { ...hItem, url: imageUrl, mjRatio: ratio, mjOriginalUrl: imageUrl, mjNeedsSplit: true }
                                                     : hItem
                                             ));
                                         });
                                     }, 300); // 延迟300ms，确保原图已完全显示
-                                    
+
                                     // 计算并保存用时
                                     const endTime = Date.now();
                                     const durationMs = endTime - (hItem.startTime || endTime);
-                                    
+
                                     // 先更新状态，图片切割异步进行
-                                    return { 
-                                        ...hItem, 
-                                        status: newStatus, 
-                                        progress: newProgress, 
+                                    return {
+                                        ...hItem,
+                                        status: newStatus,
+                                        progress: newProgress,
                                         errorMsg: newErrorMsg,
                                         url: imageUrl, // 临时使用原图，切割完成后会更新
                                         width: w,
@@ -4392,11 +4387,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             }
 
                                 console.log(`[Tapnow] Midjourney Poll Status Update: Task ${taskId}, Status: ${newStatus}, Progress: ${newProgress}%, ImageUrl: ${imageUrl ? 'Yes' : 'No'}`);
-                            
-                            const updatedItem = { 
-                                ...hItem, 
-                                status: newStatus, 
-                                progress: newProgress, 
+
+                            const updatedItem = {
+                                ...hItem,
+                                status: newStatus,
+                                progress: newProgress,
                                 errorMsg: newErrorMsg,
                                 url: imageUrl || hItem.url,
                                 width: w,
@@ -4413,7 +4408,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     console.log('[Tapnow] 图片生成: 准备更新节点', { taskId, imageUrl, sourceNodeId: hItem.sourceNodeId, modelId: hItem.apiConfig?.modelId });
                                     // 如果是拓展图片任务，更新拓展图片节点；否则更新预览窗口
                                     if (hItem.apiConfig?.modelId === 'mj-zoom') {
-                                        setNodes((prev) => prev.map((n) => 
+                                        setNodes((prev) => prev.map((n) =>
                                             n.id === hItem.sourceNodeId && n.type === 'expand-image'
                                                 ? { ...n, content: imageUrl }
                                                 : n
@@ -4424,7 +4419,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 } else {
                                     console.warn('[Tapnow] 图片生成: 未找到 sourceNodeId', { taskId, hItem });
                                 }
-                                
+
                                 // 计算并保存用时
                                 const endTime = Date.now();
                                 const durationMs = endTime - (hItem.startTime || endTime);
@@ -4450,9 +4445,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 })
                 .catch((err) => {
                     console.error(`[Tapnow] Midjourney Poll Fetch Error for task ${taskId}:`, err);
-                    setHistory((prev) => prev.map((hItem) => 
-                        hItem.id === taskId 
-                            ? { ...hItem, status: 'failed', errorMsg: `轮询请求失败: ${err.message}` } 
+                    setHistory((prev) => prev.map((hItem) =>
+                        hItem.id === taskId
+                            ? { ...hItem, status: 'failed', errorMsg: `轮询请求失败: ${err.message}` }
                             : hItem
                     ));
                     // 即使出错也继续重试（最多重试3次）
@@ -4465,7 +4460,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             // 处理蒙版用于 Inpainting：将"透明背景上的白色笔触"转换为"白色背景上的透明区域"
             const processMaskForInpainting = async (maskContent) => {
                 if (!maskContent) return null;
-                
+
                 try {
                     // 加载蒙版图片
                     const maskImg = new Image();
@@ -4475,21 +4470,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         maskImg.onerror = reject;
                         maskImg.src = maskContent;
                     });
-                    
+
                     // 创建新 Canvas
                     const canvas = document.createElement('canvas');
                     canvas.width = maskImg.width;
                     canvas.height = maskImg.height;
                     const ctx = canvas.getContext('2d');
-                    
+
                     // 填充黑色背景（代表保留区域，不透明 Alpha=1）
                     ctx.fillStyle = '#000000';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
+
                     // 使用 destination-out 混合模式：绘制原蒙版，将用户涂抹的区域"挖空"变成透明（代表重绘区域，Alpha=0）
                     ctx.globalCompositeOperation = 'destination-out';
                     ctx.drawImage(maskImg, 0, 0);
-                    
+
                     // 将 Canvas 转换为 Blob（PNG 格式保留透明度）
                     return new Promise((resolve, reject) => {
                         canvas.toBlob((blob) => {
@@ -4520,7 +4515,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 } else {
                     node = nodes.find((n) => n.id === nodeId);
                 }
-                
+
                 // 处理蒙版：先检查当前节点，如果没有则从上游节点查找
                 let finalMaskBlob = null;
                 let finalMaskContent = node?.maskContent;
@@ -4542,7 +4537,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 } else {
                     console.log('[Inpainting] 使用当前节点的蒙版:', nodeId);
                 }
-                
+
                 // 如果存在蒙版，处理蒙版（反转逻辑）
                 if (finalMaskContent) {
                     finalMaskBlob = await processMaskForInpainting(finalMaskContent);
@@ -4552,7 +4547,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         console.warn('[Inpainting] 蒙版处理失败，将使用原始蒙版');
                     }
                 }
-                
+
                 // 优先使用 options 中的 model，其次使用节点设置，最后使用默认值
                 const modelId = options.model || node?.settings?.model || (type === 'image' ? 'nano-banana' : 'sora-2');
                 const config = apiConfigsMap.get(modelId);
@@ -4570,7 +4565,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 优先使用 options 中的 ratio，其次使用节点设置，最后使用默认值
                 let ratio = options.ratio || node?.settings?.ratio || (modelId.includes('grok') ? '3:2' : '1:1');
                 let resolution = node?.settings?.resolution || (modelId.includes('grok') ? '1080P' : 'Auto');
-                
+
                 // 兼容：部分 UI/旧数据会把分辨率写成 '2k'/'4k'（小写），会导致 Banana/Banana2 永远退回 1K
                 // 按用户要求：仅对 banana 系列做修复，其他模型不改行为
                 if ((modelId.includes('banana') || (config?.modelName ?? '').includes('nano-banana')) && typeof resolution === 'string') {
@@ -4586,7 +4581,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         // Force original size (aligned to 64) without downscaling
                         const safeW = Math.round(dims.w / 64) * 64;
                         const safeH = Math.round(dims.h / 64) * 64;
-                        
+
                         w = safeW;
                         h = safeH;
                         sizeStr = `${safeW}x${safeH}`;
@@ -4638,20 +4633,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 const now = Date.now();
                 const actualSourceNodeId = node?.id || nodeId || null;
-                
+
                 setHistory((prev) => [{
                     id: taskId, type, url: '',
                     prompt: prompt || (sourceImage ? `Img2${type === 'image' ? 'Img' : 'Vid'}` : 'Untitled'),
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     status: 'generating', progress: 5, modelName: getModelDisplayName({ modelId, config }), width: w, height: h,
-                    remoteTaskId: null, 
+                    remoteTaskId: null,
                     apiConfig: { modelId, baseUrl, apiKey },
                     sourceNodeId: actualSourceNodeId,
                     startTime: now,
                     durationMs: null,
                     ratio: ratio // 保存比例信息，用于后续验证返回结果
                 }, ...prev]);
-                
+
                 // 检查是否是分镜表的任务（sourceNodeId 格式：storyboard-${nodeId}-shot-${shotId}）
                 if (actualSourceNodeId && actualSourceNodeId.startsWith('storyboard-') && actualSourceNodeId.includes('-shot-')) {
                     const parts = actualSourceNodeId.split('-shot-');
@@ -4663,7 +4658,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         console.log('[分镜表] 任务已记录:', { taskId, nodeId: storyboardNodeId, shotId });
                     }
                 }
-                
+
                 // 交互要求：生成任务不自动弹出“生成历史”面板，只允许用户手动打开/关闭
 
                 try {
@@ -4704,19 +4699,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             blobs.forEach((blob, i) => {
                                 formData.append('image', blob, `input_${i}.png`);
                             });
-                            
+
                             // 尝试添加蒙版 (V2.5-4特性)
                             if (finalMaskBlob) {
                                 formData.append('mask', finalMaskBlob, 'mask.png');
                             }
-                            
+
                             payload = formData;
                         }
                         // 2. GPT Image 1.5 (文生图用 generations 异步接口，图生图用 edits 接口)
                         else if (isGPTImage15) {
                             // 判断是否有参考图
                             const hasReferenceImage = connectedImages.length > 0 || sourceImage;
-                            
+
                             if (!hasReferenceImage) {
                                 // 文生图：使用 /v1/images/generations?async=true 接口（异步模式）
                                 const useAsync = true; // 默认启用异步模式
@@ -4740,7 +4735,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 endpoint = `${baseUrl}/v1/images/edits${useAsync ? '?async=true' : ''}`;
                                 useMultipart = true;
                                 const formData = new FormData();
-                                
+
                                 // 必需参数：image（必须先添加，因为规范要求）
                                 if (connectedImages.length > 0) {
                                     const blobPromises = connectedImages.map(url => getBlobFromUrl(url));
@@ -4752,31 +4747,31 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     const blob = await getBlobFromUrl(sourceImage);
                                     formData.append('image', blob, 'input.png');
                                 }
-                                
+
                                 // 必需参数：prompt
                                 formData.append('prompt', prompt || '');
-                                
+
                                 // 必需参数：model
                                 formData.append('model', config?.modelName || 'gpt-image-1.5');
-                                
+
                                 // 可选参数：n（生成图片数量）
                                 formData.append('n', '1');
-                                
+
                                 // 可选参数：response_format
                                 formData.append('response_format', 'url');
-                                
+
                                 // 可选参数：size（gpt-image-1 支持 "1024x1024", "1536x1024", "1024x1536", "auto"）
                                 if (sizeStr && sizeStr !== 'auto') {
                                     formData.append('size', sizeStr);
                                 } else {
                                     formData.append('size', 'auto');
                                 }
-                                
+
                                 // 可选参数：mask（蒙版）
                                 if (finalMaskBlob) {
                                     formData.append('mask', finalMaskBlob, 'mask.png');
                                 }
-                                
+
                                 payload = formData;
                             }
                         }
@@ -4789,7 +4784,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             formData.append('prompt', prompt || '');
                             if (aspect) formData.append('aspect_ratio', aspect);
                             if (sizeStr) formData.append('size', sizeStr);
-                            
+
                             const refs = connectedImages.length > 0 ? connectedImages : (sourceImage ? [sourceImage] : []);
                             if (refs.length > 0) {
                                 const blobPromises = refs.map(url => getBlobFromUrl(url));
@@ -4805,7 +4800,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         else if (isOpenAIImage) {
                             const useAsync = true; // 默认启用异步模式
                             const hasReferenceImage = connectedImages.length > 0 || sourceImage;
-                            
+
                             if (!hasReferenceImage) {
                                 // 文生图：使用 /v1/images/generations?async=true 接口
                                 endpoint = `${baseUrl}/v1/images/generations${useAsync ? '?async=true' : ''}`;
@@ -4816,19 +4811,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     n: 1,
                                     response_format: 'url'
                                 };
-                                
+
                                 // size 参数（按照 gpt-image-1.5 格式）
                                 if (sizeStr && sizeStr !== 'auto') {
                                     jsonBody.size = sizeStr;
                                 } else {
                                     jsonBody.size = 'auto';
                                 }
-                                
+
                                 // aspect_ratio 参数（按照 gpt-image-1.5 格式）
                                 if (ratio && ratio !== 'Auto') {
                                     jsonBody.aspect_ratio = ratio;
                                 }
-                                
+
                                 payload = jsonBody;
                             } else {
                                 // 图生图：使用 /v1/images/edits?async=true 接口（multipart/form-data 格式，和 gpt-image-1.5 一样）
@@ -4839,19 +4834,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 formData.append('prompt', prompt || '');
                                 formData.append('n', '1');
                                 formData.append('response_format', 'url');
-                                
+
                                 // size 参数（按照 gpt-image-1.5 格式）
                                 if (sizeStr && sizeStr !== 'auto') {
                                     formData.append('size', sizeStr);
                                 } else {
                                     formData.append('size', 'auto');
                                 }
-                                
+
                                 // aspect_ratio 参数（按照 gpt-image-1.5 格式）
                                 if (ratio && ratio !== 'Auto') {
                                     formData.append('aspect_ratio', ratio);
                                 }
-                                
+
                                 // 必需参数：image
                                 if (connectedImages.length > 0) {
                                     const blobPromises = connectedImages.map(url => getBlobFromUrl(url));
@@ -4863,12 +4858,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     const blob = await getBlobFromUrl(sourceImage);
                                     formData.append('image', blob, 'input.png');
                                 }
-                                
+
                                 // 可选参数：mask（蒙版）
                                 if (finalMaskBlob) {
                                     formData.append('mask', finalMaskBlob, 'mask.png');
                                 }
-                                
+
                                 payload = formData;
                             }
                         }
@@ -4942,25 +4937,25 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                              }
                              const orefConnected = getConnectedImageForInput(nodeId, 'oref');
                              const srefConnected = getConnectedImageForInput(nodeId, 'sref');
-                        
-                             const imagesToUpload = []; 
+
+                             const imagesToUpload = [];
                              const imageIndexMap = new Map();
                              let orefImageUrl = null;
                              let srefImageUrl = null;
                              let defaultImageUrls = [];
-                             
+
                              const orefUrl = orefConnected || (node?.settings?.mjOref && node.settings.mjOref.trim());
                              if (orefUrl && orefUrl.trim()) {
                                  let finalOrefUrl = orefUrl.trim();
-                                 if (finalOrefUrl.startsWith('http')) { orefImageUrl = finalOrefUrl; } 
-                                 else if (finalOrefUrl.startsWith('data:')) { imagesToUpload.push(finalOrefUrl); imageIndexMap.set('oref', imagesToUpload.length - 1); } 
+                                 if (finalOrefUrl.startsWith('http')) { orefImageUrl = finalOrefUrl; }
+                                 else if (finalOrefUrl.startsWith('data:')) { imagesToUpload.push(finalOrefUrl); imageIndexMap.set('oref', imagesToUpload.length - 1); }
                                  else { orefImageUrl = finalOrefUrl; }
                              }
                              const srefUrl = srefConnected || (node?.settings?.mjSref && node.settings.mjSref.trim());
                              if (srefUrl && srefUrl.trim()) {
                                  let finalSrefUrl = srefUrl.trim();
-                                 if (finalSrefUrl.startsWith('http')) { srefImageUrl = finalSrefUrl; } 
-                                 else if (finalSrefUrl.startsWith('data:')) { imagesToUpload.push(finalSrefUrl); imageIndexMap.set('sref', imagesToUpload.length - 1); } 
+                                 if (finalSrefUrl.startsWith('http')) { srefImageUrl = finalSrefUrl; }
+                                 else if (finalSrefUrl.startsWith('data:')) { imagesToUpload.push(finalSrefUrl); imageIndexMap.set('sref', imagesToUpload.length - 1); }
                                  else { srefImageUrl = finalSrefUrl; }
                              }
                              if (connectedImages.length > 0) {
@@ -4968,8 +4963,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                      const isOrefImage = orefConnected && img === orefConnected;
                                      const isSrefImage = srefConnected && img === srefConnected;
                                      if (!isOrefImage && !isSrefImage) {
-                                         if (img.startsWith('http')) { defaultImageUrls.push(img); } 
-                                         else if (img.startsWith('data:')) { imagesToUpload.push(img); imageIndexMap.set(`default_${defaultImageUrls.length}`, imagesToUpload.length - 1); defaultImageUrls.push(null); } 
+                                         if (img.startsWith('http')) { defaultImageUrls.push(img); }
+                                         else if (img.startsWith('data:')) { imagesToUpload.push(img); imageIndexMap.set(`default_${defaultImageUrls.length}`, imagesToUpload.length - 1); defaultImageUrls.push(null); }
                                          else { defaultImageUrls.push(img); }
                                      }
                                  }
@@ -4999,10 +4994,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                              if (orefImageUrl && !finalMjPrompt.includes('--oref ')) finalMjPrompt = `${finalMjPrompt} --oref ${orefImageUrl}`.trim();
                              if (node?.settings?.mjOw && node.settings.mjOw > 0 && !finalMjPrompt.includes('--ow ')) finalMjPrompt = `${finalMjPrompt} --ow ${Math.min(1000, Math.max(1, node.settings.mjOw))}`.trim();
                              if (srefImageUrl && !finalMjPrompt.includes('--sref ')) finalMjPrompt = `${finalMjPrompt} --sref ${srefImageUrl}`.trim();
-                             
+
                              endpoint = `${baseUrl}/${mjMode}/mj/submit/imagine`;
                              payload = { prompt: finalMjPrompt, base64Array: [] };
-                             
+
                              const mjResp = await fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                              const mjText = await mjResp.text();
                              if (!mjResp.ok) throw new Error(mjText || `Midjourney API error: ${mjResp.status}`);
@@ -5020,17 +5015,17 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 // 图生图 (使用 compositions)
                                 endpoint = `${baseUrl}/v1/images/compositions`;
                                 if (!prompt || prompt.trim() === '') throw new Error('图生图功能需要提供提示词');
-                                
+
                                 let jimengRatio = ratio;
                                 let jimengResolution = '2k';
-                                
+
                                 if (ratio === 'Auto' && sourceImage) {
                                     try {
                                         const sourceDims = await getImageDimensions(sourceImage);
                                         const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
                                         const divisor = gcd(sourceDims.w, sourceDims.h);
                                         jimengRatio = `${sourceDims.w / divisor}:${sourceDims.h / divisor}`;
-                                        
+
                                         if (resolution === 'Auto') {
                                             const maxSide = Math.max(sourceDims.w, sourceDims.h);
                                             jimengResolution = maxSide <= 1024 ? '1k' : (maxSide <= 2048 ? '2k' : '4k');
@@ -5039,7 +5034,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 } else {
                                     jimengRatio = ratio === 'Auto' ? '1:1' : ratio;
                                 }
-                                
+
                                 if (resolution !== 'Auto') {
                                     jimengResolution = resolution === '1K' ? '1k' : (resolution === '2K' ? '2k' : '4k');
                                 }
@@ -5062,7 +5057,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 });
                                 const base64Images = await Promise.all(imagePromises);
                                 const jimengModelName = getJimengModelName(modelId, config);
-                                
+
                                 payload = {
                                     model: jimengModelName,
                                     prompt: prompt.trim(),
@@ -5079,9 +5074,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 if (resolution === '1K') jimengResolution = '1k';
                                 else if (resolution === '2K') jimengResolution = '2k';
                                 else if (resolution === '4K') jimengResolution = '4k';
-                                
+
                                 if (!prompt || prompt.trim() === '') throw new Error('提示词不能为空');
-                                
+
                                 const jimengModelName = getJimengModelName(modelId, config);
                                 payload = {
                                     model: jimengModelName,
@@ -5091,16 +5086,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     response_format: 'url'
                                 };
                             }
-                        } 
+                        }
                         // 7. [修复] 通用兜底 (修复 Banana T2I 问题)
                         // 这部分是 V2.5-4 缺失的，导致普通 Banana 模型和其他通用 OpenAI 格式模型无法进行文生图
                         else {
-                            payload = { 
-                                model: config?.modelName || modelId, 
-                                prompt, 
-                                n: 1, 
-                                size: sizeStr, 
-                                response_format: 'url' 
+                            payload = {
+                                model: config?.modelName || modelId,
+                                prompt,
+                                n: 1,
+                                size: sizeStr,
+                                response_format: 'url'
                             };
                         }
 
@@ -5112,7 +5107,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             payload,
                             useMultipart,
                         });
-                        
+
                         if (!resp.ok) {
                             let errorMsg = data?.message || data?.error?.message || text;
                             // 针对 GPT-4o 的 500 错误，提供更详细的错误信息
@@ -5120,9 +5115,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 const detailedError = data?.error?.message || data?.error || data?.message || text;
                                 errorMsg = `GPT-4o 图片生成失败 (500错误): ${detailedError}\n\n请检查：\n1. API Key 是否正确\n2. 模型名称是否正确 (${config?.modelName || 'gpt-4o-image'})\n3. 提示词是否符合要求\n4. 服务是否正常运行`;
                                 // 更新历史记录显示详细错误
-                                setHistory((prev) => prev.map((hItem) => 
-                                    hItem.id === taskId 
-                                        ? { ...hItem, status: 'failed', progress: 0, errorMsg } 
+                                setHistory((prev) => prev.map((hItem) =>
+                                    hItem.id === taskId
+                                        ? { ...hItem, status: 'failed', progress: 0, errorMsg }
                                         : hItem
                                 ));
                             }
@@ -5139,7 +5134,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         if (isNanoBanana2 || isGPTImage15 || isOpenAIImage) {
                             const taskIdForPoll = extractAsyncTaskId(data);
                             if (taskIdForPoll) {
-                                setHistory((prev) => prev.map((hItem) => 
+                                setHistory((prev) => prev.map((hItem) =>
                                     hItem.id === taskId ? { ...hItem, status: 'generating', progress: 10, remoteTaskId: taskIdForPoll } : hItem
                                 ));
                                 // GPT Image 1.5 / GPT-4o Image 也走异步轮询（使用与 Nano Banana 2 相同的超时策略）
@@ -5147,7 +5142,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 return;
                             }
                         }
-                        
+
                         // 处理同步返回结果 (标准 OpenAI 格式或嵌套格式)
                         const imageUrls = extractImageUrls(data);
 
@@ -5163,23 +5158,23 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             const updated = prev.map((hItem) => {
                                 if (hItem.id === taskId) {
                                     const updatedItem = {
-                                        ...hItem, 
-                                        status: 'completed', 
-                                        progress: 100, 
-                                        url: primaryUrl, 
+                                        ...hItem,
+                                        status: 'completed',
+                                        progress: 100,
+                                        url: primaryUrl,
                                         urls: imageUrls, // 兼容 V2.6：保存所有图片 URLs，便于 UI 复用
-                                        width: w, 
-                                        height: h, 
+                                        width: w,
+                                        height: h,
                                         durationMs,
                                         mjImages: imageUrls.length > 1 ? imageUrls : null,
                                         selectedMjImageIndex: 0
                                     };
-                                    
+
                                     // 更新预览窗口
                                     if (updatedItem.sourceNodeId) {
                                         setTimeout(() => {
                                             updatePreviewFromTask(taskId, primaryUrl, 'image', updatedItem.sourceNodeId, updatedItem.mjImages);
-                                            
+
                                             // 同时更新“生成角色/场景图片”节点本身（同步返回也要回填，避免节点区域不显示）
                                             setNodes(prevNodes => {
                                                 const node = prevNodes.find(n => n.id === updatedItem.sourceNodeId);
@@ -5237,7 +5232,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     .filter(img => img && typeof img === 'string' && img.trim().length > 0)
                                     .map(async (img) => {
                                         const trimmedImg = img.trim();
-                                        
+
                                         // 如果是 http/https URL，先检查尺寸，如果太大就缩放
                                         if (trimmedImg.startsWith('http://') || trimmedImg.startsWith('https://')) {
                                             console.log('Veo: Processing HTTP URL for image');
@@ -5256,7 +5251,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 return trimmedImg;
                                             }
                                         }
-                                        
+
                                         // 对于 data URL、blob URL 或其他格式，统一缩放处理
                                         console.log('Veo: Processing image (data/blob/other format)');
                                         try {
@@ -5287,12 +5282,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             } else if (effectiveSourceImage) {
                                 // 单张图片处理：先检查尺寸，如果太大就缩放
                                 const trimmedSource = effectiveSourceImage.trim();
-                                
+
                                 try {
                                     // 先获取图片尺寸
                                     const dims = await getImageDimensions(trimmedSource);
                                     console.log(`Veo: 源图片尺寸 ${dims.w}x${dims.h}`);
-                                    
+
                                     // 如果图片过大，先缩放
                                     if (dims.w > 1920 || dims.h > 1920) {
                                         console.log(`Veo: 图片尺寸 ${dims.w}x${dims.h} 过大，缩放中...`);
@@ -5383,13 +5378,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 model: veoPayload.model,
                                 prompt: veoPayload.prompt?.substring(0, 50) + '...',
                                 imagesCount: veoPayload.images.length,
-                                firstImageType: veoPayload.images[0] ? 
-                                    (veoPayload.images[0].startsWith('http') ? 'HTTP URL' : 
-                                     veoPayload.images[0].startsWith('data:') ? 'Data URL' : 
+                                firstImageType: veoPayload.images[0] ?
+                                    (veoPayload.images[0].startsWith('http') ? 'HTTP URL' :
+                                     veoPayload.images[0].startsWith('data:') ? 'Data URL' :
                                      'Unknown') : 'empty',
-                                firstImagePreview: veoPayload.images[0] ? 
-                                    (veoPayload.images[0].startsWith('http') ? 
-                                        veoPayload.images[0].substring(0, 80) : 
+                                firstImagePreview: veoPayload.images[0] ?
+                                    (veoPayload.images[0].startsWith('http') ?
+                                        veoPayload.images[0].substring(0, 80) :
                                         veoPayload.images[0].substring(0, 100)) : 'empty',
                                 aspect_ratio: veoPayload.aspect_ratio,
                                 payloadSize: JSON.stringify(veoPayload).length
@@ -5399,31 +5394,31 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 console.log('Veo: 开始发送请求到', endpoint);
                                 const resp = await fetch(endpoint, {
                                     method: 'POST',
-                                    headers: { 
-                                        Authorization: `Bearer ${apiKey}`, 
-                                        'Content-Type': 'application/json' 
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                        'Content-Type': 'application/json'
                                     },
                                     body: JSON.stringify(veoPayload)
                                 });
-                                
+
                                 console.log('Veo: 收到响应', { status: resp.status, statusText: resp.statusText });
                                 const text = await resp.text();
                                 console.log('Veo: 响应内容', text.substring(0, 500));
-                                
+
                                 if (!resp.ok) {
                                     console.error('Veo: 请求失败', { status: resp.status, text });
                                     throw new Error(text || `Veo error: ${resp.status}`);
                                 }
-                                
-                            const data = JSON.parse(text); 
+
+                            const data = JSON.parse(text);
                                 console.log('Veo: 解析后的响应数据', data);
-                            const jobId = data?.data?.id || data?.id || data?.task_id || data?.data?.task_id; 
-                                
+                            const jobId = data?.data?.id || data?.id || data?.task_id || data?.data?.task_id;
+
                                 if (!jobId) {
                                     console.error('Veo: 未找到 JobId', data);
                                     throw new Error('Veo No JobId');
                                 }
-                                
+
                                 console.log('Veo: 成功获取 JobId', jobId);
                             setHistory(prev => prev.map(h => h.id === taskId ? { ...h, status: 'generating', progress: 10 } : h));
                             pollVeoJob(jobId, taskId, baseUrl, apiKey, w, h);
@@ -5467,7 +5462,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 try {
                                     console.log('[Grok] Converting image to Base64...');
                                     let base64Data = '';
-                                    
+
                                     if (sourceImage.startsWith('data:')) {
                                         base64Data = sourceImage; // 已经是 Base64
                                     } else {
@@ -5480,9 +5475,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             reader.readAsDataURL(blob);
                                         });
                                     }
-                                    
+
                                     // 将完整的 data URI 放入 images 数组（官方字段）
-                                    payload.images = [base64Data]; 
+                                    payload.images = [base64Data];
                                 } catch (e) {
                                     console.error('Grok Image Conversion Failed:', e);
                                     alert('图片处理失败，请检查图片链接或跨域设置');
@@ -5493,21 +5488,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             // 4. 发送纯 JSON 请求
                             const resp = await fetch(endpoint, {
                                 method: 'POST',
-                                headers: { 
+                                headers: {
                                     'Authorization': `Bearer ${apiKey}`,
                                     'Content-Type': 'application/json' // 必须是 JSON
                                 },
                                 body: JSON.stringify(payload)
                             });
-                            
+
                             const text = await resp.text();
-                            
+
                             // 5. 错误处理
                             if (!resp.ok) {
                                 console.error('[Grok API Error]', text);
                                 throw new Error(text || `Grok API error: ${resp.status}`);
                             }
-                            
+
                             // 6. 解析响应
                             let data;
                             try {
@@ -5522,18 +5517,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 console.error('Grok No Task ID:', data);
                                 throw new Error('API 未返回 Task ID');
                             }
-                            
+
                             // 7. 进入轮询 (Grok 兼容 Sora 查询接口)
                             setHistory(prev => prev.map(h => h.id === taskId ? { ...h, status: 'generating', progress: 10, remoteTaskId: jobId } : h));
                             pollSoraJob(jobId, taskId, baseUrl, apiKey, w, h, modelId);
-                            
+
                             return; // 阻断后续代码执行
                         }
 
                         // Generic Video Logic (Sora/Kling/etc) - Force Multipart for Image Input with correct field names
                         if (sourceImage) {
                              const formData = new FormData();
-                             
+
                              if (modelId.includes('sora')) {
                                  endpoint = `${baseUrl}/v1/videos`;
                                  // 发送前移除大括号：将 @{username} 转换为 @username
@@ -5564,7 +5559,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                  const soraRawBlob = await getBlobFromUrl(normalizedSoraSrc);
                                  const soraFixedBlob = await normalizeImageBlobToSize(soraRawBlob, w, h, 'image/png');
                                  // Sora sometimes uses input_reference or image, append both for safety
-                                 formData.append('input_reference', soraFixedBlob, 'ref.png'); 
+                                 formData.append('input_reference', soraFixedBlob, 'ref.png');
                                  formData.append('image', soraFixedBlob, 'ref.png');
                             } else if (modelId.includes('jimeng')) {
                                  endpoint = `${baseUrl}/jimeng/submit/videos`;
@@ -5572,7 +5567,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                  formData.append('prompt', prompt);
                                  formData.append('duration', parseInt(duration));
                                  formData.append('aspect_ratio', ratio);
-                                 formData.append('image', blob, 'input.png'); 
+                                 formData.append('image', blob, 'input.png');
                             } else if (modelId.includes('grok')) {
                                 endpoint = `${baseUrl}/v1/videos`;
                                 const blob = await getBlobFromUrl(sourceImage);
@@ -5635,9 +5630,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         const text = await resp.text();
                         if (!resp.ok) throw new Error(text || `Video API error: ${resp.status}`);
                         const data = JSON.parse(text);
-                        
+
                         const immediateUrl = data?.video_url || data?.url || data?.data?.video_url;
-                        if (immediateUrl) { 
+                        if (immediateUrl) {
                             const endTime = Date.now();
                             // 在更新 history 之前，先获取 sourceNodeId
                             const historyItem = historyMap.get(taskId);
@@ -5650,7 +5645,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 const storyboardTask = storyboardTaskMapRef.current.get(taskId);
                                 if (storyboardTask) {
                                     console.log('[分镜表] 视频立即返回，回填视频:', { taskId, nodeId: storyboardTask.nodeId, shotId: storyboardTask.shotId, immediateUrl });
-                                    updateShot(storyboardTask.nodeId, storyboardTask.shotId, { 
+                                    updateShot(storyboardTask.nodeId, storyboardTask.shotId, {
                                         video_url: immediateUrl,
                                         status: 'done'
                                     });
@@ -5670,9 +5665,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 }
                                 return updated;
                             });
-                            return; 
+                            return;
                         }
-                        
+
                         const jobId = data?.data?.id || data?.id || data?.task_id || data?.data?.task_id;
                         if (!jobId) throw new Error('No Task/Job ID returned');
 
@@ -5696,7 +5691,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 errorMsg = errorData.message;
                             }
                         }
-                        
+
                         // 检查是否是后端服务模块缺失错误，优化错误信息显示
                         if (errorMsg.includes('Cannot find module') || errorMsg.includes('octetstream') || errorMsg.includes('MODULE_NOT_FOUND')) {
                             // 检查是否已经包含优化后的错误信息，避免重复
@@ -5739,10 +5734,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const currentNodes = nodesRef.current;
                 const currentSelectedId = selectedNodeIdRef.current;
                 const currentSelectedIds = selectedNodeIdsRef.current;
-                
-                const selectedNodes = currentNodes.filter(node => 
-                    (currentSelectedId === node.id || (currentSelectedIds && currentSelectedIds.has(node.id))) && 
-                    (node.type === 'input-image' || node.type === 'video-input' || node.type === 'preview') && 
+
+                const selectedNodes = currentNodes.filter(node =>
+                    (currentSelectedId === node.id || (currentSelectedIds && currentSelectedIds.has(node.id))) &&
+                    (node.type === 'input-image' || node.type === 'video-input' || node.type === 'preview') &&
                     node.content
                 );
 
@@ -5767,7 +5762,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         const blobUrl = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = blobUrl;
-                        
+
                         // 判断文件扩展名：对于预览窗口，根据previewType判断；对于其他节点，根据URL或节点类型判断
                         let extension = '.png';
                         if (node.type === 'preview') {
@@ -5782,7 +5777,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         } else {
                             extension = isVideoUrl(url) ? '.mp4' : '.png';
                         }
-                        
+
                         const filename = `${node.id}${extension}`;
                         a.download = filename;
                         document.body.appendChild(a);
@@ -5847,7 +5842,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const handleCanvasContextMenu = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                
+
                 // 检查是否有选中的节点
                 const hasSelection = selectedNodeIds.size > 0 || selectedNodeId;
                 if (hasSelection) {
@@ -5944,7 +5939,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     y: worldY - defaultSize.h / 2,
                     width: defaultSize.w,
                     height: defaultSize.h,
-                    content: initialContent, 
+                    content: initialContent,
                     ...(initialDimensions ? { dimensions: initialDimensions } : {}),
                     settings: createDefaultNodeSettings(type, { apiConfigs, initialContent }),
                 };
@@ -5958,20 +5953,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     setConnections(prev => {
                         // 如果连接到特定输入点，先删除该输入点的旧连接
                         if (inputType && inputType !== 'default') {
-                            const filtered = prev.filter((c) => 
+                            const filtered = prev.filter((c) =>
                                 !(c.to === targetId && (c.inputType || 'default') === inputType)
                             );
-                            return [...filtered, { 
-                                id: `conn-${Date.now()}`, 
-                                from: newNode.id, 
+                            return [...filtered, {
+                                id: `conn-${Date.now()}`,
+                                from: newNode.id,
                                 to: targetId,
                                 inputType: inputType !== 'default' ? inputType : undefined
                             }];
                         }
-                        return [...prev, { 
-                            id: `conn-${Date.now()}`, 
-                            from: newNode.id, 
-                            to: targetId 
+                        return [...prev, {
+                            id: `conn-${Date.now()}`,
+                            from: newNode.id,
+                            to: targetId
                         }];
                     });
                 }
@@ -6018,28 +6013,28 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             // 本地提示词过滤函数（降级方案）- 角色专用，确保白色背景
             const filterCharacterPromptLocal = useCallback((prompt) => {
                 if (!prompt) return '';
-                
+
                 // 1. 移除所有对话内容
                 let filtered = prompt.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
-                
+
                 // 2. 移除游戏相关描述
                 filtered = filtered.replace(/利用《.*?》游戏.*?/g, '');
-                
+
                 // 3. 移除内心独白描述
                 filtered = filtered.replace(/内心(.*?)(?=[，。；！？、\s])/g, '');
-                
+
                 // 4. 移除动作描述
                 filtered = filtered.replace(/(推动|拉动|操作|转身|站立|走动|说|介绍|正在|负责|穿着|站在|面对|做)(.*?)(?=[，。；！？、\s])/g, '');
-                
+
                 // 5. 移除特定短语
                 filtered = filtered.replace(/(天命杠杆|战舰|游戏|操作|控制|推进|推动|极低速度|以极低速度|最终|最后|现在|正在|目前|此前|起先|起初)/g, '');
-                
+
                 // 6. 移除360度展示相关
                 filtered = filtered.replace(/，然后缓慢转一圈360度全方位展示身体/g, '');
-                
+
                 // 7. 移除场景描述，确保背景是纯白色
                 filtered = filtered.replace(/(背景|场景|环境|建筑|地点|位置|周围|附近|后面|前面|旁边)(.*?)(?=[，。；！？、\s])/g, '');
-                
+
                 // 8. 确保包含纯白色背景描述
                 if (!filtered.includes('白色背景') && !filtered.includes('纯白色背景')) {
                     filtered = filtered.replace(/(动漫风格，全身视角，)/, '$1站在纯白色背景前，');
@@ -6047,46 +6042,46 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         filtered = `动漫风格，全身视角，站在纯白色背景前，${filtered}`;
                     }
                 }
-                
+
                 // 9. 清理多余空格和标点
                 filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
-                
+
                 // 10. 如果过滤后内容太少，恢复基本结构
                 if (filtered.length < 50) {
                     filtered = `动漫风格，全身视角，站在纯白色背景前，角色穿着简洁的服装，表情平静，姿态自然`;
                 }
-                
+
                 return filtered;
             }, []);
 
             // 场景提示词本地过滤函数（降级方案）
             const filterScenePromptLocal = useCallback((prompt) => {
                 if (!prompt) return '';
-                
+
                 // 移除人物相关描述
                 let filtered = prompt.replace(/(人物|角色|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装)(.*?)(?=[，。；！？、\s])/g, '');
-                
+
                 // 移除对话内容
                 filtered = filtered.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
-                
+
                 // 移除特定人物相关短语
                 filtered = filtered.replace(/(名叫|角色|人物|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装|角色特征)/g, '');
-                
+
                 // 清理多余空格和标点
                 filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
-                
+
                 // 如果过滤后内容太少，恢复基本结构
                 if (filtered.length < 30) {
                     filtered = `场景描述：环境、建筑、背景`;
                 }
-                
+
                 return filtered;
             }, []);
 
             // 提示词过滤函数 - 使用大模型API过滤（角色专用，确保白色背景）
             const filterCharacterPrompt = useCallback(async (rawPrompt) => {
                 if (!rawPrompt || rawPrompt.trim().length === 0) return rawPrompt;
-                
+
                 try {
                     // 使用API配置获取聊天模型
                     const chatConfig = apiConfigs.find(c => c.type === 'Chat');
@@ -6094,15 +6089,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         console.warn('未找到聊天模型配置，使用本地过滤');
                         return filterCharacterPromptLocal(rawPrompt);
                     }
-                    
+
                     const apiKey = chatConfig.key || globalApiKey;
                     if (!apiKey) {
                         console.warn('API Key未配置，使用本地过滤');
                         return filterCharacterPromptLocal(rawPrompt);
                     }
-                    
+
                     const baseUrl = (chatConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                    
+
                     // 调用大模型过滤提示词，确保背景是纯白色
                     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
                         method: 'POST',
@@ -6125,16 +6120,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             temperature: 0.3
                         })
                     });
-                    
+
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
                         console.error('提示词过滤API调用失败:', errorData);
                         return filterCharacterPromptLocal(rawPrompt);
                     }
-                    
+
                     const data = await response.json();
                     let filtered = data.choices?.[0]?.message?.content?.trim() || rawPrompt;
-                    
+
                     // 确保包含白色背景描述
                     if (!filtered.includes('白色背景') && !filtered.includes('纯白色背景')) {
                         filtered = filtered.replace(/(全身视角[，,])/, '$1站在纯白色背景前，');
@@ -6142,18 +6137,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             filtered = `全身视角，站在纯白色背景前，${filtered}`;
                         }
                     }
-                    
+
                     return filtered;
                 } catch (error) {
                     console.error('提示词过滤失败:', error);
                     return filterCharacterPromptLocal(rawPrompt);
                 }
             }, [apiConfigs, globalApiKey, filterCharacterPromptLocal]);
-            
+
             // 场景提示词过滤函数 - 过滤掉人物、字符描述
             const filterScenePrompt = useCallback(async (rawPrompt) => {
                 if (!rawPrompt || rawPrompt.trim().length === 0) return rawPrompt;
-                
+
                 try {
                     // 使用API配置获取聊天模型
                     const chatConfig = apiConfigs.find(c => c.type === 'Chat');
@@ -6161,15 +6156,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         console.warn('未找到聊天模型配置，使用本地过滤');
                         return filterScenePromptLocal(rawPrompt);
                     }
-                    
+
                     const apiKey = chatConfig.key || globalApiKey;
                     if (!apiKey) {
                         console.warn('API Key未配置，使用本地过滤');
                         return filterScenePromptLocal(rawPrompt);
                     }
-                    
+
                     const baseUrl = (chatConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                    
+
                     // 调用大模型过滤提示词，只保留场景描述，去除人物、字符
                     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
                         method: 'POST',
@@ -6192,13 +6187,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             temperature: 0.3
                         })
                     });
-                    
+
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
                         console.error('场景提示词过滤API调用失败:', errorData);
                         return filterScenePromptLocal(rawPrompt);
                     }
-                    
+
                     const data = await response.json();
                     const filtered = data.choices?.[0]?.message?.content?.trim() || rawPrompt;
                     return filtered;
@@ -6214,12 +6209,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const gender = character.gender || '年轻男人';
                 const stylePrefix = getStylePrefix(style);
                 const basePrompt = `${stylePrefix}，全身视角，名叫${character.name}的${age}岁左右${gender}站在白色背景前，${character.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${character.name}，${character.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`;
-                
+
                 // 如果是视频模式，添加360度展示提示词
                 if (mode === 'video') {
                     return `${basePrompt}，然后缓慢转一圈360度全方位展示身体`;
                 }
-                
+
                 return basePrompt;
             }, [getStylePrefix]);
 
@@ -6232,17 +6227,17 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const generateFullWorkflow = useCallback((extractNodeId, analysisResults) => {
                 const extractNode = nodesMap.get(extractNodeId);
                 if (!extractNode) return;
-                
+
                 // 计算起始位置（在提取节点右侧）
                 const worldX = extractNode.x + extractNode.width + 100;
                 const worldY = extractNode.y;
-                
+
                 const descriptionNodes = [];
                 const videoNodes = [];
                 const createNodes = [];
                 const newConnections = [];
                 const timestamp = Date.now();
-                
+
                 // 1. 创建角色描述节点、视频生成节点和创建节点
                 if (analysisResults.characters && analysisResults.characters.length > 0) {
                     analysisResults.characters.forEach((character, idx) => {
@@ -6266,7 +6261,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 prompt: generateCharacterPrompt(character, 'video')
                             }
                         });
-                        
+
                         // 视频生成节点
                         const videoNodeId = `node-char-video-${timestamp}-${idx}`;
                         videoNodes.push({
@@ -6285,7 +6280,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 sourceId: descNodeId
                             }
                         });
-                        
+
                         // 创建角色节点
                         const createNodeId = `node-char-create-${timestamp}-${idx}`;
                         createNodes.push({
@@ -6301,7 +6296,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 endSecond: 3
                             }
                         });
-                        
+
                         // 创建连接
                         newConnections.push({
                             id: `conn-char-${timestamp}-${idx}`,
@@ -6320,7 +6315,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         });
                     });
                 }
-                
+
                 // 2. 创建场景描述节点、视频生成节点和创建节点
                 if (analysisResults.scenes && analysisResults.scenes.length > 0) {
                     const characterCount = analysisResults.characters ? analysisResults.characters.length : 0;
@@ -6343,7 +6338,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 prompt: generateScenePrompt(scene)
                             }
                         });
-                        
+
                         // 视频生成节点
                         const videoNodeId = `node-scene-video-${timestamp}-${idx}`;
                         videoNodes.push({
@@ -6362,7 +6357,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 sourceId: descNodeId
                             }
                         });
-                        
+
                         // 创建场景节点
                         const createNodeId = `node-scene-create-${timestamp}-${idx}`;
                         createNodes.push({
@@ -6377,7 +6372,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 timeRange: '1,3'
                             }
                         });
-                        
+
                         // 创建连接
                         newConnections.push({
                             id: `conn-scene-${timestamp}-${idx}`,
@@ -6396,7 +6391,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         });
                     });
                 }
-                
+
                 // 批量添加到节点和连接
                 const allNodes = [...descriptionNodes, ...videoNodes, ...createNodes];
                 if (allNodes.length > 0) {
@@ -6465,7 +6460,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const updateShot = (nodeId, shotId, updates) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = (node.settings?.shots || []).map(shot => 
+                const updatedShots = (node.settings?.shots || []).map(shot =>
                     shot.id === shotId ? { ...shot, ...updates } : shot
                 );
                 updateNodeSettings(nodeId, { shots: updatedShots });
@@ -6475,7 +6470,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const importShotsFromAnalysis = (nodeId) => {
                 const storyboardNode = nodesMap.get(nodeId);
                 if (!storyboardNode || storyboardNode.type !== 'storyboard-node') return;
-                
+
                 const analyzeNode = getConnectedVideoAnalyzeNode(nodeId);
                 if (!analyzeNode) {
                     alert('请先连接一个视频拆解节点');
@@ -6495,7 +6490,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const mjPrompt = keyframe?.mj_prompt || '';
                     const jimengPrompt = keyframe?.jimeng_prompt || '';
                     const description = keyframe?.description || result.keyframes?.[0]?.description || '';
-                    
+
                     // 提取标签
                     const tags = [];
                     if (result.global_tags?.style?.[0]) tags.push(result.global_tags.style[0]);
@@ -6539,7 +6534,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const mjPrompt = keyframe?.mj_prompt || '';
                     const jimengPrompt = keyframe?.jimeng_prompt || '';
                     const description = keyframe?.description || result.keyframes?.[0]?.description || '';
-                    
+
                     // 提取标签
                     const tags = [];
                     if (result.global_tags?.style?.[0]) tags.push(result.global_tags.style[0]);
@@ -6555,8 +6550,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     }
 
                     // 提取运镜信息
-                    const camera = result.global_tags?.camera?.[0] || 
-                                   tags.find(t => ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'].some(k => t.includes(k))) || 
+                    const camera = result.global_tags?.camera?.[0] ||
+                                   tags.find(t => ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'].some(k => t.includes(k))) ||
                                    '';
 
                     return {
@@ -6604,7 +6599,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
             // 分镜表任务映射：用于追踪从分镜表触发的生成任务
             const storyboardTaskMapRef = useRef(new Map()); // taskId -> { storyboardNodeId, shotId }
-            
+
             // 跟踪当前聚焦的提示词文本框
             const focusedPromptTextareaRef = useRef(null);
 
@@ -6620,22 +6615,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         setCreateCharacterSubmitting(false);
                         return;
                     }
-                    
+
                     const apiKey = soraConfig.key || globalApiKey;
-                    
+
                     if (!apiKey) {
                         alert('请先配置 API Key');
                         setCreateCharacterSubmitting(false);
                         return;
                     }
-                    
+
                     // 验证时间范围
                     if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
                         alert('时间范围必须在 1-3 秒之间');
                         setCreateCharacterSubmitting(false);
                         return;
                     }
-                    
+
                     // 2. 使用用户提供的 endpoint 或自动构造
                     const timestamps = `${startSecond},${endSecond}`;
                     let endpoint;
@@ -6646,12 +6641,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
                         endpoint = `${baseUrl}/sora/v1/characters`;
                     }
-                    
+
                     // 3. 构造 Body
-                    const payload = fromTaskId 
+                    const payload = fromTaskId
                         ? { from_task: fromTaskId, timestamps }
                         : { url: videoUrl, timestamps };
-                    
+
                     // 4. 详细调试日志
                     console.log('[Create Character] Request Details:', {
                         endpoint,
@@ -6661,7 +6656,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         videoUrl: fromTaskId ? 'N/A (using from_task)' : videoUrl,
                         customEndpoint: customEndpoint || 'N/A (using default)'
                     });
-                    
+
                     // 5. 发送请求
                     const resp = await fetch(endpoint, {
                         method: 'POST',
@@ -6671,7 +6666,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         },
                         body: JSON.stringify(payload)
                     });
-                    
+
                     // 6. 错误处理
                     if (!resp.ok) {
                         const errText = await resp.text();
@@ -6681,7 +6676,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             errorText: errText,
                             endpoint
                         });
-                        
+
                         // 尝试解析错误响应
                         let errorData = null;
                         try {
@@ -6689,18 +6684,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         } catch (e) {
                             // 如果不是 JSON，使用原始文本
                         }
-                        
+
                         // 特殊处理 500 错误和 get_origin_task_failed
                         if (resp.status === 500 || (errorData && (errorData.code === 'get_origin_task_failed' || errorData.message?.includes('get_origin_task_failed')))) {
                             throw new Error('TASK_NOT_FOUND');
                         }
-                        
+
                         throw new Error(`API错误 (${resp.status}): ${errText || resp.statusText}`);
                     }
-                    
+
                     const data = await resp.json();
                     console.log('[Create Character] Success:', data);
-                    
+
                     // 7. 保存到角色库
                     if (data.id && data.username) {
                         const newCharacter = {
@@ -6709,7 +6704,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             profile_picture_url: data.profile_picture_url || '',
                             permalink: data.permalink || ''
                         };
-                        
+
                         const updated = [...characterLibrary, newCharacter];
                         setCharacterLibrary(updated);
                         alert(`角色 "${data.username}" 创建成功！`);
@@ -6727,18 +6722,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 } catch (err) {
                     console.error('[Create Character] Failed:', err);
                     let msg = err.message;
-                    
+
                     // 特殊处理：原任务已过期或无法访问
                     if (msg === 'TASK_NOT_FOUND') {
                         alert('创建失败：原任务已过期或无法访问。\n\n请尝试获取该视频的下载链接，使用"输入视频 URL"方式重新创建。');
                         return;
                     }
-                    
+
                     // 处理网络错误
                     if (msg.includes('Failed to fetch') || err.name === 'TypeError' || err.message.includes('NetworkError')) {
                         msg = '连接失败。可能原因：\n\n1. API 地址填写错误\n   - 请检查 API 接口地址是否多余了 "/sora" 前缀\n   - 有些服务商的路径可能不同，请询问服务商 Sora 角色创建接口的准确路径\n\n2. 跨域限制 (CORS)\n   - 请尝试安装 Allow CORS 浏览器插件\n\n3. 网络问题\n   - 请检查网络连接';
                     }
-                    
+
                     alert(`创建角色失败: ${msg}`);
                 } finally {
                     setCreateCharacterSubmitting(false);
@@ -6749,7 +6744,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 1. 构建更加丰富的 Prompt
                 // 优先级：提示词 > 画面描述 > 风格标签 > 运镜
                 let finalPrompt = shot.prompt || "";
-                
+
                 // 如果提示词为空，尝试使用描述自动构建
                 if (!finalPrompt && shot.description) {
                     finalPrompt = shot.description;
@@ -6774,7 +6769,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 2. 获取选中的视频模型（必须选择视频模型）
                 const selectedModel = shot.model || (apiConfigs.find(c => c.type === 'Video' && c.id === 'sora-2')?.id || apiConfigs.find(c => c.type === 'Video')?.id || '');
                 const modelConfig = apiConfigsMap.get(selectedModel);
-                
+
                 if (!modelConfig || modelConfig.type !== 'Video') {
                     alert('请先选择一个视频模型');
                     return;
@@ -6796,20 +6791,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     ratio: shot.ratio || '16:9',
                     duration: shot.duration || getDefaultDurationForModel(selectedModel)
                 };
-                
+
                 // 6. 创建一个特殊的节点ID用于标识这是分镜表的任务
                 // 格式：storyboard-${nodeId}-shot-${shotId}
                 const virtualNodeId = `storyboard-${nodeId}-shot-${shot.id}`;
-                
+
                 // 7. 预先记录任务映射（在 startGeneration 创建 taskId 之前）
                 // 由于 startGeneration 内部会使用 Date.now().toString() 作为 taskId
                 // 我们需要在 startGeneration 内部检查 sourceNodeId 模式并自动记录
                 // 这里我们先调用 startGeneration，任务映射会在 startGeneration 内部完成
-                
+
                 // 调用核心生成函数
                 startGeneration(finalPrompt, 'video', sourceImages, virtualNodeId, overrideOptions);
             };
-            
+
             // 拓展图片 Zoom Out 功能
             const handleExpandImageZoom = async (nodeId, zoomLevel) => {
                 const node = nodesMap.get(nodeId);
@@ -6821,12 +6816,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 查找 Midjourney 配置（优先使用节点设置中选择的模型）
                 const selectedMjModelId = node.settings?.mjModel || 'mj-v7';
                 let mjConfig = apiConfigs.find(c => c.id === selectedMjModelId);
-                
+
                 // 如果找不到，尝试查找任何 Midjourney 配置
                 if (!mjConfig) {
                     mjConfig = apiConfigs.find(c => c.id.includes('mj') || c.provider.toLowerCase().includes('midjourney'));
                 }
-                
+
                 if (!mjConfig) {
                     alert('请先配置 Midjourney API');
                     setSettingsOpen(true);
@@ -6863,7 +6858,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     // 2. 先提交图片到 Midjourney 获取原始任务ID
                     const taskId = Date.now().toString();
                     const now = Date.now();
-                    
+
                     setHistory((prev) => [{
                         id: taskId,
                         type: 'image',
@@ -6921,11 +6916,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     let originalTaskCompleted = false;
                     let pollCount = 0;
                     const maxPolls = 120; // 最多轮询120次（约10分钟）
-                    
+
                     while (!originalTaskCompleted && pollCount < maxPolls) {
                         await new Promise(resolve => setTimeout(resolve, 5000)); // 每5秒检查一次
                         pollCount++;
-                        
+
                         try {
                             const statusResp = await fetch(`${baseUrl}/${mjMode}/mj/task/${originalTaskId}/fetch`, {
                                 method: 'GET',
@@ -6934,13 +6929,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     'Content-Type': 'application/json'
                                 }
                             });
-                            
+
                             const statusText = await statusResp.text();
                             const statusData = JSON.parse(statusText);
                             const status = statusData?.status || '';
-                            
+
                             console.log('拓展图片: 原始任务状态检查', { status, pollCount });
-                            
+
                         if (status === 'SUCCESS' || status === 'FINISHED') {
                             originalTaskCompleted = true;
                             console.log('拓展图片: 原始任务已完成，可以执行ZOOM操作');
@@ -6954,7 +6949,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         console.warn('拓展图片: 状态检查出错，继续重试', error);
                     }
                 }
-                
+
                 if (!originalTaskCompleted) {
                     throw new Error('原始任务超时，无法执行ZOOM操作');
                 }
@@ -6970,7 +6965,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 };
 
                 console.log('拓展图片: 调用 ZOOM modal 接口', { taskId: originalTaskId, prompt: zoomPrompt });
-                
+
                 const modalResp = await fetch(modalEndpoint, {
                     method: 'POST',
                     headers: {
@@ -6996,9 +6991,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 console.log('拓展图片: 获取到ZOOM任务ID', zoomTaskId);
 
                 // 6. 更新历史记录，保存ZOOM任务ID
-                setHistory((prev) => prev.map((hItem) => 
-                    hItem.id === taskId 
-                        ? { ...hItem, remoteTaskId: zoomTaskId, status: 'generating', progress: 20 } 
+                setHistory((prev) => prev.map((hItem) =>
+                    hItem.id === taskId
+                        ? { ...hItem, remoteTaskId: zoomTaskId, status: 'generating', progress: 20 }
                         : hItem
                 ));
 
@@ -7010,9 +7005,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     setHistory((prev) => {
                         const existing = prev.find(h => h.sourceNodeId === nodeId && h.prompt === `Zoom Out ${zoomLevel}x`);
                         if (existing) {
-                            return prev.map((hItem) => 
-                                hItem.id === existing.id 
-                                    ? { ...hItem, status: 'failed', errorMsg: error.message || '拓展失败' } 
+                            return prev.map((hItem) =>
+                                hItem.id === existing.id
+                                    ? { ...hItem, status: 'failed', errorMsg: error.message || '拓展失败' }
                                     : hItem
                             );
                         }
@@ -7042,7 +7037,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const groups = [];
                 let currentGroup = [];
                 let currentGroupStart = sorted[0].time;
-                
+
                 sorted.forEach((frame, idx) => {
                     if (frame.time - currentGroupStart >= segmentDuration && currentGroup.length > 0) {
                         groups.push([...currentGroup]);
@@ -7052,11 +7047,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         currentGroup.push(frame);
                     }
                 });
-                
+
                 if (currentGroup.length > 0) {
                     groups.push(currentGroup);
                 }
-                
+
                 return groups;
             };
 
@@ -7064,50 +7059,50 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const handleGeneratePrompts = async (nodeId) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'video-analyze') return;
-                
+
                 const videoInputNode = getConnectedVideoInputNode(nodeId);
                 if (!videoInputNode) {
                     alert('请先连接一个视频输入节点');
                     return;
                 }
-                
+
                 const selectedKeyframes = videoInputNode.selectedKeyframes || [];
                 if (selectedKeyframes.length === 0) {
                     alert('请先在视频输入节点中选择关键帧');
                     return;
                 }
-                
+
                 const config = apiConfigs.find((c) => c.id === node.settings?.model || 'gemini-3-pro');
                 const apiKey = config?.key || globalApiKey;
                 const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                
+
                 if (!apiKey) {
                     alert('请先在 API 设置中配置 Key');
                     setSettingsOpen(true);
                     return;
                 }
-                
+
                 const segmentDuration = node.settings?.segmentDuration || 3;
                 const groups = groupKeyframesByTime(selectedKeyframes, segmentDuration);
-                
+
                 if (groups.length === 0) {
                     alert('无法分组关键帧');
                     return;
                 }
-                
+
                 setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, isGenerating: true, analysisResults: [] } : n));
-                
+
                 const allResults = [];
                 const videoFileName = videoInputNode.videoFileName || 'video.mp4';
                 const videoDuration = videoInputNode.videoMeta?.duration || 0;
                 // 保存分析模式，用于判断是否添加到历史记录
                 const analysisMode = node.settings?.analysisMode || 'manual';
-                
+
                 try {
                     for (let sceneIndex = 0; sceneIndex < groups.length; sceneIndex++) {
                         const group = groups[sceneIndex];
                         const timeRange = `${group[0].time.toFixed(1)}s-${group[group.length - 1].time.toFixed(1)}s`;
-                        
+
                         // 构建多模态消息
                         const systemPrompt = `你是一个专业的视频拆解和提示词生成助手。请分析提供的视频关键帧，动态拆解视频内容，并根据用户选中的关键帧生成高质量的AI绘图提示词。
 
@@ -7155,7 +7150,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         const userContent = [
                             { type: "text", text: `请分析以下视频关键帧（场景 ${sceneIndex + 1}，时间段：${timeRange}），生成详细的提示词：` }
                         ];
-                        
+
                         // 添加关键帧图片（限制最多15张，因为API限制是16张，需要留一些余量）
                         const maxFrames = 15;
                         const framesToSend = group.length > maxFrames ? group.slice(0, maxFrames) : group;
@@ -7171,16 +7166,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         if (group.length > maxFrames) {
                             userContent.push({ type: "text", text: `注意：该场景共有 ${group.length} 个关键帧，但为了符合API限制，仅发送了前 ${maxFrames} 个关键帧进行分析。` });
                         }
-                        
+
                         const apiMessages = [
                             { role: 'system', content: systemPrompt },
                             { role: 'user', content: userContent }
                         ];
-                        
+
                         // 添加超时控制（60秒）
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 60000);
-                        
+
                         let response;
                         try {
                             response = await fetch(`${baseUrl}/v1/chat/completions`, {
@@ -7209,7 +7204,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         } finally {
                             clearTimeout(timeoutId);
                         }
-                        
+
                         if (!response.ok) {
                             let errText = '';
                             try {
@@ -7219,16 +7214,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             }
                             throw new Error(errText || `API Error: ${response.status}`);
                         }
-                        
+
                         const data = await response.json();
-                        console.log('[视频拆解] API 响应数据:', { 
-                            hasData: !!data, 
-                            hasChoices: !!data.choices, 
+                        console.log('[视频拆解] API 响应数据:', {
+                            hasData: !!data,
+                            hasChoices: !!data.choices,
                             choicesLength: data.choices?.length,
                             dataKeys: Object.keys(data || {}),
                             model: config?.modelName || config?.id
                         });
-                        
+
                         // 支持多种响应格式
                         let aiContent = null;
                         if (data.choices && data.choices.length > 0) {
@@ -7262,20 +7257,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             // 嵌套 data.result 格式
                             aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
                         }
-                        
+
                         if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
                             console.error('[视频拆解] API 响应内容为空:', data);
                             throw new Error(`API 返回内容为空。响应数据: ${JSON.stringify(data).substring(0, 200)}`);
                         }
-                        
+
                         console.log('[视频拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
-                        
+
                         // 尝试解析 JSON（可能包含 markdown 代码块）
                         let jsonStr = aiContent.trim();
                         if (jsonStr.startsWith('```')) {
                             jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
                         }
-                        
+
                         let result;
                         try {
                             result = JSON.parse(jsonStr);
@@ -7309,10 +7304,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 console.warn('[视频拆解] 使用默认结构，原始内容:', jsonStr.substring(0, 200));
                             }
                         }
-                        
+
                         allResults.push(result);
                         console.log('[视频拆解] 场景处理完成，当前结果数:', allResults.length);
-                        
+
                         // 更新节点状态
                         setNodes((prev) => prev.map((n) => {
                             if (n.id === nodeId) {
@@ -7323,7 +7318,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             }
                             return n;
                         }));
-                        
+
                         // 只有自动模式（AI 导演拆解）才添加到历史记录，手动选帧拆解不添加到历史记录
                         const isManualMode = analysisMode === 'manual';
                         if (!isManualMode) {
@@ -7344,11 +7339,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             sceneIndex: sceneIndex + 1,
                             timeRange
                         };
-                        
+
                         setHistory((prev) => [historyItem, ...prev]);
                         }
                     }
-                    
+
                     // 确保所有结果都已更新到节点
                     console.log('[视频拆解] 所有场景处理完成，总结果数:', allResults.length);
                     setNodes((prev) => prev.map((n) => {
@@ -7360,7 +7355,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         }
                         return n;
                     }));
-                    
+
                 } catch (error) {
                     console.error('生成提示词失败:', error);
                     const errorMsg = error.message || '未知错误';
@@ -7374,13 +7369,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const handleAutoVideoAnalysis = async (nodeId) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'video-analyze') return;
-                
+
                 const videoInputNode = getConnectedVideoInputNode(nodeId);
                 if (!videoInputNode || !videoInputNode.content) {
                     alert('请先连接一个包含视频的视频输入节点');
                     return;
                 }
-                
+
                 // 预处理视频内容：如果是 blob: URL，需要转换为 base64 以便远程可访问
                 let videoDataUrl = videoInputNode.content;
                 if (videoDataUrl.startsWith('blob:')) {
@@ -7399,10 +7394,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         return;
                     }
                 }
-                
+
                 // 强制使用 gemini-3-pro 模型（支持视频输入）
                 let config = apiConfigs.find((c) => c.id === 'gemini-3-pro' && c.type === 'Chat');
-                
+
                 // 如果没有找到 gemini-3-pro，尝试其他 gemini 模型
                 if (!config) {
                     config = apiConfigs.find((c) => {
@@ -7410,27 +7405,27 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         return modelId.includes('gemini') && c.type === 'Chat';
                     });
                 }
-                
+
                 // 如果还是没有，使用默认配置
                 if (!config) {
                     config = apiConfigs.find((c) => c.type === 'Chat');
                 }
-                
+
                 const apiKey = config?.key || globalApiKey;
                 const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                
+
                 if (!apiKey) {
                     alert('请先在 API 设置中配置 Key');
                     setSettingsOpen(true);
                     return;
                 }
-                
-                setNodes((prev) => prev.map((n) => 
-                    n.id === nodeId 
+
+                setNodes((prev) => prev.map((n) =>
+                    n.id === nodeId
                         ? { ...n, isGenerating: true, settings: { ...n.settings, voiceoverResults: [], analysisResults: [] } }
                         : n
                 ));
-                
+
                 try {
                     const systemPrompt = `你是一位世界级的**游戏买量视频拆解专家**和**AI视觉导演**。你需要同时完成两项任务：
 
@@ -7471,16 +7466,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         { type: "text", text: "请分析这段视频。请严格按JSON格式输出拆解报告。" },
                         { type: "image_url", image_url: { url: videoDataUrl } }
                     ];
-                    
+
                     const apiMessages = [
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: userContent }
                     ];
-                    
+
                     // 添加超时控制（120秒，因为视频分析需要更长时间）
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 120000);
-                    
+
                     let response;
                     try {
                         response = await fetch(`${baseUrl}/v1/chat/completions`, {
@@ -7509,7 +7504,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     } finally {
                         clearTimeout(timeoutId);
                     }
-                    
+
                     if (!response.ok) {
                         let errText = '';
                         try {
@@ -7519,16 +7514,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         }
                         throw new Error(errText || `API Error: ${response.status}`);
                     }
-                    
+
                     const data = await response.json();
-                    console.log('[AI导演拆解] API 响应数据:', { 
-                        hasData: !!data, 
-                        hasChoices: !!data.choices, 
+                    console.log('[AI导演拆解] API 响应数据:', {
+                        hasData: !!data,
+                        hasChoices: !!data.choices,
                         choicesLength: data.choices?.length,
                         dataKeys: Object.keys(data || {}),
                         model: config?.modelName || config?.id
                     });
-                    
+
                     // 支持多种响应格式
                     let aiContent = null;
                     if (data.choices && data.choices.length > 0) {
@@ -7562,20 +7557,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         // 嵌套 data.result 格式
                         aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
                     }
-                    
+
                     if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
                         console.error('[AI导演拆解] API 响应内容为空:', data);
                         throw new Error(`API 返回内容为空。响应数据: ${JSON.stringify(data).substring(0, 200)}`);
                     }
-                    
+
                     console.log('[AI导演拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
-                    
+
                     // 解析 JSON
                     let jsonStr = aiContent.trim();
                     if (jsonStr.startsWith('```')) {
                         jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
                     }
-                    
+
                     let result;
                     try {
                         result = JSON.parse(jsonStr);
@@ -7593,14 +7588,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             throw new Error(`模型返回的不是有效的 JSON 格式。原始内容: ${jsonStr.substring(0, 200)}`);
                         }
                     }
-                    
+
                     // 处理 voiceover_script，转换为 voiceoverResults 格式
                     const voiceoverResults = (result.voiceover_script || []).map((v, idx) => ({
                         time: idx,
                         text: v.text || ''
                     }));
                     console.log('[AI导演拆解] 口播文案数:', voiceoverResults.length);
-                    
+
                     // 处理 scenes，转换为 analysisResults 格式
                     const analysisResults = (result.scenes || []).map((scene, idx) => ({
                         scene_index: scene.scene_id || idx + 1,
@@ -7619,36 +7614,36 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         }
                     }));
                     console.log('[AI导演拆解] 场景数:', analysisResults.length);
-                    
+
                     // 更新节点状态
                     setNodes((prev) => prev.map((n) => {
                         if (n.id === nodeId) {
                             console.log('[AI导演拆解] 更新节点状态，场景数:', analysisResults.length, '口播数:', voiceoverResults.length);
-                            return { 
-                                ...n, 
-                                isGenerating: false, 
-                                settings: { 
-                                    ...n.settings, 
-                                    voiceoverResults, 
-                                    analysisResults 
-                                } 
+                            return {
+                                ...n,
+                                isGenerating: false,
+                                settings: {
+                                    ...n.settings,
+                                    voiceoverResults,
+                                    analysisResults
+                                }
                             };
                         }
                         return n;
                     }));
-                    
+
                     // 自动创建分镜表节点
                     if (analysisResults.length > 0) {
                         setTimeout(() => {
                             createStoryboardFromAnalysisResult(nodeId, analysisResults);
                         }, 100); // 延迟100ms确保节点状态已更新
                     }
-                    
+
                 } catch (error) {
                     console.error('AI视频分析失败:', error);
                     const errorMsg = error.message || 'AI视频分析失败';
-                    setNodes((prev) => prev.map((n) => 
-                        n.id === nodeId 
+                    setNodes((prev) => prev.map((n) =>
+                        n.id === nodeId
                             ? { ...n, isGenerating: false, errorMsg: errorMsg }
                             : n
                     ));
@@ -7685,25 +7680,25 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     alert('请先选中一个AI绘图节点');
                     return;
                 }
-                
+
                 const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
                 if (!targetNode || targetNode.type !== 'gen-image') {
                     alert('请选中一个AI绘图节点（gen-image）');
                     return;
                 }
-                
+
                 // 获取连接的参考图
                 const connectedImages = getConnectedInputImages(targetNode.id, 'default');
                 const hasReferenceImage = connectedImages.length > 0;
-                
+
                 // 生成提示词
                 const gridPrompt = hasReferenceImage
                     ? GRID_PROMPT_TEXT
                     : `生成一张九宫格（3x3 grid）布局的分镜脚本。在9个格子中展示同一个角色不同的动作、表情和拍摄角度（如正面、侧面、背面、特写等）。要求风格高度统一，形成一张完整的角色动态表（Character Sheet）。`;
-                
+
                 // 更新节点的提示词，保持模型、分辨率、比例不变
                 updateNodeSettings(targetNode.id, { prompt: gridPrompt });
-                
+
                 // 提示用户
                 alert('已生成九宫格分镜脚本提示词！');
             };
@@ -7715,18 +7710,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     alert('请选择图片生成节点进行放大。');
                     return;
                 }
-                
+
                 const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
                 if (!targetNode || targetNode.type !== 'gen-image') {
                     alert('请选择图片生成节点进行放大。');
                     return;
                 }
-                
+
                 const upscalePrompt = UPSCALE_PROMPT_TEXT;
-                
+
                 // 更新节点的提示词
                 updateNodeSettings(targetNode.id, { prompt: upscalePrompt });
-                
+
                 // 提示用户
                 alert('已生成高清放大提示词！');
             };
@@ -7736,47 +7731,47 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 return new Promise((resolve, reject) => {
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
-                    
+
                     const timeout = setTimeout(() => {
                         reject(new Error('图片加载超时'));
                     }, 30000);
-                    
+
                     img.onload = () => {
                         clearTimeout(timeout);
                         try {
                             const canvas = document.createElement('canvas');
                             const ctx = canvas.getContext('2d');
-                            
+
                             // 九宫格是3x3网格，每张图是原图的1/3
                             const singleWidth = Math.floor(img.width / 3);
                             const singleHeight = Math.floor(img.height / 3);
-                            
+
                             const images = [];
-                            
+
                             // 切割9张图：按从上到下、从左到右的顺序（1-9）
                             const cropPromises = [];
-                            
+
                             for (let row = 0; row < 3; row++) {
                                 for (let col = 0; col < 3; col++) {
                                     const cropX = Math.max(0, Math.min(col * singleWidth, img.width - singleWidth));
                                     const cropY = Math.max(0, Math.min(row * singleHeight, img.height - singleHeight));
                                     const cropW = Math.min(singleWidth, img.width - cropX);
                                     const cropH = Math.min(singleHeight, img.height - cropY);
-                                    
+
                                     const cropCanvas = document.createElement('canvas');
                                     cropCanvas.width = cropW;
                                     cropCanvas.height = cropH;
                                     const cropCtx = cropCanvas.getContext('2d');
-                                    
+
                                     cropCtx.fillStyle = '#ffffff';
                                     cropCtx.fillRect(0, 0, cropW, cropH);
-                                    
+
                                     cropCtx.drawImage(
                                         img,
                                         cropX, cropY, cropW, cropH,
                                         0, 0, cropW, cropH
                                     );
-                                    
+
                                     // 使用 toBlob 替代 toDataURL，生成 Blob URL
                                     const cropPromise = new Promise((resolveCrop, rejectCrop) => {
                                         cropCanvas.toBlob((blob) => {
@@ -7792,11 +7787,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             }
                                         }, 'image/png');
                                     });
-                                    
+
                                     cropPromises.push(cropPromise);
                                 }
                             }
-                            
+
                             // 等待所有切割完成
                             Promise.all(cropPromises).then((results) => {
                                 resolve(results);
@@ -7807,12 +7802,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             reject(error);
                         }
                     };
-                    
+
                     img.onerror = () => {
                         clearTimeout(timeout);
                         reject(new Error('图片加载失败'));
                     };
-                    
+
                     img.src = imageUrl;
                 });
             };
@@ -7824,28 +7819,28 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     alert('请先选中一个图片节点');
                     return;
                 }
-                
+
                 const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
                 if (!targetNode) {
                     alert('未找到选中的节点');
                     return;
                 }
-                
+
                 const imageUrl = targetNode.content;
                 if (!imageUrl) {
                     alert('选中的节点没有图片内容');
                     return;
                 }
-                
+
                 try {
                     // 切割图片
                     const croppedImages = await splitGridImage(imageUrl);
-                    
+
                     if (croppedImages.length !== 9) {
                         alert('切割失败：未能生成9张图片');
                         return;
                     }
-                    
+
                     // 获取原节点的位置和尺寸
                     const sourceX = targetNode.x;
                     const sourceY = targetNode.y;
@@ -7853,14 +7848,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const nodeWidth = 260;
                     const nodeHeight = 260;
                     const spacing = 20;
-                    
+
                     const cols = 3;
                     const rows = 3;
-                    
+
                     // 计算起始位置：位于原图的右侧开始排列
                     const startX = sourceX + sourceWidth + spacing;
                     const startY = sourceY;
-                    
+
                     // 创建9个新节点
                     const newNodes = [];
                     for (let i = 0; i < croppedImages.length; i++) {
@@ -7868,7 +7863,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         const col = i % cols;
                         const x = startX + col * (nodeWidth + spacing);
                         const y = startY + row * (nodeHeight + spacing);
-                        
+
                         const newNode = {
                             id: `node-${Date.now()}-${i}`,
                             type: 'input-image',
@@ -7881,7 +7876,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         };
                         newNodes.push(newNode);
                     }
-                    
+
                     setNodes(prev => [...prev, ...newNodes]);
                     // 静默创建，不显示成功提示
                 } catch (error) {
@@ -7920,9 +7915,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 return {
                                     ...node,
                                     content: croppedImages[index].url,
-                                    dimensions: { 
-                                        w: croppedImages[index].width, 
-                                        h: croppedImages[index].height 
+                                    dimensions: {
+                                        w: croppedImages[index].width,
+                                        h: croppedImages[index].height
                                     }
                                 };
                             }
@@ -7965,9 +7960,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 1. 获取选中的节点
                 const currentSelectedId = selectedNodeIdRef.current;
                 const currentSelectedIds = selectedNodeIdsRef.current;
-                
+
                 let nodesToArrange = [];
-                
+
                 if (currentSelectedId) {
                     const node = nodesRef.current.find(n => n.id === currentSelectedId);
                     if (node) nodesToArrange = [node];
@@ -7984,13 +7979,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                 // 2. 构建图结构
                 // map: id -> graphNode
-                const graph = {}; 
+                const graph = {};
                 nodesToArrange.forEach(n => {
-                    graph[n.id] = { 
-                        id: n.id, 
-                        node: n, 
-                        parents: [], 
-                        children: [], 
+                    graph[n.id] = {
+                        id: n.id,
+                        node: n,
+                        parents: [],
+                        children: [],
                         level: 0,
                         rank: 0 // 用于层内排序
                     };
@@ -8006,7 +8001,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 3. 计算层级 (Assign Layers) - Longest Path Layering
                 // 找出入度为0的节点
                 let roots = Object.values(graph).filter(n => n.parents.length === 0);
-                
+
                 // 处理环路或纯独立节点：如果没有根，取第一个
                 if (roots.length === 0 && nodesToArrange.length > 0) {
                     roots = [Object.values(graph)[0]];
@@ -8016,7 +8011,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const calcLevels = () => {
                     const queue = roots.map(r => ({ node: r, lvl: 0 }));
                     const visited = new Set();
-                    
+
                     while(queue.length > 0) {
                         const { node, lvl } = queue.shift();
                         // 只有当该节点未访问，或者发现了更长的路径时更新
@@ -8028,7 +8023,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 const childNode = graph[childId];
                                 if (childNode) {
                                     // 避免环路无限循环：限制最大深度
-                                    if (lvl < 20) { 
+                                    if (lvl < 20) {
                                         queue.push({ node: childNode, lvl: lvl + 1 });
                                     }
                                 }
@@ -8042,7 +8037,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // layers: [ [node, node], [node], ... ]
                 const maxLevel = Math.max(...Object.values(graph).map(n => n.level));
                 const layers = Array.from({ length: maxLevel + 1 }, () => []);
-                
+
                 Object.values(graph).forEach(n => {
                     layers[n.level].push(n);
                 });
@@ -8054,8 +8049,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 });
 
                 // 迭代次数，比如做 3 次往返扫描
-                const iterations = 3; 
-                
+                const iterations = 3;
+
                 for (let i = 0; i < iterations; i++) {
                     // Forward Sweep (从左往右): 子节点跟随父节点的重心
                     for (let l = 1; l < layers.length; l++) {
@@ -8113,10 +8108,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                     // 计算该层最宽的节点，用于推算下一层的X
                     const maxW = Math.max(...layer.map(n => n.node.width || 260));
-                    
+
                     // 计算该层总高度，用于垂直居中对齐整个层
                     const totalH = layer.reduce((sum, n) => sum + (n.node.height || 200), 0) + (layer.length - 1) * V_SPACING;
-                    
+
                     // 简单的垂直排列，从 startY 开始
                     // 进阶优化：可以让层与层之间垂直中心对齐，但这里简单排列通常就够了
                     let currentY = startY;
@@ -8149,9 +8144,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const content = ev.target.result;
                     let videoMeta = { duration: 0, w: 0, h: 0 };
                     try { videoMeta = await getVideoMetadata(content); } catch (e) { console.warn('读取视频元信息失败', e); }
-                    setNodes((prev) => prev.map((n) => 
-                        n.id === nodeId 
-                            ? { ...n, content, videoMeta, frames: [], selectedKeyframes: [], extractingFrames: false, videoFileName: file.name } 
+                    setNodes((prev) => prev.map((n) =>
+                        n.id === nodeId
+                            ? { ...n, content, videoMeta, frames: [], selectedKeyframes: [], extractingFrames: false, videoFileName: file.name }
                             : n
                     ));
                 };
@@ -8175,22 +8170,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     video.crossOrigin = "anonymous";
                     video.src = videoUrl;
                     video.muted = true;
-                    
+
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                    
+
                     const keyframes = [];
                     let prevData = null;
-                    
+
                     video.onloadeddata = async () => {
                         canvas.width = 320;
                         canvas.height = Math.floor(320 * (video.videoHeight / video.videoWidth));
-                        
+
                         const duration = video.duration;
                         const sampleRate = 2;
-                        
+
                         video.currentTime = 0;
-                        
+
                         const scan = async () => {
                             // 检查是否已经扫描完成
                             const currentTime = video.currentTime;
@@ -8219,10 +8214,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 resolve(keyframes.map(kf => ({ time: parseFloat(kf.time), url: kf.image })));
                                 return;
                             }
-                            
+
                             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                             const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-                            
+
                             if (prevData) {
                                 let diff = 0;
                                 for (let i = 0; i < frameData.length; i += 4) {
@@ -8231,14 +8226,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             Math.abs(frameData[i+2] - prevData[i+2]);
                                 }
                                 const avgDiff = diff / (frameData.length / 4 * 3);
-                                
+
                                 if (avgDiff > threshold) {
                                     const hdCanvas = document.createElement('canvas');
                                     hdCanvas.width = video.videoWidth;
                                     hdCanvas.height = video.videoHeight;
                                     hdCanvas.getContext('2d').drawImage(video, 0, 0);
                                     const dataUrl = hdCanvas.toDataURL('image/jpeg', 0.8);
-                                    
+
                                     // 确保使用实际的currentTime，而不是字符串
                                     const captureTime = video.currentTime;
                                     keyframes.push({
@@ -8257,12 +8252,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 hdCanvas.width = video.videoWidth;
                                 hdCanvas.height = video.videoHeight;
                                 hdCanvas.getContext('2d').drawImage(video, 0, 0);
-                                keyframes.push({ 
-                                    time: currentTime.toFixed(2), 
-                                    image: hdCanvas.toDataURL('image/jpeg', 0.8) 
+                                keyframes.push({
+                                    time: currentTime.toFixed(2),
+                                    image: hdCanvas.toDataURL('image/jpeg', 0.8)
                                 });
                             }
-                            
+
                             // 更新到下一个采样点
                             const nextTime = video.currentTime + (1 / sampleRate);
                             if (nextTime >= duration) {
@@ -8291,7 +8286,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 return;
                             }
                             video.currentTime = nextTime;
-                            await new Promise(r => { 
+                            await new Promise(r => {
                                 const timeout = setTimeout(() => r(), 200); // 超时保护
                                 video.onseeked = () => {
                                     clearTimeout(timeout);
@@ -8300,10 +8295,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             });
                             scan();
                         };
-                        
+
                         scan();
                     };
-                    
+
                     video.onerror = (e) => reject(new Error("视频加载失败，请检查格式或跨域设置"));
                 });
             };
@@ -8339,28 +8334,28 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const handleExtractVoiceover = async (nodeId) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'video-analyze') return;
-                
+
                 const videoInputNode = getConnectedVideoInputNode(nodeId);
                 if (!videoInputNode || !videoInputNode.content) {
                     alert('请先连接一个包含视频的视频输入节点');
                     return;
                 }
-                
+
                 const config = apiConfigs.find((c) => c.id === node.settings?.model || 'gemini-3-pro');
                 const apiKey = config?.key || globalApiKey;
                 const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                
+
                 if (!apiKey) {
                     alert('请先在 API 设置中配置 Key');
                     setSettingsOpen(true);
                     return;
                 }
-                
+
                 setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, isExtractingVoiceover: true, voiceoverResults: [] } : n));
-                
+
                 const videoFileName = videoInputNode.videoFileName || 'video.mp4';
                 const videoDuration = videoInputNode.videoMeta?.duration || 0;
-                
+
                 try {
                     // 构建多模态消息，请求提取口播文案
                     const systemPrompt = `你是一个专业的视频口播文案提取助手。请分析提供的视频，提取每一秒的口播内容。
@@ -8397,21 +8392,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     video.crossOrigin = 'anonymous';
                     video.src = videoInputNode.content;
                     video.muted = true;
-                    
+
                     await new Promise((resolve) => {
                         video.onloadedmetadata = () => {
                             const canvas = document.createElement('canvas');
                             canvas.width = video.videoWidth;
                             canvas.height = video.videoHeight;
                             const ctx = canvas.getContext('2d');
-                            
+
                             let currentTime = 0;
                             const extractFrame = async () => {
                                 if (currentTime >= videoDuration) {
                                     resolve();
                                     return;
                                 }
-                                
+
                                 video.currentTime = currentTime;
                                 await new Promise((r) => {
                                     video.onseeked = () => {
@@ -8430,12 +8425,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             extractFrame();
                         };
                     });
-                    
+
                     // 构建用户消息，包含视频帧
                     const userContent = [
                         { type: "text", text: `请分析以下视频，提取每一秒的口播文案。视频总时长：${videoDuration.toFixed(1)}秒。` }
                     ];
-                    
+
                     // 添加关键帧（每5秒一帧，避免太多）
                     sampleFrames.forEach((frame) => {
                         userContent.push({
@@ -8447,12 +8442,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             text: `时间点：${frame.time.toFixed(1)}秒`
                         });
                     });
-                    
+
                     const apiMessages = [
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: userContent }
                     ];
-                    
+
                     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
                         method: 'POST',
                         headers: {
@@ -8465,21 +8460,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             stream: false
                         })
                     });
-                    
+
                     if (!response.ok) {
                         const errText = await response.text();
                         throw new Error(errText || `API Error: ${response.status}`);
                     }
-                    
+
                     const data = await response.json();
                     const aiContent = data.choices?.[0]?.message?.content || "{}";
-                    
+
                     // 解析 JSON
                     let jsonStr = aiContent.trim();
                     if (jsonStr.startsWith('```')) {
                         jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
                     }
-                    
+
                     let result;
                     try {
                         result = JSON.parse(jsonStr);
@@ -8494,18 +8489,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             throw new Error('模型返回的不是有效的 JSON 格式');
                         }
                     }
-                    
+
                     // 更新节点状态
-                    setNodes((prev) => prev.map((n) => 
-                        n.id === nodeId 
+                    setNodes((prev) => prev.map((n) =>
+                        n.id === nodeId
                             ? { ...n, isExtractingVoiceover: false, voiceoverResults: result.voiceover || [] }
                             : n
                     ));
-                    
+
                 } catch (error) {
                     console.error('提取口播文案失败', error);
-                    setNodes((prev) => prev.map((n) => 
-                        n.id === nodeId 
+                    setNodes((prev) => prev.map((n) =>
+                        n.id === nodeId
                             ? { ...n, isExtractingVoiceover: false, errorMsg: error.message || '提取口播文案失败' }
                             : n
                     ));
@@ -8532,7 +8527,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         nextSelected = Array.from(selectedKeys).map(k => frameMap.get(k)).filter(Boolean);
                     } else {
                         const exists = nextSelected.some(f => keyOf(f) === keyOf(frame));
-                        nextSelected = exists 
+                        nextSelected = exists
                             ? nextSelected.filter(f => keyOf(f) !== keyOf(frame))
                             : [...nextSelected, frame];
                     }
@@ -8592,7 +8587,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     const selectedIds = selectedNodeIdsRef.current;
                     const previews = prev.filter(n => n.type === 'preview');
                     if (!previews.length) return prev;
-                    
+
                     // 先查找选中的预览节点
                     let targetId = null;
                     if (selectedId) {
@@ -8637,14 +8632,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // 否则使用 item.url 或 item.originalUrl（单图情况）
                 const selectedUrl = imageUrl || item.url || item.originalUrl;
                 const selectedIndex = imageIndex !== null ? imageIndex : (item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : null);
-                
+
                 // 创建一个修改后的item，使用选中的图片URL
                 const menuItem = {
                     ...item,
                     url: selectedUrl,
                     selectedMjImageIndex: selectedIndex
                 };
-                
+
                 const world = screenToWorld(e.clientX, e.clientY);
                 setHistoryContextMenu({ visible: true, x: e.clientX, y: e.clientY, worldX: world.x, worldY: world.y, item: menuItem });
             };
@@ -8666,14 +8661,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const item = historyContextMenu.item;
                 if (!item?.url && !item?.originalUrl) return;
                 const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-                
+
                 // Fix: Mark video content so input-image node knows to display it properly
                 let content = item.url || item.originalUrl;
                 if (item.type === 'video' && !isVideoUrl(content)) {
                      // Append helper param so isVideoUrl returns true
                      content += (content.includes('?') ? '&' : '?') + 'force_video_display=true';
                 }
-                
+
                 let dims;
                 if (item.type === 'image') {
                     try {
@@ -8686,33 +8681,33 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                     }
                 }
 
-                addNode('input-image', world.x + 50, world.y + 50, null, content, dims); 
+                addNode('input-image', world.x + 50, world.y + 50, null, content, dims);
                 setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
             };
-            
+
             const sendHistoryToChat = () => {
                 const item = historyContextMenu.item;
                 if (!item || !item.url) return;
-                
+
                 // 确保正确识别图片和视频类型
                 const isImage = item.type === 'image';
                 const isVideo = item.type === 'video';
                 const fileExt = isImage ? 'png' : (isVideo ? 'mp4' : 'file');
                 const mimeType = isImage ? 'image/png' : (isVideo ? 'video/mp4' : 'application/octet-stream');
-                
-                const newFile = { 
-                    name: `Generated-${item.id}.${fileExt}`, 
-                    type: mimeType, 
-                    content: item.url, 
-                    isImage, 
-                    isVideo, 
-                    isAudio: false, 
+
+                const newFile = {
+                    name: `Generated-${item.id}.${fileExt}`,
+                    type: mimeType,
+                    content: item.url,
+                    isImage,
+                    isVideo,
+                    isAudio: false,
                     fromHistory: true,
                     fileExt
                 };
-                
+
                 setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true); 
+                setIsChatOpen(true);
                 setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
             };
 
@@ -8764,19 +8759,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const nodeId = inputImageContextMenu.nodeId;
                 const node = nodesMap.get(nodeId);
                 if (!node || !node.content) return;
-                
+
                 const isImage = !isVideoUrl(node.content);
                 const isVideo = isVideoUrl(node.content);
                 const fileExt = isImage ? 'png' : 'mp4';
                 const mimeType = isImage ? 'image/png' : 'video/mp4';
-                const newFile = { 
-                    name: `InputImage-${Date.now()}.${fileExt}`, 
-                    type: mimeType, 
-                    content: node.content, 
-                    isImage, 
-                    isVideo, 
-                    isAudio: false, 
-                    fileExt 
+                const newFile = {
+                    name: `InputImage-${Date.now()}.${fileExt}`,
+                    type: mimeType,
+                    content: node.content,
+                    isImage,
+                    isVideo,
+                    isAudio: false,
+                    fileExt
                 };
                 setChatFiles(prev => [...prev, newFile]);
                 setIsChatOpen(true);
@@ -8785,30 +8780,30 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
             // ... (rest of render logic unchanged) ...
             // ConnectionLayer 组件：提取连接线渲染逻辑，使用 React.memo 优化
-            const ConnectionLayer = memo(({ 
-                connections, 
-                nodesMap, 
-                connectionsByNode, 
-                connectingSource, 
-                connectingTarget, 
-                connectingInputType, 
-                mousePos, 
-                apiConfigsMap, 
-                selectedNodeId, 
+            const ConnectionLayer = memo(({
+                connections,
+                nodesMap,
+                connectionsByNode,
+                connectingSource,
+                connectingTarget,
+                connectingInputType,
+                mousePos,
+                apiConfigsMap,
+                selectedNodeId,
                 onDisconnectConnection,
-                visibleNodes 
+                visibleNodes
             }) => {
                 // 连接线虚拟化：只渲染可见节点的连接线
                 const visibleNodeIds = useMemo(() => {
                     return new Set(visibleNodes.map(n => n.id));
                 }, [visibleNodes]);
-                
+
                 const visibleConnections = useMemo(() => {
-                    return connections.filter(conn => 
+                    return connections.filter(conn =>
                         visibleNodeIds.has(conn.from) || visibleNodeIds.has(conn.to)
                     );
                 }, [connections, visibleNodeIds]);
-                
+
                 return (
                     <div className="absolute inset-0 pointer-events-none overflow-visible w-full h-full">
                         <svg className="absolute inset-0 overflow-visible w-full h-full">
@@ -8817,15 +8812,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 const fromNode = nodesMap.get(conn.from);
                                 const toNode = nodesMap.get(conn.to);
                                 if (!fromNode || !toNode) return null;
-                                
+
                                 // 检查连接线是否与选中节点相关
                                 const isRelatedToSelected = selectedNodeId && (
-                                    fromNode.id === selectedNodeId || 
+                                    fromNode.id === selectedNodeId ||
                                     toNode.id === selectedNodeId
                                 );
                                 // 设置透明度：选中节点相关为100%，其他为35%
                                 const opacity = isRelatedToSelected ? 1 : 0.35;
-                                
+
                                 const startX = fromNode.x + fromNode.width - 4;
                                 const startY = fromNode.y + fromNode.height / 2;
                                 const endX = toNode.x + 4;
@@ -8839,13 +8834,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     if (idx === 0) endY = toNode.y + toNode.height * 0.33;
                                     else if (idx >= 1) endY = toNode.y + toNode.height * 0.66;
                                 }
-                                
+
                                 // 处理Midjourney节点的oref和sref输入点
                                 // 检查inputType是否为oref或sref（注意：default连接时inputType可能是undefined）
                                 if (toNode.type === 'gen-image' && (conn.inputType === 'oref' || conn.inputType === 'sref')) {
                                     const currentModel = apiConfigsMap.get(toNode.settings?.model);
                                     const isMidjourney = currentModel && (currentModel.id.includes('mj') || currentModel.provider.toLowerCase().includes('midjourney'));
-                                    
+
                                     if (isMidjourney) {
                                         // 使用基于节点世界坐标的计算，考虑实际DOM结构
                                         // 节点结构：p-3(12px) + 计时器(如果有，约28px + mb-2=8px) + 标题(约16px + mb-2=8px) + 引用状态区域(如果有，约60px + mb-2=8px) + 提示词区域(约100px + mb-2=8px) + 指令区域
@@ -8862,14 +8857,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         const instructionGap = 6; // 指令项之间的gap (gap-1.5 = 6px)
                                         const instructionItemHeight = 16; // 每个指令项的实际高度（text-[10px] + flex items-center ≈ 16px）
                                         const owInputHeight = 28; // ow输入框高度（px-2 py-1 + text-[10px] ≈ 28px）
-                                        
+
                                         // 检查是否有计时器（正在生成或已完成）
                                         const hasTimer = false; // 计时器是动态的，这里简化处理，实际应该从节点状态判断
-                                        
+
                                         // 使用缓存的 connectionsByNode，避免重复 some 计算
                                         const toNodeConns = connectionsByNode.to.get(toNode.id) || [];
                                         const hasRefArea = toNodeConns.some(c => !c.inputType || c.inputType === 'default');
-                                        
+
                                         // 计算基础偏移（到指令区域开始的位置）
                                         let baseOffset = paddingTop;
                                         if (hasTimer) {
@@ -8880,7 +8875,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             baseOffset += refAreaHeight + refAreaMarginBottom;
                                         }
                                         baseOffset += promptAreaHeight + promptAreaMarginBottom;
-                                        
+
                                         if (conn.inputType === 'oref') {
                                             // oref在第一个指令位置（第一个指令项的中心）
                                             // 指令区域开始 + 第一个指令项的中心
@@ -8898,33 +8893,33 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 const cp2X = endX - dist * 0.5;
                                 const midX = (startX + endX) / 2;
                                 const midY = (startY + endY) / 2;
-                                
+
                                 return (
                                     <g key={conn.id} className="connection-group" style={{ opacity }}>
                                         {/* 透明路径用于点击检测连接线 */}
-                                        <path 
-                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`} 
-                                            stroke="transparent" 
-                                            strokeWidth="20" 
-                                            fill="none" 
+                                        <path
+                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`}
+                                            stroke="transparent"
+                                            strokeWidth="20"
+                                            fill="none"
                                             style={{pointerEvents: 'stroke'}}
                                         />
                                         {/* 优化后的连接线：单层、1px宽度、蚂蚁线效果 */}
-                                        <path 
-                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`} 
-                                            stroke={isRelatedToSelected ? "#71717a" : "#a1a1aa"} 
-                                            strokeWidth="1" 
-                                            fill="none" 
+                                        <path
+                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`}
+                                            stroke={isRelatedToSelected ? "#71717a" : "#a1a1aa"}
+                                            strokeWidth="1"
+                                            fill="none"
                                             strokeDasharray="4,4"
                                         />
                                         {/* 删除按钮：使用更大的透明热区确保可点击，必须在最后渲染以覆盖透明 path */}
-                                        <g 
-                                            className="connection-delete cursor-pointer" 
-                                            style={{ 
+                                        <g
+                                            className="connection-delete cursor-pointer"
+                                            style={{
                                                 opacity: isRelatedToSelected ? 1 : 0.35,
                                                 pointerEvents: 'auto',
                                                 cursor: 'pointer'
-                                            }} 
+                                            }}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 e.preventDefault();
@@ -8939,11 +8934,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             }}
                                         >
                                             {/* 大的透明点击热区（半径25），确保完全覆盖透明 path 的 stroke（宽度20） */}
-                                            <circle 
-                                                cx={midX} 
-                                                cy={midY} 
-                                                r="25" 
-                                                fill="transparent" 
+                                            <circle
+                                                cx={midX}
+                                                cy={midY}
+                                                r="25"
+                                                fill="transparent"
                                                 style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -8979,12 +8974,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             // 从输入端口向左拖拽，连接线从左侧开始
                             const startX = node.x + 4;
                             let startY = node.y + node.height / 2;
-                            
+
                             // 处理Midjourney节点的oref和sref输入点
                             if (node.type === 'gen-image' && connectingInputType) {
                                 const currentModel = apiConfigsMap.get(node.settings?.model);
                                 const isMidjourney = currentModel && (currentModel.id.includes('mj') || currentModel.provider.toLowerCase().includes('midjourney'));
-                                
+
                                 if (isMidjourney) {
                                     // 使用与连接线渲染相同的计算逻辑
                                     const paddingTop = 12;
@@ -8999,12 +8994,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     const instructionGap = 6;
                                     const instructionItemHeight = 16; // 每个指令项的实际高度（text-[10px] + flex items-center ≈ 16px）
                                     const owInputHeight = 28; // ow输入框高度（px-2 py-1 + text-[10px] ≈ 28px）
-                                    
+
                                     const hasTimer = false; // 计时器是动态的，这里简化处理
                                     // 使用缓存的 connectionsByNode，避免重复 some 计算
                                     const toNodeConns = connectionsByNode.to.get(node.id) || [];
                                     const hasRefArea = toNodeConns.some(c => !c.inputType || c.inputType === 'default');
-                                    
+
                                     let baseOffset = paddingTop;
                                     if (hasTimer) {
                                         baseOffset += timerHeight + timerMarginBottom;
@@ -9014,7 +9009,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         baseOffset += refAreaHeight + refAreaMarginBottom;
                                     }
                                     baseOffset += promptAreaHeight + promptAreaMarginBottom;
-                                    
+
                                     if (connectingInputType === 'oref') {
                                         startY = node.y + baseOffset + instructionItemHeight * 0.5;
                                     } else if (connectingInputType === 'sref') {
@@ -9028,7 +9023,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 // 这里可以根据鼠标位置判断是哪个输入点，暂时使用中间位置
                                 startY = node.y + node.height / 2;
                             }
-                            
+
                             return <path d={`M ${startX} ${startY} C ${startX - 100} ${startY}, ${mousePos.x + 100} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} stroke="#60a5fa" strokeWidth="2" fill="none" strokeDasharray="4,4" />;
                         })()}
                     </svg>
@@ -9087,7 +9082,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 toConns.forEach(conn => adjacent.add(conn.from));
                 return adjacent;
             }, [connectionsByNode]);
-            
+
             // 缓存相邻节点集合，避免在renderNode中重复计算
             const adjacentNodesCache = useMemo(() => {
                 const cache = new Map();
@@ -9113,7 +9108,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 // LOD (Level of Detail) 阈值
                 const LOD_THRESHOLD = 0.4;
                 const isLowDetail = view.zoom < LOD_THRESHOLD;
-                
+
                 const isSelected = selectedNodeId === node.id || selectedNodeIds.has(node.id);
                 const connectedImages = getConnectedInputImages(node.id);
                 const isHoverTarget = hoverTargetId === node.id;
@@ -9121,12 +9116,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                 const isConnected = nodeConnectedStatus.get(node.id) || false;
                 // 判断节点是否正在被拖动（包括多选拖动），用于提升 z-index 避免被遮挡
                 const isDragging = dragNodeId === node.id || (dragNodeId && selectedNodeIds.has(node.id));
-                
+
                 // 功能3：检查是否为相邻节点（当有节点被选中时）- 使用缓存的相邻节点集合
                 const selectedId = selectedNodeId || (selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null);
                 const adjacentSet = selectedId ? adjacentNodesCache.get(selectedId) : null;
                 const isAdjacent = selectedId && selectedId !== node.id && adjacentSet && adjacentSet.has(node.id);
-                
+
                 // 判断是否为Nano Banana 2模型 - 使用 Map 优化查找（O(1)）
                 const currentModel = apiConfigsMap.get(node.settings?.model);
                 const isNanoBanana2 = currentModel
@@ -9146,12 +9141,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         ? 'border border-zinc-800'
                                         : 'border border-zinc-200'
                             } ${theme === 'dark' ? 'bg-[#18181b]' : 'bg-white'}`}
-                            style={{ 
-                                left: node.x, 
-                                top: node.y, 
-                                width: node.width, 
-                                height: node.height, 
-                                cursor: (dragNodeId === node.id || (dragNodeId && selectedNodeIds.has(node.id))) ? 'grabbing' : 'default', 
+                            style={{
+                                left: node.x,
+                                top: node.y,
+                                width: node.width,
+                                height: node.height,
+                                cursor: (dragNodeId === node.id || (dragNodeId && selectedNodeIds.has(node.id))) ? 'grabbing' : 'default',
                                 zIndex: isDragging ? 50 : 10, // 拖动时提升 z-index，避免被其他节点遮挡
                                 border: `1px solid ${theme === 'dark' ? '#3f3f46' : '#e4e4e7'}`,
                                 background: theme === 'dark' ? '#18181b' : '#fff',
@@ -9160,9 +9155,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 transform: 'translateZ(0)',
                                 backfaceVisibility: 'hidden'
                             }}
-                            onMouseDown={(e) => { 
-                                if (e.button === 0) { 
-                                    e.stopPropagation(); 
+                            onMouseDown={(e) => {
+                                if (e.button === 0) {
+                                    e.stopPropagation();
                                     if (e.ctrlKey || e.metaKey) {
                                         setSelectedNodeIds(prev => {
                                             const newSet = new Set(prev);
@@ -9187,8 +9182,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             setSelectedNodeIds(new Set([node.id]));
                                         }
                                     }
-                                    setDragNodeId(node.id); 
-                                } 
+                                    setDragNodeId(node.id);
+                                }
                             }}
                             onMouseEnter={() => { if (connectingSource || connectingTarget) setHoverTargetId(node.id); }}
                             onMouseLeave={() => { if ((connectingSource || connectingTarget) && hoverTargetId === node.id) setHoverTargetId(null); }}
@@ -9198,9 +9193,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             {node.type === 'input-image' && node.content && (
                                 <div className="w-full h-full relative">
                                     {isVideoUrl(node.content) ? (
-                                        <video 
-                                            src={node.content} 
-                                            className="w-full h-full object-cover opacity-80" 
+                                        <video
+                                            src={node.content}
+                                            className="w-full h-full object-cover opacity-80"
                                             muted
                                             playsInline
                                         />
@@ -9214,9 +9209,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 </div>
                             )}
                             {node.type === 'video-input' && node.content && (
-                                <video 
-                                    src={node.content} 
-                                    className="w-full h-full object-cover opacity-80" 
+                                <video
+                                    src={node.content}
+                                    className="w-full h-full object-cover opacity-80"
                                     muted
                                     playsInline
                                 />
@@ -9226,15 +9221,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     {getNodeLabel(node.type)}
                                 </div>
                             )}
-                            
+
                             {/* 保留连接点占位符，确保连线位置正确（简化样式） */}
                             {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && (
                                 node.type === 'image-compare' ? (
                                     <>
-                                        <div 
-                                            className="input-point" 
-                                            style={{ 
-                                                top: '33%', 
+                                        <div
+                                            className="input-point"
+                                            style={{
+                                                top: '33%',
                                                 left: '-0.25rem',
                                                 width: '0.5rem',
                                                 height: '0.5rem',
@@ -9244,20 +9239,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 zIndex: 20,
                                                 pointerEvents: 'auto'
                                             }}
-                                            onMouseDown={(e) => { 
-                                                e.stopPropagation(); 
-                                                e.preventDefault(); 
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation();
+                                                e.preventDefault();
                                                 const world = screenToWorld(e.clientX, e.clientY);
-                                                setMousePos(world); 
-                                                setConnectingTarget(node.id); 
-                                                setConnectingInputType('default'); 
+                                                setMousePos(world);
+                                                setConnectingTarget(node.id);
+                                                setConnectingInputType('default');
                                             }}
-                                            onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')} 
+                                            onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
                                         />
-                                        <div 
-                                            className="input-point" 
-                                            style={{ 
-                                                top: '66%', 
+                                        <div
+                                            className="input-point"
+                                            style={{
+                                                top: '66%',
                                                 left: '-0.25rem',
                                                 width: '0.5rem',
                                                 height: '0.5rem',
@@ -9267,22 +9262,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 zIndex: 20,
                                                 pointerEvents: 'auto'
                                             }}
-                                            onMouseDown={(e) => { 
-                                                e.stopPropagation(); 
-                                                e.preventDefault(); 
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation();
+                                                e.preventDefault();
                                                 const world = screenToWorld(e.clientX, e.clientY);
-                                                setMousePos(world); 
-                                                setConnectingTarget(node.id); 
-                                                setConnectingInputType('default'); 
+                                                setMousePos(world);
+                                                setConnectingTarget(node.id);
+                                                setConnectingInputType('default');
                                             }}
-                                            onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')} 
+                                            onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
                                         />
                                     </>
                                 ) : (
-                                    <div 
-                                        className="input-point" 
-                                        style={{ 
-                                            top: '50%', 
+                                    <div
+                                        className="input-point"
+                                        style={{
+                                            top: '50%',
                                             left: '-0.25rem',
                                             width: '0.5rem',
                                             height: '0.5rem',
@@ -9292,15 +9287,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             zIndex: 20,
                                             pointerEvents: 'auto'
                                         }}
-                                        onMouseDown={(e) => { 
-                                            e.stopPropagation(); 
-                                            e.preventDefault(); 
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
                                             const world = screenToWorld(e.clientX, e.clientY);
-                                            setMousePos(world); 
-                                            setConnectingTarget(node.id); 
-                                            setConnectingInputType('default'); 
+                                            setMousePos(world);
+                                            setConnectingTarget(node.id);
+                                            setConnectingInputType('default');
                                         }}
-                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')} 
+                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
                                     />
                                 )
                             )}
@@ -9324,12 +9319,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         opacity: connectingSource === node.id ? 1 : 0.5,
                                         pointerEvents: 'auto'
                                     }}
-                                    onMouseDown={(e) => { 
-                                        e.stopPropagation(); 
-                                        e.preventDefault(); 
+                                    onMouseDown={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
                                         const world = screenToWorld(e.clientX, e.clientY);
-                                        setMousePos(world); 
-                                        setConnectingSource(node.id); 
+                                        setMousePos(world);
+                                        setConnectingSource(node.id);
                                     }}
                                 >
                                     <Plus size={10} />
@@ -9355,12 +9350,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         } ${isHoverTarget && ((connectingSource && connectingSource !== node.id) || (connectingTarget && connectingTarget !== node.id)) ? 'ring-2 ring-green-500/50' : ''} ${
                             theme === 'dark' ? 'bg-[#18181b]' : 'bg-white'
                         }`}
-                        style={{ 
-                            left: node.x, 
-                            top: node.y, 
-                            width: node.width, 
-                            height: node.height, 
-                            cursor: (dragNodeId === node.id || (dragNodeId && selectedNodeIds.has(node.id))) ? 'grabbing' : 'default', 
+                        style={{
+                            left: node.x,
+                            top: node.y,
+                            width: node.width,
+                            height: node.height,
+                            cursor: (dragNodeId === node.id || (dragNodeId && selectedNodeIds.has(node.id))) ? 'grabbing' : 'default',
                             zIndex: isDragging ? 50 : 10, // 拖动时提升 z-index，避免被其他节点遮挡
                             boxShadow: isPerformanceMode ? undefined : (isDragging ? (theme === 'dark' ? '0 0 25px rgba(59, 130, 246, 0.6), 0 0 10px rgba(59, 130, 246, 0.4)' : '0 0 25px rgba(59, 130, 246, 0.4), 0 0 10px rgba(59, 130, 246, 0.2)') : undefined),
                             WebkitFontSmoothing: 'antialiased',
@@ -9369,9 +9364,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             transform: 'translateZ(0)',
                             backfaceVisibility: 'hidden'
                         }}
-                        onMouseDown={(e) => { 
-                            if (e.button === 0) { 
-                                e.stopPropagation(); 
+                        onMouseDown={(e) => {
+                            if (e.button === 0) {
+                                e.stopPropagation();
                                 // 如果按住了Ctrl键，添加到多选
                                 if (e.ctrlKey || e.metaKey) {
                                     setSelectedNodeIds(prev => {
@@ -9402,9 +9397,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         setSelectedNodeIds(new Set([node.id]));
                                     }
                                 }
-                                setDragNodeId(node.id); 
-                                setActiveDropdown(null); 
-                            } 
+                                setDragNodeId(node.id);
+                                setActiveDropdown(null);
+                            }
                         }}
                         onMouseEnter={() => { if (connectingSource || connectingTarget) setHoverTargetId(node.id); }}
                         onMouseLeave={() => { if ((connectingSource || connectingTarget) && hoverTargetId === node.id) setHoverTargetId(null); }}
@@ -9429,70 +9424,70 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             <X size={12} />
                         </button>
                         <div className="absolute bottom-1 right-1 w-4 h-4 z-[100] resize-handle flex items-end justify-end p-0.5" onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setResizingNodeId(node.id); }}><svg width="6" height="6" viewBox="0 0 8 8" fill="none" className="text-zinc-600"><path d="M8 0L8 8L0 8" stroke="currentColor" strokeWidth="2" /></svg></div>
-                        
+
                         {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && (
                             node.type === 'image-compare' ? (
                                 <>
-                                    <div 
-                                        className={`input-point ${connectingTarget === node.id && !connectingInputType ? 'active' : ''}`} 
-                                        style={{ top: '33%' }} 
-                                        title="图 1 输入" 
-                                        onMouseDown={(e) => { 
-                                            e.stopPropagation(); 
-                                            e.preventDefault(); 
+                                    <div
+                                        className={`input-point ${connectingTarget === node.id && !connectingInputType ? 'active' : ''}`}
+                                        style={{ top: '33%' }}
+                                        title="图 1 输入"
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
                                             // 立即计算并更新当前鼠标的世界坐标，防止线条乱飞
                                             const world = screenToWorld(e.clientX, e.clientY);
-                                            setMousePos(world); 
-                                            setConnectingTarget(node.id); 
-                                            setConnectingInputType('default'); 
+                                            setMousePos(world);
+                                            setConnectingTarget(node.id);
+                                            setConnectingInputType('default');
                                         }}
-                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')} 
+                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
                                     />
-                                    <div 
-                                        className={`input-point ${connectingTarget === node.id && !connectingInputType ? 'active' : ''}`} 
-                                        style={{ top: '66%' }} 
-                                        title="图 2 输入" 
-                                        onMouseDown={(e) => { 
-                                            e.stopPropagation(); 
-                                            e.preventDefault(); 
+                                    <div
+                                        className={`input-point ${connectingTarget === node.id && !connectingInputType ? 'active' : ''}`}
+                                        style={{ top: '66%' }}
+                                        title="图 2 输入"
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
                                             // 立即计算并更新当前鼠标的世界坐标，防止线条乱飞
                                             const world = screenToWorld(e.clientX, e.clientY);
-                                            setMousePos(world); 
-                                            setConnectingTarget(node.id); 
-                                            setConnectingInputType('default'); 
+                                            setMousePos(world);
+                                            setConnectingTarget(node.id);
+                                            setConnectingInputType('default');
                                         }}
-                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')} 
+                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
                                     />
                                 </>
                             ) : (
-                                <div 
-                                    className={`input-point ${isConnected ? 'connected' : ''} ${connectingTarget === node.id && !connectingInputType ? 'active' : ''}`} 
-                                    title="输入" 
-                                    onMouseDown={(e) => { 
-                                        e.stopPropagation(); 
-                                        e.preventDefault(); 
+                                <div
+                                    className={`input-point ${isConnected ? 'connected' : ''} ${connectingTarget === node.id && !connectingInputType ? 'active' : ''}`}
+                                    title="输入"
+                                    onMouseDown={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
                                         // 立即计算并更新当前鼠标的世界坐标，防止线条乱飞
                                         const world = screenToWorld(e.clientX, e.clientY);
-                                        setMousePos(world); 
-                                        setConnectingTarget(node.id); 
-                                        setConnectingInputType('default'); 
+                                        setMousePos(world);
+                                        setConnectingTarget(node.id);
+                                        setConnectingInputType('default');
                                     }}
-                                    onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')} 
+                                    onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
                                 />
                             )
                         )}
-                        
+
                         {node.type !== 'local-save' && (
                             <div
                                 className={`connector connector-right ${connectingSource === node.id ? 'active' : ''} ${connectingTarget && hoverTargetId === node.id ? 'ring-2 ring-green-500/50' : ''}`}
                                 title="输出"
-                                onMouseDown={(e) => { 
-                                    e.stopPropagation(); 
-                                    e.preventDefault(); 
+                                onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
                                     // 立即计算并更新当前鼠标的世界坐标，防止线条乱飞
                                     const world = screenToWorld(e.clientX, e.clientY);
-                                    setMousePos(world); 
-                                    setConnectingSource(node.id); 
+                                    setMousePos(world);
+                                    setConnectingSource(node.id);
                                 }}
                                 onMouseEnter={() => { if (connectingTarget) setHoverTargetId(node.id); }}
                                 onMouseLeave={() => { if (connectingTarget && hoverTargetId === node.id) setHoverTargetId(null); }}
@@ -9500,7 +9495,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 <Plus size={10} />
                             </div>
                         )}
-                        
+
 
                         <div
                             className={`overflow-hidden rounded-xl flex-1 flex flex-col pointer-events-none h-full w-full relative ${
@@ -9522,10 +9517,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     {node.content ? (
                                         <div className="relative w-full h-full">
                                             {isVideoUrl(node.content) ? (
-                                                 <video 
-                                                    src={node.content} 
-                                                    controls 
-                                                    className="w-full h-full object-contain bg-black/50" 
+                                                 <video
+                                                    src={node.content}
+                                                    controls
+                                                    className="w-full h-full object-contain bg-black/50"
                                                     draggable={false}
                                                     style={{
                                                         imageRendering: view.zoom >= 1 ? 'auto' : 'crisp-edges',
@@ -9536,9 +9531,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     }}
                                                 />
                                             ) : (
-                                                 <img 
-                                                    src={node.content} 
-                                                    className="w-full h-full object-contain bg-black/50" 
+                                                 <img
+                                                    src={node.content}
+                                                    className="w-full h-full object-contain bg-black/50"
                                                     draggable={false}
                                                     loading="lazy"
                                                     style={{
@@ -9579,8 +9574,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                setNodes((prev) => prev.map((n) => 
-                                                                    n.id === node.id 
+                                                                setNodes((prev) => prev.map((n) =>
+                                                                    n.id === node.id
                                                                         ? { ...n, isMasking: !n.isMasking }
                                                                         : n
                                                                 ));
@@ -9614,7 +9609,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             )}
                                             {/* 非编辑模式下的蒙版回显 */}
                                             {!node.isMasking && node.maskContent && (
-                                                <div 
+                                                <div
                                                     className="absolute inset-0 z-20 pointer-events-none"
                                                     style={{
                                                         background: 'rgba(255, 0, 0, 0.3)',
@@ -9637,8 +9632,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     isActive={node.isMasking}
                                                     isPerformanceMode={isPerformanceMode}
                                                     onClose={() => {
-                                                        setNodes((prev) => prev.map((n) => 
-                                                            n.id === node.id 
+                                                        setNodes((prev) => prev.map((n) =>
+                                                            n.id === node.id
                                                                 ? { ...n, isMasking: false }
                                                                 : n
                                                         ));
@@ -9647,8 +9642,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         console.log('蒙版已保存:', maskDataUrl);
                                                     }}
                                                     onUpdateNode={(nodeId, updates) => {
-                                                        setNodes((prev) => prev.map((n) => 
-                                                            n.id === nodeId 
+                                                        setNodes((prev) => prev.map((n) =>
+                                                            n.id === nodeId
                                                                 ? { ...n, ...updates }
                                                                 : n
                                                         ));
@@ -9948,7 +9943,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     from: node.id,
                                                     to: extractNodeId
                                                 }]);
-                                                
+
                                                 // 自动触发提取（延迟100ms确保节点已渲染）
                                                 setTimeout(() => {
                                                     const extractButton = document.getElementById(`extract-button-${extractNodeId}`);
@@ -9985,7 +9980,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             </span>
                                         )}
                                     </div>
-                                    
+
                                     <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
                                         {/* 模型选择器 */}
                                         <div>
@@ -10007,7 +10002,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     ))}
                                             </select>
                                         </div>
-                                        
+
                                         {/* 显示提取结果 */}
                                         {node.settings?.analysisResults ? (
                                             <>
@@ -10031,7 +10026,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         ))}
                                                     </div>
                                                 )}
-                                                
+
                                                 {/* 场景列表 */}
                                                 {node.settings.analysisResults.scenes && node.settings.analysisResults.scenes.length > 0 && (
                                                     <div>
@@ -10058,7 +10053,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             </div>
                                         )}
                                     </div>
-                                    
+
                                     <div className="px-3 py-2 border-t shrink-0">
                                         {/* 进度条显示 */}
                                         {node.settings?.isAnalyzing && (
@@ -10067,7 +10062,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 <div className={`w-full h-1.5 rounded-full overflow-hidden ${
                                                     theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
                                                 }`}>
-                                                    <div 
+                                                    <div
                                                         className="h-full bg-blue-500 transition-all duration-300"
                                                         style={{ width: `${node.settings?.progress || 0}%` }}
                                                     />
@@ -10077,7 +10072,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 </div>
                                             </div>
                                         )}
-                                        
+
                                         <button
                                             id={`extract-button-${node.id}`}
                                             className={`w-full py-2 rounded text-xs font-medium transition-colors ${
@@ -10095,33 +10090,33 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     .filter(c => c.to === node.id)
                                                     .map(c => nodesMap.get(c.from))
                                                     .find(n => n?.type === 'novel-input');
-                                                
+
                                                 const novelContent = novelNode?.settings?.content || node.settings?.content || '';
-                                                
+
                                                 if (!novelContent || novelContent.trim().length === 0) {
                                                     alert('请先连接小说输入节点或输入小说内容');
                                                     return;
                                                 }
-                                                
+
                                                 const selectedModel = node.settings?.model || apiConfigs.find(c => c.type === 'Chat')?.id || '';
                                                 if (!selectedModel) {
                                                     alert('请先选择分析模型');
                                                     return;
                                                 }
-                                                
+
                                                 // 更新节点状态，显示进度条
-                                                updateNodeSettings(node.id, { 
+                                                updateNodeSettings(node.id, {
                                                     isAnalyzing: true,
                                                     progress: 0,
                                                     lastAnalyzed: null,
                                                     error: null
                                                 });
-                                                
+
                                                 try {
                                                     // 模拟分析过程，显示进度
                                                     const step = 10;
                                                     let progress = 0;
-                                                    
+
                                                     const progressInterval = setInterval(() => {
                                                         progress += step;
                                                         if (progress >= 90) {
@@ -10132,12 +10127,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     const config = apiConfigsMap.get(selectedModel);
                                                     const apiKey = config?.key || globalApiKey;
                                                     const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                                                    
+
                                                     if (!apiKey) {
                                                         alert('请先配置API Key');
                                                         return;
                                                     }
-                                                    
+
                                                     // 构建分析请求
                                                     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
                                                         method: 'POST',
@@ -10171,16 +10166,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             temperature: 0.3
                                                         })
                                                     });
-                                                    
+
                                                     if (!response.ok) {
                                                         const errText = await response.text();
                                                         throw new Error(errText || `API Error: ${response.status}`);
                                                     }
-                                                    
+
                                                     const data = await response.json();
                                                     const content = data.choices?.[0]?.message?.content || '{}';
                                                     let results;
-                                                    
+
                                                     try {
                                                         // 尝试直接解析JSON
                                                         results = JSON.parse(content);
@@ -10199,7 +10194,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             throw new Error('解析结果失败，请重试');
                                                         }
                                                     }
-                                                    
+
                                                     // 验证结果格式
                                                     if (!results.characters || !Array.isArray(results.characters)) {
                                                         results.characters = [];
@@ -10207,22 +10202,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     if (!results.scenes || !Array.isArray(results.scenes)) {
                                                         results.scenes = [];
                                                     }
-                                                    
+
                                                     // 更新节点设置
-                                                    updateNodeSettings(node.id, { 
+                                                    updateNodeSettings(node.id, {
                                                         isAnalyzing: false,
                                                         progress: 100,
                                                         analysisResults: results,
                                                         lastAnalyzed: Date.now()
                                                     });
-                                                    
+
                                                     // 自动生成完整工作流
                                                     setTimeout(() => {
                                                         generateFullWorkflow(node.id, results);
                                                     }, 500);
                                                 } catch (error) {
                                                     console.error('分析错误:', error);
-                                                    updateNodeSettings(node.id, { 
+                                                    updateNodeSettings(node.id, {
                                                         isAnalyzing: false,
                                                         progress: 0,
                                                         error: error.message
@@ -10231,8 +10226,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 }
                                             }}
                                         >
-                                            {node.settings?.isAnalyzing 
-                                                ? '分析中...' 
+                                            {node.settings?.isAnalyzing
+                                                ? '分析中...'
                                                 : node.settings?.lastAnalyzed ? '重新提取' : '提取角色和场景'}
                                         </button>
                                         {node.settings?.error && (
@@ -10264,12 +10259,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             { value: 'news', label: '新闻' },
                                             { value: 'manga', label: '漫画' }
                                         ];
-                                        
+
                                         // 默认提示词
                                         const defaultPrompt = isCharacter
                                             ? `动漫风格，全身视角，名叫${node.settings?.characterName || '{角色名}'}的${node.settings?.age || '25'}岁左右${node.settings?.gender || '年轻男人'}站在白色背景前，${node.settings?.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${node.settings?.characterName || '{角色名}'}，${node.settings?.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`
                                             : node.settings?.description || `极度奢华的星际战舰舰桥内部，空间广阔如同一座宫殿，四壁装饰着繁复的黄金浮雕与象牙立柱，地面铺着深红色的天鹅绒地毯，巨大的落地舷窗外是深邃星空，中央悬挂着水晶吊灯，操作台被伪装成古典家具的样子，整体色调金碧辉煌，氛围庄严却透着一种不切实际的荒谬感`;
-                                        
+
                                         return (
                                             <>
                                                 <div className={`flex items-center justify-between px-3 py-2 border-b text-xs font-semibold shrink-0 ${
@@ -10283,7 +10278,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         <div className="text-[10px] text-zinc-500">角色: {node.settings.characterName}</div>
                                                     )}
                                                 </div>
-                                                
+
                                                 <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden min-h-0">
                                                     {/* 模式切换 - 角色和场景描述节点都显示 */}
                                                     <div className="flex items-center gap-2 shrink-0">
@@ -10300,8 +10295,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 const newMode = 'video';
                                                                 const currentPrompt = node.settings?.prompt || defaultPrompt;
                                                                 if (isCharacter) {
-                                                                    const newPrompt = currentPrompt.includes('360度') 
-                                                                        ? currentPrompt 
+                                                                    const newPrompt = currentPrompt.includes('360度')
+                                                                        ? currentPrompt
                                                                         : currentPrompt + '，然后缓慢转一圈360度全方位展示身体';
                                                                     updateNodeSettings(node.id, { mode: newMode, prompt: newPrompt });
                                                                 } else {
@@ -10334,7 +10329,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             图片模式
                                                         </button>
                                                     </div>
-                                                    
+
                                                     {/* 提示词输入区域 */}
                                                     <div className="flex-1 flex flex-col gap-1 min-h-0">
                                                         <div className="flex items-center justify-between shrink-0">
@@ -10350,27 +10345,27 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                 alert('请先输入提示词');
                                                                                 return;
                                                                             }
-                                                                            
+
                                                                             // 获取大模型配置
                                                                             const chatModelForEnhance = node.settings?.chatModel || apiConfigs.find(c => c.type === 'Chat')?.id;
                                                                             if (!chatModelForEnhance) {
                                                                                 alert('请先选择大模型');
                                                                                 return;
                                                                             }
-                                                                            
+
                                                                             const chatConfig = apiConfigs.find(c => c.id === chatModelForEnhance);
                                                                             if (!chatConfig) {
                                                                                 alert('未找到大模型配置');
                                                                                 return;
                                                                             }
-                                                                            
+
                                                                             const apiKey = chatConfig.key || globalApiKey;
                                                                             if (!apiKey) {
                                                                                 alert('请先配置API Key');
                                                                                 setSettingsOpen(true);
                                                                                 return;
                                                                             }
-                                                                            
+
                                                                             updateNodeSettings(node.id, { isEnhancing: true });
                                                                             try {
                                                                                 const baseUrl = (chatConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
@@ -10395,18 +10390,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                         temperature: 0.7
                                                                                     })
                                                                                 });
-                                                                                
+
                                                                                 if (!response.ok) {
                                                                                     throw new Error('增强场景描述失败');
                                                                                 }
-                                                                                
+
                                                                                 const data = await response.json();
                                                                                 const enhanced = data.choices?.[0]?.message?.content?.trim() || currentPrompt;
-                                                                                
+
                                                                                 // 再次过滤，确保没有人物、字符
                                                                                 const filtered = await filterScenePrompt(enhanced);
-                                                                                
-                                                                                updateNodeSettings(node.id, { 
+
+                                                                                updateNodeSettings(node.id, {
                                                                                     prompt: filtered,
                                                                                     filteredPrompt: filtered,
                                                                                     isEnhancing: false
@@ -10436,7 +10431,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             updateNodeSettings(node.id, { isFiltering: true });
                                                                             try {
                                                                                 const filtered = await filterCharacterPrompt(currentPrompt);
-                                                                                updateNodeSettings(node.id, { 
+                                                                                updateNodeSettings(node.id, {
                                                                                     prompt: filtered,
                                                                                     filteredPrompt: filtered,
                                                                                     isFiltering: false
@@ -10465,7 +10460,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             updateNodeSettings(node.id, { isFiltering: true });
                                                                             try {
                                                                                 const filtered = await filterScenePrompt(currentPrompt);
-                                                                                updateNodeSettings(node.id, { 
+                                                                                updateNodeSettings(node.id, {
                                                                                     prompt: filtered,
                                                                                     filteredPrompt: filtered,
                                                                                     isFiltering: false
@@ -10493,7 +10488,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
                                                                     : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
                                                             }`}
-                                                            style={{ 
+                                                            style={{
                                                                 minHeight: '100px',
                                                                 maxHeight: '200px',
                                                                 overflowY: 'auto',
@@ -10502,7 +10497,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             onMouseDown={(e) => e.stopPropagation()}
                                                         />
                                                     </div>
-                                                    
+
                                                     {/* 大模型选择 - 用于增强场景描述和过滤提示词 */}
                                                     {!isCharacter && (
                                                         <div className="shrink-0">
@@ -10526,7 +10521,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             </select>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* 模式特定设置 */}
                                                     {(node.settings?.mode || 'video') === 'video' ? (
                                                         <div className="flex flex-col gap-2 shrink-0">
@@ -10560,7 +10555,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         15s
                                                                     </button>
                                                                 </div>
-                                                                
+
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-[10px] text-zinc-500">风格</span>
                                                                     <select
@@ -10586,7 +10581,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     </select>
                                                                 </div>
                                                             </div>
-                                                            
+
                                                             {/* 视频模式下也显示图片生成设置（仅场景描述） */}
                                                             {!isCharacter && (
                                                                 <div className="flex flex-col gap-2 border-t pt-2 mt-2">
@@ -10613,7 +10608,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             </select>
                                                                         </div>
                                                                     </div>
-                                                                    
+
                                                                     <div className="flex items-center gap-2">
                                                                         <div className="flex-1">
                                                                             <span className="text-[10px] block mb-1 text-zinc-500">比例</span>
@@ -10638,7 +10633,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                 <option value="2:3">2:3</option>
                                                                             </select>
                                                                         </div>
-                                                                        
+
                                                                         <div className="flex-1">
                                                                             <span className="text-[10px] block mb-1 text-zinc-500">分辨率</span>
                                                                             <select
@@ -10683,7 +10678,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     </select>
                                                                 </div>
                                                             </div>
-                                                            
+
                                                             <div className="flex items-center gap-2">
                                                                 <div className="flex-1">
                                                                     <span className="text-[10px] block mb-1 text-zinc-500">比例</span>
@@ -10708,7 +10703,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         <option value="2:3">2:3</option>
                                                                     </select>
                                                                 </div>
-                                                                
+
                                                                 <div className="flex-1">
                                                                     <span className="text-[10px] block mb-1 text-zinc-500">分辨率</span>
                                                                     <select
@@ -10728,7 +10723,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             </div>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* 参考图区域 */}
                                                     <div className="mt-2 shrink-0">
                                                         <div className="flex items-center justify-between mb-1">
@@ -10754,10 +10749,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     onChange={(e) => {
                                                                         const files = Array.from(e.target.files || []);
                                                                         if (files.length === 0) return;
-                                                                        
+
                                                                         const currentImages = node.settings?.referenceImages || [];
                                                                         const newImages = [];
-                                                                        
+
                                                                         files.slice(0, 4 - currentImages.length).forEach(file => {
                                                                             if (file.type.startsWith('image/')) {
                                                                                 const reader = new FileReader();
@@ -10775,7 +10770,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 />
                                                             </div>
                                                         </div>
-                                                        
+
                                                         <div
                                                         tabIndex={0}
                                                         className={`h-20 border rounded overflow-hidden flex items-center justify-center outline-none ${
@@ -10793,12 +10788,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             const items = Array.from(e.clipboardData?.items || []);
                                                             const imageItems = items.filter(it => it.type && it.type.startsWith('image/'));
                                                             if (imageItems.length === 0) return;
-                                                            
+
                                                             const currentImages = node.settings?.referenceImages || [];
                                                             const remaining = Math.max(0, 4 - currentImages.length);
                                                             const toAdd = imageItems.slice(0, remaining);
                                                             if (toAdd.length === 0) return;
-                                                            
+
                                                             const newImages = [];
                                                             toAdd.forEach((item) => {
                                                                 const file = item.getAsFile();
@@ -10822,10 +10817,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             e.stopPropagation();
                                                             const files = Array.from(e.dataTransfer.files || []);
                                                             if (files.length === 0) return;
-                                                            
+
                                                             const currentImages = node.settings?.referenceImages || [];
                                                             const newImages = [];
-                                                            
+
                                                             files.slice(0, 4 - currentImages.length).forEach(file => {
                                                                 if (file.type.startsWith('image/')) {
                                                                     const reader = new FileReader();
@@ -10844,14 +10839,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             {(() => {
                                                                 const referenceImages = node.settings?.referenceImages || [];
                                                                 const hasReferenceImage = referenceImages.length > 0;
-                                                                
+
                                                                 return hasReferenceImage ? (
                                                                     <div className="flex gap-1 overflow-x-auto w-full h-full p-1">
                                                                         {referenceImages.map((src, idx) => (
                                                                             <div key={idx} className="relative w-16 h-16 flex-shrink-0">
-                                                                                <img 
-                                                                                    src={src} 
-                                                                                    alt={`Reference ${idx + 1}`} 
+                                                                                <img
+                                                                                    src={src}
+                                                                                    alt={`Reference ${idx + 1}`}
                                                                                     className="w-full h-full object-cover rounded"
                                                                                     onMouseDown={(e) => e.stopPropagation()}
                                                                                 />
@@ -10880,7 +10875,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="px-3 py-2 border-t shrink-0 flex flex-col gap-2">
                                                     {/* 根据模式显示不同的按钮 */}
                                                     {(node.settings?.mode || 'video') === 'image' ? (
@@ -10899,7 +10894,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     alert('请先输入描述');
                                                                     return;
                                                                 }
-                                                                
+
                                                                 // 创建生成图片节点
                                                                 const worldX = node.x + node.width + 100;
                                                                 const worldY = node.y + node.height / 2;
@@ -10923,7 +10918,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     }
                                                                 };
                                                                 setNodes(prev => [...prev, imageNode]);
-                                                                
+
                                                                 // 创建连接
                                                                 setConnections(prev => [...prev, {
                                                                     id: `conn-${Date.now()}`,
@@ -10951,7 +10946,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         alert('请先输入描述');
                                                                         return;
                                                                     }
-                                                                    
+
                                                                     // 创建生成视频节点
                                                                     const worldX = node.x + node.width + 100;
                                                                     const worldY = node.y + node.height / 2;
@@ -10974,7 +10969,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         }
                                                                     };
                                                                     setNodes(prev => [...prev, videoNode]);
-                                                                    
+
                                                                     // 创建连接
                                                                     setConnections(prev => [...prev, {
                                                                         id: `conn-${Date.now()}`,
@@ -11002,7 +10997,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             alert('请先输入描述');
                                                                             return;
                                                                         }
-                                                                        
+
                                                                         // 创建生成图片节点
                                                                         const worldX = node.x + node.width + 100;
                                                                         const worldY = node.y + node.height / 2;
@@ -11026,7 +11021,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             }
                                                                         };
                                                                         setNodes(prev => [...prev, imageNode]);
-                                                                        
+
                                                                         // 创建连接
                                                                         setConnections(prev => [...prev, {
                                                                             id: `conn-${Date.now()}`,
@@ -11058,7 +11053,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     {(() => {
                                         const isCharacter = node.type === 'create-character';
                                         const title = isCharacter ? '创建角色' : '创建场景';
-                                        
+
                                         // 解析旧数据：早期 create-scene 使用 timeRange（例如 "1,3"）
                                         const parseTimeRangeToSeconds = (tr) => {
                                             if (!tr) return null;
@@ -11080,7 +11075,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         const parsedRange = !isCharacter ? parseTimeRangeToSeconds(node.settings?.timeRange) : null;
                                         const uiStartSecond = node.settings?.startSecond ?? parsedRange?.start ?? 1;
                                         const uiEndSecond = node.settings?.endSecond ?? parsedRange?.end ?? 3;
-                                        
+
                                         return (
                                             <>
                                                 <div className={`flex items-center gap-1.5 px-3 py-2 border-b text-xs font-semibold shrink-0 ${
@@ -11089,7 +11084,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     <User size={12} className={isCharacter ? "text-blue-500" : "text-green-500"} />
                                                     <span>{title}</span>
                                                 </div>
-                                                
+
                                                 <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
                                                     <div>
                                                         <label className="text-[10px] block mb-1 text-zinc-500">
@@ -11108,7 +11103,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             onMouseDown={(e) => e.stopPropagation()}
                                                         />
                                                     </div>
-                                                    
+
                                                     <div>
                                                         <label className="text-[10px] block mb-1 text-zinc-500">
                                                             时间范围（秒，间隔需在 1-3 秒之间）
@@ -11152,7 +11147,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 {/* 进度条显示 */}
                                                 {node.settings?.isCreating && (
                                                     <div className="px-3 py-2 border-t shrink-0">
@@ -11165,7 +11160,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 <div className={`w-full h-1.5 rounded-full overflow-hidden ${
                                                                     theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
                                                                 }`}>
-                                                                    <div 
+                                                                    <div
                                                                         className="h-full bg-blue-500 transition-all duration-300"
                                                                         style={{ width: `${node.settings?.createProgress || 0}%` }}
                                                                     />
@@ -11179,7 +11174,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         )}
                                                     </div>
                                                 )}
-                                                
+
                                                 <div className="px-3 py-2 border-t shrink-0">
                                                     <button
                                                         className={`w-full py-2 rounded text-xs font-medium transition-colors ${
@@ -11194,45 +11189,45 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         disabled={node.settings?.isCreating}
                                                         onClick={async () => {
                                                             const name = node.settings?.name || '';
-                                                            
+
                                                             if (!name || name.trim().length === 0) {
                                                                 alert(`请填写${isCharacter ? '角色' : '场景'}名称`);
                                                                 return;
                                                             }
-                                                            
+
                                                             // 如果是角色，使用Sora角色库API创建（完全复用Sora角色库逻辑）
                                                             if (isCharacter) {
                                                                 const startSecond = uiStartSecond ?? 1;
                                                                 const endSecond = uiEndSecond ?? 3;
-                                                                
+
                                                                 // 验证时间范围
                                                                 if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
                                                                     alert('时间范围必须在 1-3 秒之间');
                                                                     return;
                                                                 }
-                                                                
+
                                                                 // 获取关联的视频节点
                                                                 const videoNode = connections
                                                                     .filter(c => c.to === node.id)
                                                                     .map(c => nodesMap.get(c.from))
                                                                     .find(n => n?.type === 'generate-character-video');
-                                                                
+
                                                                 if (!videoNode) {
                                                                     alert('找不到关联的视频节点');
                                                                     return;
                                                                 }
-                                                                
+
                                                                 const videoUrl = videoNode.settings?.videoUrl || videoNode.content || '';
                                                                 if (!videoUrl) {
                                                                     alert('视频节点没有视频URL');
                                                                     return;
                                                                 }
-                                                                
+
                                                                 // 从历史记录中查找是否有对应的 taskId（优先使用 from_task）
                                                                 let fromTaskId = null;
-                                                                const historyItem = history.find(h => 
-                                                                    h.type === 'video' && 
-                                                                    h.sourceNodeId === videoNode.id && 
+                                                                const historyItem = history.find(h =>
+                                                                    h.type === 'video' &&
+                                                                    h.sourceNodeId === videoNode.id &&
                                                                     h.status === 'completed' &&
                                                                     h.remoteTaskId
                                                                 );
@@ -11240,14 +11235,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     fromTaskId = historyItem.remoteTaskId;
                                                                     console.log('[Create Character Node] Found taskId from history:', fromTaskId);
                                                                 }
-                                                                
+
                                                                 // 设置创建状态
-                                                                updateNodeSettings(node.id, { 
-                                                                    isCreating: true, 
+                                                                updateNodeSettings(node.id, {
+                                                                    isCreating: true,
                                                                     createProgress: 10,
                                                                     createError: null
                                                                 });
-                                                                
+
                                                                 // 使用与Sora角色库完全相同的逻辑
                                                                 try {
                                                                     // 1. 获取配置
@@ -11257,7 +11252,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         alert('未找到 Sora 2 模型配置，请先在设置中配置 Sora 2 或 Sora 2 Pro');
                                                                         return;
                                                                     }
-                                                                    
+
                                                                     const apiKey = soraConfig.key || globalApiKey;
                                                                     if (!apiKey) {
                                                                         updateNodeSettings(node.id, { isCreating: false, createError: '请先配置 API Key' });
@@ -11265,23 +11260,23 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         setSettingsOpen(true);
                                                                         return;
                                                                     }
-                                                                    
+
                                                                     // 更新进度
                                                                     updateNodeSettings(node.id, { createProgress: 30 });
-                                                                    
+
                                                                     // 2. 自动构造 endpoint
                                                                     const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
                                                                     const endpoint = `${baseUrl}/sora/v1/characters`;
-                                                                    
+
                                                                     // 3. 构造 Body（优先使用 from_task，否则使用 url）
                                                                     const timestamps = `${startSecond},${endSecond}`;
-                                                                    const payload = fromTaskId 
+                                                                    const payload = fromTaskId
                                                                         ? { from_task: fromTaskId, timestamps }
                                                                         : { url: videoUrl, timestamps };
-                                                                    
+
                                                                     // 更新进度
                                                                     updateNodeSettings(node.id, { createProgress: 50 });
-                                                                    
+
                                                                     // 4. 详细调试日志
                                                                     console.log('[Create Character Node] Request Details:', {
                                                                         endpoint,
@@ -11290,10 +11285,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         fromTaskId,
                                                                         videoUrl: fromTaskId ? 'N/A (using from_task)' : videoUrl
                                                                     });
-                                                                    
+
                                                                     // 更新进度
                                                                     updateNodeSettings(node.id, { createProgress: 70 });
-                                                                    
+
                                                                     // 5. 发送请求
                                                                     const resp = await fetch(endpoint, {
                                                                         method: 'POST',
@@ -11303,10 +11298,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         },
                                                                         body: JSON.stringify(payload)
                                                                     });
-                                                                    
+
                                                                     // 更新进度
                                                                     updateNodeSettings(node.id, { createProgress: 90 });
-                                                                    
+
                                                                     // 6. 错误处理
                                                                     if (!resp.ok) {
                                                                         const errText = await resp.text();
@@ -11316,7 +11311,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             errorText: errText,
                                                                             endpoint
                                                                         });
-                                                                        
+
                                                                         // 尝试解析错误响应
                                                                         let errorData = null;
                                                                         try {
@@ -11324,21 +11319,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         } catch (e) {
                                                                             // 如果不是 JSON，使用原始文本
                                                                         }
-                                                                        
+
                                                                         // 特殊处理 500 错误和 get_origin_task_failed
                                                                         if (resp.status === 500 || (errorData && (errorData.code === 'get_origin_task_failed' || errorData.message?.includes('get_origin_task_failed')))) {
                                                                             throw new Error('TASK_NOT_FOUND');
                                                                         }
-                                                                        
+
                                                                         throw new Error(`API错误 (${resp.status}): ${errText || resp.statusText}`);
                                                                     }
-                                                                    
+
                                                                     const data = await resp.json();
                                                                     console.log('[Create Character Node] Success:', data);
-                                                                    
+
                                                                     // 更新进度
                                                                     updateNodeSettings(node.id, { createProgress: 100 });
-                                                                    
+
                                                                     // 7. 保存到角色库（与Sora角色库完全一致）
                                                                     if (data.id && data.username) {
                                                                         const newCharacter = {
@@ -11347,21 +11342,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             profile_picture_url: data.profile_picture_url || '',
                                                                             permalink: data.permalink || ''
                                                                         };
-                                                                        
+
                                                                         const updated = [...characterLibrary, newCharacter];
                                                                         setCharacterLibrary(updated);
-                                                                        
+
                                                                         // 保存到 localStorage
                                                                         try {
                                                                             localStorage.setItem('tapnow_characters', JSON.stringify(updated));
                                                                         } catch (err) {
                                                                             console.error('保存角色库失败:', err);
                                                                         }
-                                                                        
+
                                                                         // 延迟一下再清除状态，让用户看到成功
                                                                         setTimeout(() => {
-                                                                            updateNodeSettings(node.id, { 
-                                                                                isCreating: false, 
+                                                                            updateNodeSettings(node.id, {
+                                                                                isCreating: false,
                                                                                 createProgress: 0,
                                                                                 createError: null
                                                                             });
@@ -11373,25 +11368,25 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 } catch (err) {
                                                                     console.error('[Create Character Node] Failed:', err);
                                                                     let msg = err.message;
-                                                                    
+
                                                                     // 特殊处理：原任务已过期或无法访问
                                                                     if (msg === 'TASK_NOT_FOUND') {
-                                                                        updateNodeSettings(node.id, { 
-                                                                            isCreating: false, 
+                                                                        updateNodeSettings(node.id, {
+                                                                            isCreating: false,
                                                                             createProgress: 0,
                                                                             createError: '原任务已过期或无法访问'
                                                                         });
                                                                         alert('创建失败：原任务已过期或无法访问。\n\n请尝试获取该视频的下载链接，使用"输入视频 URL"方式重新创建。');
                                                                         return;
                                                                     }
-                                                                    
+
                                                                     // 处理网络错误
                                                                     if (msg.includes('Failed to fetch') || err.name === 'TypeError' || err.message.includes('NetworkError')) {
                                                                         msg = '连接失败。可能原因：\n\n1. API 地址填写错误\n   - 请检查 API 接口地址是否多余了 "/sora" 前缀\n   - 有些服务商的路径可能不同，请询问服务商 Sora 角色创建接口的准确路径\n\n2. 跨域限制 (CORS)\n   - 请尝试安装 Allow CORS 浏览器插件\n\n3. 网络问题\n   - 请检查网络连接';
                                                                     }
-                                                                    
-                                                                    updateNodeSettings(node.id, { 
-                                                                        isCreating: false, 
+
+                                                                    updateNodeSettings(node.id, {
+                                                                        isCreating: false,
                                                                         createProgress: 0,
                                                                         createError: msg
                                                                     });
@@ -11400,35 +11395,35 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             } else {
                                                                 const startSecond = uiStartSecond ?? 1;
                                                                 const endSecond = uiEndSecond ?? 3;
-                                                                
+
                                                                 // 验证时间范围
                                                                 if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
                                                                     alert('时间范围必须在 1-3 秒之间');
                                                                     return;
                                                                 }
-                                                                
+
                                                                 // 获取关联的视频节点
                                                                 const videoNode = connections
                                                                     .filter(c => c.to === node.id)
                                                                     .map(c => nodesMap.get(c.from))
                                                                     .find(n => n?.type === 'generate-scene-video');
-                                                                
+
                                                                 if (!videoNode) {
                                                                     alert('找不到关联的视频节点');
                                                                     return;
                                                                 }
-                                                                
+
                                                                 const videoUrl = videoNode.settings?.videoUrl || videoNode.content || '';
                                                                 if (!videoUrl) {
                                                                     alert('视频节点没有视频URL');
                                                                     return;
                                                                 }
-                                                                
+
                                                                 // 从历史记录中查找是否有对应的 taskId（优先使用 from_task）
                                                                 let fromTaskId = null;
-                                                                const historyItem = history.find(h => 
-                                                                    h.type === 'video' && 
-                                                                    h.sourceNodeId === videoNode.id && 
+                                                                const historyItem = history.find(h =>
+                                                                    h.type === 'video' &&
+                                                                    h.sourceNodeId === videoNode.id &&
                                                                     h.status === 'completed' &&
                                                                     h.remoteTaskId
                                                                 );
@@ -11436,14 +11431,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     fromTaskId = historyItem.remoteTaskId;
                                                                     console.log('[Create Scene Node] Found taskId from history:', fromTaskId);
                                                                 }
-                                                                
+
                                                                 // 设置创建状态
-                                                                updateNodeSettings(node.id, { 
-                                                                    isCreating: true, 
+                                                                updateNodeSettings(node.id, {
+                                                                    isCreating: true,
                                                                     createProgress: 10,
                                                                     createError: null
                                                                 });
-                                                                
+
                                                                 // 场景创建：沿用创建角色的 Sora 库创建逻辑（仅更换 endpoint）
                                                                 try {
                                                                     const soraConfig = apiConfigs.find(c => c.type === 'Video' && (c.id === 'sora-2' || c.id === 'sora-2-pro'));
@@ -11452,7 +11447,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         alert('未找到 Sora 2 模型配置，请先在设置中配置 Sora 2 或 Sora 2 Pro');
                                                                         return;
                                                                     }
-                                                                    
+
                                                                     const apiKey = soraConfig.key || globalApiKey;
                                                                     if (!apiKey) {
                                                                         updateNodeSettings(node.id, { isCreating: false, createError: '请先配置 API Key' });
@@ -11460,23 +11455,23 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         setSettingsOpen(true);
                                                                         return;
                                                                     }
-                                                                    
+
                                                                     updateNodeSettings(node.id, { createProgress: 30 });
-                                                                    
+
                                                                     const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
                                                                     // 创建场景：完全复用“创建角色”的请求方式（同 endpoint / 同 payload / 同错误处理）
                                                                     // 仅前端 UI 显示为“创建场景”，并将结果落到 tapnow_scenes
                                                                     const endpoint = (createCharacterEndpoint && createCharacterEndpoint.trim())
                                                                         ? createCharacterEndpoint.trim()
                                                                         : `${baseUrl}/sora/v1/characters`;
-                                                                    
+
                                                                     const timestamps = `${startSecond},${endSecond}`;
-                                                                    const payload = fromTaskId 
+                                                                    const payload = fromTaskId
                                                                         ? { from_task: fromTaskId, timestamps }
                                                                         : { url: videoUrl, timestamps };
-                                                                    
+
                                                                     updateNodeSettings(node.id, { createProgress: 70 });
-                                                                    
+
                                                                     console.log('[Create Scene Node] Request Details:', {
                                                                         endpoint,
                                                                         apiKey: apiKey ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}` : 'EMPTY',
@@ -11484,7 +11479,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         fromTaskId,
                                                                         videoUrl: fromTaskId ? 'N/A (using from_task)' : videoUrl
                                                                     });
-                                                                    
+
                                                                     const resp = await fetch(endpoint, {
                                                                         method: 'POST',
                                                                         headers: {
@@ -11493,9 +11488,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         },
                                                                         body: JSON.stringify(payload)
                                                                     });
-                                                                    
+
                                                                     updateNodeSettings(node.id, { createProgress: 90 });
-                                                                    
+
                                                                     if (!resp.ok) {
                                                                         const errText = await resp.text();
                                                                         console.error('[Create Scene Node] API Error:', {
@@ -11504,23 +11499,23 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             errorText: errText,
                                                                             endpoint
                                                                         });
-                                                                        
+
                                                                         // 尝试解析错误响应
                                                                         let errorData = null;
                                                                         try { errorData = JSON.parse(errText); } catch (e) {}
-                                                                        
+
                                                                         // 特殊处理 500 错误和 get_origin_task_failed
                                                                         if (resp.status === 500 || (errorData && (errorData.code === 'get_origin_task_failed' || errorData.message?.includes('get_origin_task_failed')))) {
                                                                             throw new Error('TASK_NOT_FOUND');
                                                                         }
-                                                                        
+
                                                                         throw new Error(`API错误 (${resp.status}): ${errText || resp.statusText}`);
                                                                     }
-                                                                    
+
                                                                     const data = await resp.json();
                                                                     console.log('[Create Scene Node] Success:', data);
                                                                     updateNodeSettings(node.id, { createProgress: 100 });
-                                                                    
+
                                                                     // 注意：后端返回结构与“创建角色”一致（id/username）
                                                                     // 按用户要求：仍按“角色”来显示与保存（不使用中文 name 作为标识）
                                                                     if (!data?.id || !data?.username) {
@@ -11528,7 +11523,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     }
                                                                     const characterId = data.id;
                                                                     const characterUsername = data.username;
-                                                                    
+
                                                                     // 写入角色库（与创建角色一致）
                                                                     try {
                                                                         const newCharacter = {
@@ -11547,11 +11542,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     } catch (e) {
                                                                         console.warn('写入角色库失败:', e);
                                                                     }
-                                                                    
+
                                                                     // 记录结果到节点，便于用户确认
                                                                     setTimeout(() => {
-                                                                        updateNodeSettings(node.id, { 
-                                                                            isCreating: false, 
+                                                                        updateNodeSettings(node.id, {
+                                                                            isCreating: false,
                                                                             createProgress: 0,
                                                                             createError: null,
                                                                             characterId,
@@ -11562,23 +11557,23 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 } catch (err) {
                                                                     console.error('[Create Scene Node] Failed:', err);
                                                                     let msg = err.message;
-                                                                    
+
                                                                     if (msg === 'TASK_NOT_FOUND') {
-                                                                        updateNodeSettings(node.id, { 
-                                                                            isCreating: false, 
+                                                                        updateNodeSettings(node.id, {
+                                                                            isCreating: false,
                                                                             createProgress: 0,
                                                                             createError: '原任务已过期或无法访问'
                                                                         });
                                                                         alert('创建失败：原任务已过期或无法访问。\n\n请尝试获取该视频的下载链接，使用"输入视频 URL"方式重新创建。');
                                                                         return;
                                                                     }
-                                                                    
+
                                                                     if (msg.includes('Failed to fetch') || err.name === 'TypeError' || err.message.includes('NetworkError')) {
                                                                         msg = '连接失败。可能原因：\n\n1. API 地址填写错误\n   - 请检查 API 接口地址是否多余了 "/sora" 前缀\n   - 有些服务商的路径可能不同，请询问服务商 Sora 场景创建接口的准确路径\n\n2. 跨域限制 (CORS)\n   - 请尝试安装 Allow CORS 浏览器插件\n\n3. 网络问题\n   - 请检查网络连接';
                                                                     }
-                                                                    
-                                                                    updateNodeSettings(node.id, { 
-                                                                        isCreating: false, 
+
+                                                                    updateNodeSettings(node.id, {
+                                                                        isCreating: false,
                                                                         createProgress: 0,
                                                                         createError: msg
                                                                     });
@@ -11606,28 +11601,28 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 >
                                     {(() => {
                                         const isCharacter = node.type === 'generate-character-video';
-                                        
+
                                         // 从连接的描述节点获取提示词
                                         const descriptionNode = connections
                                             .filter(c => c.to === node.id)
                                             .map(c => nodesMap.get(c.from))
                                             .find(n => n?.type === (isCharacter ? 'character-description' : 'scene-description'));
-                                        
+
                                         // 从连接的图片生成节点获取选中的图片URL（Image-to-Video模式）
                                         const imageNode = connections
                                             .filter(c => c.to === node.id)
                                             .map(c => nodesMap.get(c.from))
                                             .find(n => (isCharacter ? n?.type === 'generate-character-image' : n?.type === 'generate-scene-image'));
-                                        
+
                                         const selectedImageUrl = imageNode?.settings?.selectedImageIndex !== null && imageNode?.settings?.selectedImageIndex !== undefined
                                             ? (imageNode.settings?.imageUrls?.[imageNode.settings.selectedImageIndex] || imageNode.settings?.imageUrl || imageNode.content)
                                             : null;
-                                        
+
                                         const videoPrompt = node.settings?.videoPrompt || descriptionNode?.settings?.prompt || '';
-                                        
+
                                         // 显示Image-to-Video模式提示
                                         const isImageToVideoMode = selectedImageUrl !== null;
-                                        
+
                                         return (
                                             <>
                                                 <div className={`flex items-center gap-1.5 px-3 py-2 border-b text-xs font-semibold shrink-0 ${
@@ -11636,7 +11631,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     <FileVideo size={12} className="text-green-500" />
                                                     <span>{isCharacter ? '生成角色视频' : '生成场景视频'}</span>
                                                 </div>
-                                                
+
                                                 <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
                                                     {/* 引用参考图提示和缩略图 */}
                                                     {(() => {
@@ -11655,9 +11650,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 <div className="flex gap-2 overflow-x-auto">
                                                                     {referenceImages.slice(0, 4).map((img, idx) => (
                                                                         <div key={idx} className="relative w-16 h-16 flex-shrink-0 rounded overflow-hidden border border-green-500">
-                                                                            <img 
-                                                                                src={img} 
-                                                                                alt={`Reference ${idx + 1}`} 
+                                                                            <img
+                                                                                src={img}
+                                                                                alt={`Reference ${idx + 1}`}
                                                                                 className="w-full h-full object-cover"
                                                                                 onMouseDown={(e) => e.stopPropagation()}
                                                                             />
@@ -11667,7 +11662,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             </div>
                                                         ) : null;
                                                     })()}
-                                                    
+
                                                     {/* 模型选择 */}
                                                     <div>
                                                         <label className="text-[10px] block mb-1 text-zinc-500">选择模型</label>
@@ -11688,7 +11683,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 ))}
                                                         </select>
                                                     </div>
-                                                    
+
                                                     {/* 时长选择 */}
                                                     <div>
                                                         <label className="text-[10px] block mb-1 text-zinc-500">时长</label>
@@ -11707,7 +11702,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             <option value="15s">15秒</option>
                                                         </select>
                                                     </div>
-                                                    
+
                                                     {/* 比例选择 */}
                                                     <div>
                                                         <label className="text-[10px] block mb-1 text-zinc-500">比例</label>
@@ -11726,7 +11721,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             <option value="1:1">1:1</option>
                                                         </select>
                                                     </div>
-                                                    
+
                                                     {/* 提示词 */}
                                                     <div>
                                                         <label className="text-[10px] block mb-1 text-zinc-500">提示词</label>
@@ -11742,10 +11737,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             onMouseDown={(e) => e.stopPropagation()}
                                                         />
                                                     </div>
-                                                    
+
                                                     {/* 预览区域 - 支持双击打开和右键发送到画布 */}
                                                     {node.settings?.videoUrl || node.content ? (
-                                                        <div 
+                                                        <div
                                                             className="relative w-full aspect-video bg-black rounded-lg overflow-hidden cursor-pointer"
                                                             onDoubleClick={(e) => {
                                                                 e.preventDefault();
@@ -11783,7 +11778,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             </span>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* 进度条显示 */}
                                                     {node.settings?.isGenerating && (
                                                         <div className="mb-2">
@@ -11791,7 +11786,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             <div className={`w-full h-1.5 rounded-full overflow-hidden ${
                                                                 theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
                                                             }`}>
-                                                                <div 
+                                                                <div
                                                                     className="h-full bg-blue-500 transition-all duration-300"
                                                                     style={{ width: `${node.settings?.progress || 0}%` }}
                                                                 />
@@ -11801,7 +11796,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             </div>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* 错误显示 */}
                                                     {node.settings?.error && (
                                                         <div className="text-[10px] text-red-500">
@@ -11809,7 +11804,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         </div>
                                                     )}
                                                 </div>
-                                                
+
                                                 <div className="px-3 py-2 border-t shrink-0">
                                                     <button
                                                         className={`w-full py-2 rounded text-xs font-medium transition-colors ${
@@ -11823,42 +11818,42 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         onMouseDown={(e) => e.stopPropagation()}
                                                         onClick={async () => {
                                                             const { videoPrompt, model, duration, ratio } = node.settings;
-                                                            
+
                                                             // 检查是否有选中的图片（Image-to-Video模式）
                                                             const selectedImageUrl = imageNode?.settings?.selectedImageIndex !== null && imageNode?.settings?.selectedImageIndex !== undefined
                                                                 ? (imageNode.settings?.imageUrls?.[imageNode.settings.selectedImageIndex] || imageNode.settings?.imageUrl || imageNode.content)
                                                                 : null;
-                                                            
+
                                                             // 如果没有选中图片且没有提示词，则提示
                                                             if (!selectedImageUrl && (!videoPrompt || videoPrompt.trim().length === 0)) {
                                                                 alert('请先输入提示词或在上方图片生成节点中选中一张图片');
                                                                 return;
                                                             }
-                                                            
+
                                                             // 获取API配置
                                                             const apiConfig = apiConfigsMap.get(model || 'sora-2');
                                                             if (!apiConfig) {
                                                                 alert('未找到模型配置');
                                                                 return;
                                                             }
-                                                            
+
                                                             const apiKey = apiConfig.key || globalApiKey;
                                                             if (!apiKey) {
                                                                 alert('请先配置API Key');
                                                                 setSettingsOpen(true);
                                                                 return;
                                                             }
-                                                            
+
                                                             // 更新节点状态
-                                                            updateNodeSettings(node.id, { 
-                                                                isGenerating: true, 
+                                                            updateNodeSettings(node.id, {
+                                                                isGenerating: true,
                                                                 error: null,
                                                                 progress: 0
                                                             });
-                                                            
+
                                                             try {
                                                                 console.log('[Sora 2 视频生成] 开始生成，模型:', model, '提示词:', videoPrompt?.substring(0, 50));
-                                                                
+
                                                                 // 确定输入源：优先使用选中的图片，其次使用参考图
                                                                 let sourceImages = [];
                                                                 if (selectedImageUrl) {
@@ -11874,7 +11869,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         console.log('[Sora 2 视频生成] Text-to-Video模式：纯文本生成');
                                                                     }
                                                                 }
-                                                                
+
                                                                 // 复用通用视频生成接口 startGeneration
                                                                 await startGeneration(
                                                                     videoPrompt || '',
@@ -11889,17 +11884,17 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         isHD: node.settings?.isHD || false
                                                                     }
                                                                 );
-                                                                
+
                                                                 console.log('[Sora 2 视频生成] 已调用通用接口 startGeneration，等待结果...');
-                                                                
+
                                                             } catch (error) {
                                                                 console.error('[Sora 2 视频生成] 失败:', error);
-                                                                updateNodeSettings(node.id, { 
-                                                                    isGenerating: false, 
+                                                                updateNodeSettings(node.id, {
+                                                                    isGenerating: false,
                                                                     progress: 0,
-                                                                    error: error.message 
+                                                                    error: error.message
                                                                 });
-                                                                
+
                                                                 // 添加失败记录到历史
                                                                 setHistory(prev => {
                                                                     const newHistory = [...prev, {
@@ -11919,7 +11914,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     }
                                                                     return newHistory;
                                                                 });
-                                                                
+
                                                                 alert(`生成失败: ${error.message}`);
                                                             }
                                                         }}
@@ -11947,7 +11942,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         <FileText size={12} className="text-blue-500" />
                                         <span>{node.type === 'generate-character-image' ? '生成角色图片' : '生成场景图片'}</span>
                                     </div>
-                                    
+
                                     <div className="flex-1 flex flex-col gap-3 p-3 overflow-y-auto min-h-0">
                                         {/* 大模型选择 - 用于提示词过滤 */}
                                         {(() => {
@@ -11961,18 +11956,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     const fromNode = nodesMap.get(c.from);
                                                     const toNode = nodesMap.get(c.to);
                                                     // 检查是否连接到当前节点或其上游节点
-                                                    if (toNode?.id === node.id || 
-                                                        ((toNode?.type === 'character-description' || toNode?.type === 'scene-description') && 
+                                                    if (toNode?.id === node.id ||
+                                                        ((toNode?.type === 'character-description' || toNode?.type === 'scene-description') &&
                                                          connections.some(conn => conn.from === toNode.id && conn.to === node.id))) {
                                                         return fromNode;
                                                     }
                                                     return null;
                                                 })
                                                 .find(n => n !== null);
-                                            
+
                                             const defaultChatModel = extractNode?.settings?.model || '';
                                             const isSceneImage = node.type === 'generate-scene-image';
-                                            
+
                                             return (
                                                 <div>
                                                     <label className="text-[10px] block mb-1 text-zinc-500">
@@ -11998,7 +11993,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 </div>
                                             );
                                         })()}
-                                        
+
                                         {/* 模型选择 */}
                                         <div>
                                             <label className="text-[10px] block mb-1 text-zinc-500">选择模型</label>
@@ -12020,11 +12015,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     ))}
                                             </select>
                                         </div>
-                                        
+
                                         {/* 参考图引用标识 - 只有当referenceImages有值时才显示 */}
                                         {(() => {
-                                            const hasRefImages = node.settings?.referenceImages && 
-                                                                Array.isArray(node.settings.referenceImages) && 
+                                            const hasRefImages = node.settings?.referenceImages &&
+                                                                Array.isArray(node.settings.referenceImages) &&
                                                                 node.settings.referenceImages.length > 0;
                                             return hasRefImages ? (
                                                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] ${
@@ -12037,7 +12032,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 </div>
                                             ) : null;
                                         })()}
-                                        
+
                                         {/* 比例选择 */}
                                         <div>
                                             <label className="text-[10px] block mb-1 text-zinc-500">比例</label>
@@ -12056,7 +12051,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 <option value="1:1">1:1</option>
                                             </select>
                                         </div>
-                                        
+
                                         {/* 提示词 */}
                                         <div>
                                             <label className="text-[10px] block mb-1 text-zinc-500">提示词</label>
@@ -12072,19 +12067,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 onMouseDown={(e) => e.stopPropagation()}
                                             />
                                         </div>
-                                        
+
                                         {/* 预览区域 - 支持多图显示（grid布局），复用AI绘图预览窗口逻辑 */}
                                         {(() => {
                                             const imageUrls = node.settings?.imageUrls || (node.settings?.imageUrl || node.content ? [node.settings?.imageUrl || node.content] : []);
                                             const selectedImageIndex = node.settings?.selectedImageIndex ?? null;
-                                            
+
                                             return imageUrls.length > 0 ? (
                                                 <div className="relative w-full">
                                                     {imageUrls.length > 1 ? (
                                                         <div className="grid grid-cols-2 gap-2">
                                                             {imageUrls.map((url, idx) => (
-                                                                <div 
-                                                                    key={idx} 
+                                                                <div
+                                                                    key={idx}
                                                                     className={`relative aspect-square bg-black rounded-lg overflow-hidden cursor-pointer transition-all ${
                                                                         selectedImageIndex === idx
                                                                             ? 'ring-2 ring-blue-500 ring-offset-2'
@@ -12113,9 +12108,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     }}
                                                                     onMouseDown={(e) => e.stopPropagation()}
                                                                 >
-                                                                    <img 
-                                                                        src={url} 
-                                                                        alt={`Generated ${node.type === 'generate-character-image' ? 'character' : 'scene'} ${idx + 1}`} 
+                                                                    <img
+                                                                        src={url}
+                                                                        alt={`Generated ${node.type === 'generate-character-image' ? 'character' : 'scene'} ${idx + 1}`}
                                                                         className="w-full h-full object-contain"
                                                                     />
                                                                     <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1 py-0.5 rounded">
@@ -12130,7 +12125,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             ))}
                                                         </div>
                                                     ) : (
-                                                        <div 
+                                                        <div
                                                             className="relative w-full aspect-video bg-black rounded-lg overflow-hidden cursor-pointer"
                                                             onDoubleClick={(e) => {
                                                                 e.preventDefault();
@@ -12150,9 +12145,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             }}
                                                             onMouseDown={(e) => e.stopPropagation()}
                                                         >
-                                                            <img 
-                                                                src={imageUrls[0]} 
-                                                                alt={`Generated ${node.type === 'generate-character-image' ? 'character' : 'scene'}`} 
+                                                            <img
+                                                                src={imageUrls[0]}
+                                                                alt={`Generated ${node.type === 'generate-character-image' ? 'character' : 'scene'}`}
                                                                 className="w-full h-full object-contain"
                                                             />
                                                         </div>
@@ -12186,7 +12181,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 </div>
                                             );
                                         })()}
-                                        
+
                                         {/* 进度条显示 */}
                                         {node.settings?.isGenerating && (
                                             <div className="mb-2">
@@ -12194,7 +12189,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 <div className={`w-full h-1.5 rounded-full overflow-hidden ${
                                                     theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
                                                 }`}>
-                                                    <div 
+                                                    <div
                                                         className="h-full bg-blue-500 transition-all duration-300"
                                                         style={{ width: `${node.settings?.progress || 0}%` }}
                                                     />
@@ -12204,7 +12199,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 </div>
                                             </div>
                                         )}
-                                        
+
                                         {/* 错误显示 */}
                                         {node.settings?.error && (
                                             <div className="text-[10px] text-red-500">
@@ -12212,7 +12207,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             </div>
                                         )}
                                     </div>
-                                    
+
                                     <div className="px-3 py-2 border-t shrink-0">
                                         <button
                                             className={`w-full py-2 rounded text-xs font-medium transition-colors ${
@@ -12227,36 +12222,36 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             onClick={async () => {
                                                 const { prompt, model, ratio, resolution, referenceImages } = node.settings;
                                                 const isSceneImage = node.type === 'generate-scene-image';
-                                                
+
                                                 if (!prompt || prompt.trim().length === 0) {
                                                     alert('请先输入提示词');
                                                     return;
                                                 }
-                                                
+
                                                 // 获取API配置
                                                 const apiConfig = apiConfigsMap.get(model || '');
                                                 if (!apiConfig) {
                                                     alert('请先选择模型');
                                                     return;
                                                 }
-                                                
+
                                                 const apiKey = apiConfig.key || globalApiKey;
                                                 if (!apiKey) {
                                                     alert('请先配置API Key');
                                                     setSettingsOpen(true);
                                                     return;
                                                 }
-                                                
+
                                                 // 更新节点状态
-                                                updateNodeSettings(node.id, { 
-                                                    isGenerating: true, 
+                                                updateNodeSettings(node.id, {
+                                                    isGenerating: true,
                                                     error: null,
                                                     progress: 5
                                                 });
-                                                
+
                                                 try {
                                                     console.log(`[生成${isSceneImage ? '场景' : '角色'}图片] 开始生成，模型:`, model, '比例:', ratio);
-                                                    
+
                                                     // 过滤提示词
                                                     // 使用节点设置中的chatModel，如果没有则使用默认的Chat模型
                                                     const chatModelForFilter = node.settings?.chatModel || apiConfigs.find(c => c.type === 'Chat')?.id;
@@ -12276,10 +12271,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             console.warn('提示词过滤失败，使用原始提示词:', e);
                                                         }
                                                     }
-                                                    
+
                                                     // 准备参考图
                                                     const sourceImages = referenceImages && referenceImages.length > 0 ? referenceImages : [];
-                                                    
+
                                                     // 使用通用的 startGeneration 函数
                                                     await startGeneration(
                                                         filteredPrompt,
@@ -12292,23 +12287,23 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             resolution: resolution || 'Auto'
                                                         }
                                                     );
-                                                    
+
                                                     console.log(`[生成${isSceneImage ? '场景' : '角色'}图片] 已调用通用接口 startGeneration`);
-                                                    
+
                                                 } catch (error) {
                                                     console.error(`[生成${isSceneImage ? '场景' : '角色'}图片] 失败:`, error);
-                                                    updateNodeSettings(node.id, { 
-                                                        isGenerating: false, 
+                                                    updateNodeSettings(node.id, {
+                                                        isGenerating: false,
                                                         progress: 0,
-                                                        error: error.message 
+                                                        error: error.message
                                                     });
-                                                    
+
                                                     alert(`生成失败: ${error.message}`);
                                                 }
                                             }}
                                         >
-                                            {node.settings?.isGenerating 
-                                                ? '生成中...' 
+                                            {node.settings?.isGenerating
+                                                ? '生成中...'
                                                 : (node.type === 'generate-scene-image' ? '生成场景图片' : '生成角色图片')
                                             }
                                         </button>
@@ -12358,11 +12353,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                     </div>
                                                 );
                                             }
-                                            
+
                                             const videoFileName = videoInputNode.videoFileName || '未命名视频';
                                             const videoDuration = videoInputNode.videoMeta?.duration || 0;
                                             const selectedKeyframes = videoInputNode.selectedKeyframes || [];
-                                            
+
                                             return (
                                                 <>
                                                     <div className="space-y-2">
@@ -12376,7 +12371,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 <div>已选关键帧: {selectedKeyframes.length} 个</div>
                                                             </div>
                                                         </div>
-                                                        
+
                                                         {/* 模式选择切换按钮 */}
                                                         <div className={`flex items-center gap-2 p-1 rounded-lg border shadow-inner ${
                                                             theme === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-100 border-zinc-200'
@@ -12412,7 +12407,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 <Sparkles size={12} /> AI 导演拆解
                                                             </button>
                                                         </div>
-                                                        
+
                                                         {(node.settings?.analysisMode || 'manual') === 'manual' && (
                                                             <>
                                                                 <div className="flex items-center gap-2">
@@ -12428,7 +12423,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     />
                                                                     <span className="text-[11px] text-zinc-500">秒</span>
                                                                 </div>
-                                                                
+
                                                                 <div className="flex items-center gap-2">
                                                                     <label className="text-[11px] text-zinc-500">模型:</label>
                                                                     <select
@@ -12444,7 +12439,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 </div>
                                                             </>
                                                         )}
-                                                        
+
                                                         <button
                                                             onClick={() => node.settings?.analysisMode === 'auto' ? handleAutoVideoAnalysis(node.id) : handleGeneratePrompts(node.id)}
                                                             disabled={node.isGenerating || ((node.settings?.analysisMode || 'manual') === 'manual' && selectedKeyframes.length === 0)}
@@ -12469,14 +12464,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 </>
                                                             )}
                                                         </button>
-                                                        
+
                                                         {node.errorMsg && (
                                                             <div className="text-[10px] text-red-500 px-2 py-1 rounded bg-red-500/10">
                                                                 {node.errorMsg}
                                                             </div>
                                                         )}
                                                     </div>
-                                                    
+
                                                     {/* 结果展示区 (Auto 模式) */}
                                                     {node.settings?.analysisMode === 'auto' && node.settings?.analysisResults?.length > 0 && (
                                                         <div className="flex-1 overflow-y-auto custom-scrollbar pt-2">
@@ -12488,8 +12483,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     </h4>
                                                                     <div className="space-y-1">
                                                                         {node.settings.voiceoverResults.map((v, i) => (
-                                                                            <p 
-                                                                                key={i} 
+                                                                            <p
+                                                                                key={i}
                                                                                 className={`text-[10px] select-text cursor-text ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}
                                                                                 onMouseDown={(e) => e.stopPropagation()}
                                                                             >
@@ -12505,18 +12500,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             <h4 className={`text-xs font-semibold mb-3 flex items-center gap-1 ${theme === 'dark' ? 'text-white' : 'text-zinc-800'}`}>
                                                                 <Camera size={12} /> 导演级场景分析 ({node.settings.analysisResults.length} 场景)
                                                             </h4>
-                                                            
+
                                                             <div className="space-y-4">
                                                                 {node.settings.analysisResults.map((scene, i) => (
                                                                     <div key={i} className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-zinc-800 border border-zinc-700' : 'bg-zinc-50 border border-zinc-200'}`}>
                                                                         <h5 className={`text-sm font-bold mb-2 ${theme === 'dark' ? 'text-purple-400' : 'text-purple-700'}`}>
                                                                             场景 {scene.scene_index || scene.scene_id || i + 1} <span className="text-xs font-normal opacity-70 ml-2">({scene.time_range})</span>
                                                                         </h5>
-                                                                        
+
                                                                         {/* 视觉分析 */}
                                                                         <div className="text-[11px] space-y-1 mb-3">
                                                                             {scene.keyframes?.[0]?.description && (
-                                                                                <p 
+                                                                                <p
                                                                                     className={`select-text cursor-text ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}
                                                                                     onMouseDown={(e) => e.stopPropagation()}
                                                                                 >
@@ -12524,7 +12519,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                 </p>
                                                                             )}
                                                                             {scene.global_tags?.style?.[0] && (
-                                                                                <p 
+                                                                                <p
                                                                                     className={`select-text cursor-text ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}
                                                                                     onMouseDown={(e) => e.stopPropagation()}
                                                                                 >
@@ -12539,7 +12534,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             {scene.keyframes?.[0]?.jimeng_prompt && (
                                                                                 <div className={`p-2 rounded ${theme === 'dark' ? 'bg-zinc-700 border border-zinc-600' : 'bg-zinc-50 border border-gray-300'}`}>
                                                                                     <h6 className={`text-[10px] font-semibold mb-1 flex items-center gap-1 ${theme === 'dark' ? 'text-yellow-300' : 'text-yellow-700'}`}><Code size={10} /> 即梦 Prompt</h6>
-                                                                                    <p 
+                                                                                    <p
                                                                                         className={`text-[10px] whitespace-pre-wrap select-text cursor-text ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}
                                                                                         onMouseDown={(e) => e.stopPropagation()}
                                                                                     >{scene.keyframes[0].jimeng_prompt}</p>
@@ -12548,12 +12543,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                     </button>
                                                                                 </div>
                                                                             )}
-                                                                            
+
                                                                             {/* MJ Prompt */}
                                                                             {scene.keyframes?.[0]?.mj_prompt && (
                                                                                 <div className={`p-2 rounded ${theme === 'dark' ? 'bg-zinc-700 border border-zinc-600' : 'bg-zinc-50 border border-gray-300'}`}>
                                                                                     <h6 className={`text-[10px] font-semibold mb-1 flex items-center gap-1 ${theme === 'dark' ? 'text-green-300' : 'text-green-700'}`}><Code size={10} /> MJ Prompt</h6>
-                                                                                    <p 
+                                                                                    <p
                                                                                         className={`text-[10px] whitespace-pre-wrap select-text cursor-text ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}
                                                                                         onMouseDown={(e) => e.stopPropagation()}
                                                                                     >{scene.keyframes[0].mj_prompt}</p>
@@ -12568,7 +12563,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             </div>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* 结果展示区 (Manual 模式) */}
                                                     {(node.settings?.analysisMode || 'manual') === 'manual' && node.analysisResults && node.analysisResults.length > 0 ? (
                                                         <div className="space-y-3 flex-1 flex flex-col min-h-0">
@@ -12584,15 +12579,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         const frame = videoInputNode.frames?.find(f => Math.abs(f.time - frameTime) < 0.1);
                                                                         return frame?.url || null;
                                                                     };
-                                                                    
+
                                                                     // 获取当前场景的主要关键帧（prev/current/next）
                                                                     const currentKeyframe = result.keyframes?.find(k => k.type === 'current') || result.keyframes?.[0];
                                                                     const prevKeyframe = result.keyframes?.find(k => k.type === 'prev');
                                                                     const nextKeyframe = result.keyframes?.find(k => k.type === 'next');
-                                                                    
+
                                                                     // 获取简短描述（使用current的描述，如果没有则使用第一个）
                                                                     const shortDescription = currentKeyframe?.description || result.keyframes?.[0]?.description || '无描述';
-                                                                    
+
                                                                     return (
                                                                         <div
                                                                             key={idx}
@@ -12607,15 +12602,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                     {result.time_range}
                                                                                 </div>
                                                                             </div>
-                                                                            
+
                                                                             {/* 简短描述 */}
-                                                                            <div 
+                                                                            <div
                                                                                 className="text-[10px] text-zinc-600 dark:text-zinc-400 mb-3 line-clamp-2 select-text cursor-text"
                                                                                 onMouseDown={(e) => e.stopPropagation()}
                                                                             >
                                                                                 {shortDescription}
                                                                             </div>
-                                                                            
+
                                                                             {/* 关键帧缩略图 */}
                                                                             <div className="grid grid-cols-3 gap-2 mb-3">
                                                                                 {[prevKeyframe, currentKeyframe, nextKeyframe].map((kf, kfIdx) => {
@@ -12637,7 +12632,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                     );
                                                                                 })}
                                                                             </div>
-                                                                            
+
                                                                             {/* 提示词列表 */}
                                                                             <div className="space-y-2">
                                                                                 {result.keyframes?.map((kf, kfIdx) => (
@@ -12645,14 +12640,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                         <div className="text-[9px] text-zinc-500">
                                                                                             {kf.type === 'prev' ? '上一帧' : kf.type === 'current' ? '当前帧' : '下一帧'} ({kf.time.toFixed(1)}s)
                                                                                         </div>
-                                                                                        
+
                                                                                         {/* MJ 提示词 */}
                                                                                         {kf.mj_prompt && (
                                                                                             <div className={`p-2 rounded border ${theme === 'dark' ? 'bg-zinc-900 border-zinc-600' : 'bg-zinc-50 border-zinc-200'}`}>
                                                                                                 <div className="flex items-start justify-between gap-2">
                                                                                                     <div className="flex-1">
                                                                                                         <div className="text-[9px] text-zinc-500 mb-1">Midjourney 提示词</div>
-                                                                                                        <div 
+                                                                                                        <div
                                                                                                             className="text-[10px] text-zinc-700 dark:text-zinc-300 break-words select-text cursor-text"
                                                                                                             onMouseDown={(e) => e.stopPropagation()}
                                                                                                         >{kf.mj_prompt}</div>
@@ -12679,7 +12674,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                                                 const worldX = node.x + node.width + 100;
                                                                                                                 const worldY = node.y + node.height / 2;
                                                                                                                 const newNodeId = `node-${Date.now()}`;
-                                                                                                                
+
                                                                                                                 // 创建图生图节点
                                                                                                                 const genImageNode = {
                                                                                                                     id: newNodeId,
@@ -12688,16 +12683,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                                                     y: worldY - 170,
                                                                                                                     width: 360,
                                                                                                                     height: 340,
-                                                                                                                    settings: { 
+                                                                                                                    settings: {
                                                                                                                         model: 'mj-v6',
                                                                                                                         prompt: kf.mj_prompt,
                                                                                                                         ratio: 'Auto',
                                                                                                                         resolution: 'Auto'
                                                                                                                     }
                                                                                                                 };
-                                                                                                                
+
                                                                                                                 setNodes((prev) => [...prev, genImageNode]);
-                                                                                                                
+
                                                                                                                 // 创建预览节点并连接
                                                                                                                 setTimeout(() => {
                                                                                                                     const previewWorldX = node.x + node.width + 200;
@@ -12711,14 +12706,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                                                         width: 320,
                                                                                                                         height: 260
                                                                                                                     };
-                                                                                                                    
+
                                                                                                                     setNodes((prev) => [...prev, previewNode]);
-                                                                                                                    
+
                                                                                                                     // 连接图生图节点到预览节点
-                                                                                                                    setConnections((prev) => [...prev, { 
-                                                                                                                        id: `conn-${Date.now()}`, 
-                                                                                                                        from: newNodeId, 
-                                                                                                                        to: previewNodeId 
+                                                                                                                    setConnections((prev) => [...prev, {
+                                                                                                                        id: `conn-${Date.now()}`,
+                                                                                                                        from: newNodeId,
+                                                                                                                        to: previewNodeId
                                                                                                                     }]);
                                                                                                                 }, 50);
                                                                                                             }}
@@ -12732,14 +12727,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                                 </div>
                                                                                             </div>
                                                                                         )}
-                                                                                        
+
                                                                                         {/* 即梦提示词 */}
                                                                                         {kf.jimeng_prompt && (
                                                                                             <div className={`p-2 rounded border ${theme === 'dark' ? 'bg-zinc-900 border-zinc-600' : 'bg-zinc-50 border-zinc-200'}`}>
                                                                                                 <div className="flex items-start justify-between gap-2">
                                                                                                     <div className="flex-1">
                                                                                                         <div className="text-[9px] text-zinc-500 mb-1">即梦提示词</div>
-                                                                                                        <div 
+                                                                                                        <div
                                                                                                             className="text-[10px] text-zinc-700 dark:text-zinc-300 break-words select-text cursor-text"
                                                                                                             onMouseDown={(e) => e.stopPropagation()}
                                                                                                         >{kf.jimeng_prompt}</div>
@@ -12765,7 +12760,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                     </div>
                                                                                 ))}
                                                                             </div>
-                                                                            
+
                                                                             {/* 全局标签 */}
                                                                             {result.global_tags && (
                                                                                 <div className="mt-2 pt-2 border-t border-zinc-300 dark:border-zinc-700">
@@ -12825,7 +12820,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 const handleShotDrop = (e, shotId) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    
+
                                     // 1. 尝试从浏览器外部拖入文件
                                     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                                         const file = e.dataTransfer.files[0];
@@ -12836,14 +12831,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             return;
                                         }
                                     }
-                                    
+
                                     // 2. 尝试从左侧历史记录拖入 (需要配合你在 Sidebar 设置的 dataTransfer)
                                     // 这里假设历史记录拖拽时没有传递复杂数据，通常较难直接拦截 React 组件间的拖拽
                                     // 建议使用上面的"本地上传"或"粘贴"作为主要交互
                                 };
 
                                 return (
-                                    <div 
+                                    <div
                                         className={`flex flex-col h-full rounded-xl overflow-hidden pointer-events-auto transition-colors ${
                                         theme === 'dark' ? 'bg-zinc-950 border border-zinc-800' : 'bg-white border border-zinc-300 shadow-sm'
                                         }`}
@@ -12861,8 +12856,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 </span>
                                             </div>
                                             {getConnectedVideoAnalyzeNode(node.id) && (
-                                                <button 
-                                                    onClick={() => importShotsFromAnalysis(node.id)} 
+                                                <button
+                                                    onClick={() => importShotsFromAnalysis(node.id)}
                                                     className="text-xs bg-blue-600 px-2 py-1 rounded text-white hover:bg-blue-500 transition-colors shadow-sm"
                                                     onMouseDown={(e) => e.stopPropagation()}
                                                 >
@@ -12872,7 +12867,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         </div>
 
                                         {/* List */}
-                                        <div 
+                                        <div
                                             className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 min-h-0 bg-opacity-50"
                                             onWheel={(e) => {
                                                 e.stopPropagation();
@@ -12882,7 +12877,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 node.settings.shots.map((shot, idx) => {
                                                     const isActiveShot = activeShot?.nodeId === node.id && activeShot?.shotId === shot.id;
                                                     return (
-                                                    <div 
+                                                    <div
                                                         key={shot.id}
                                                         tabIndex={0} // 允许聚焦以响应键盘事件
                                                         onClick={(e) => {
@@ -12892,10 +12887,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         }}
                                                         onPaste={(e) => handleShotPaste(e, shot.id)} // 关键：在行级别监听粘贴
                                                         className={`flex gap-3 p-3 rounded-lg border transition-all group/shot cursor-pointer outline-none focus:ring-2 focus:ring-blue-500/50 ${
-                                                            isActiveShot 
-                                                                ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-500/5 z-10' 
-                                                                : theme === 'dark' 
-                                                                    ? 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-600' 
+                                                            isActiveShot
+                                                                ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-500/5 z-10'
+                                                                : theme === 'dark'
+                                                                    ? 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-600'
                                                                     : 'bg-white border-zinc-200 hover:border-blue-300 hover:shadow-md'
                                                         }`}
                                                     >
@@ -12903,9 +12898,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         <div className={`font-mono text-sm w-6 shrink-0 flex items-start pt-1 font-bold ${
                                                             theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'
                                                         }`}>{idx + 1}</div>
-                                                        
+
                                                         {/* Video/Image Preview with Interaction */}
-                                                        <div 
+                                                        <div
                                                             className={`w-32 aspect-video rounded border relative group overflow-hidden shrink-0 transition-colors ${
                                                                 theme === 'dark' ? 'bg-black border-zinc-800' : 'bg-zinc-100 border-zinc-300'
                                                             }`}
@@ -12918,21 +12913,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             {/* 视频预览（优先显示） */}
                                                             {shot.video_url ? (
                                                                 <>
-                                                                    <video 
-                                                                        src={shot.video_url} 
+                                                                    <video
+                                                                        src={shot.video_url}
                                                                         className="w-full h-full object-cover rounded"
                                                                         controls
                                                                         onMouseDown={(e) => e.stopPropagation()}
                                                                     />
                                                                     {/* 清除/重新生成按钮 */}
-                                                                    <button 
+                                                                    <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             updateShot(node.id, shot.id, { video_url: '', status: 'draft' });
                                                                         }}
                                                                         className={`absolute top-1 right-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
-                                                                            theme === 'dark' 
-                                                                                ? 'bg-black/60 hover:bg-red-600 text-white' 
+                                                                            theme === 'dark'
+                                                                                ? 'bg-black/60 hover:bg-red-600 text-white'
                                                                                 : 'bg-white/80 hover:bg-red-500 text-white'
                                                                         }`}
                                                                         title="清除视频"
@@ -12953,14 +12948,14 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 <>
                                                                     <img src={shot.image_url} className="w-full h-full object-cover" alt={`镜头 ${idx + 1}`} />
                                                                     {/* 删除按钮 UI */}
-                                                                    <button 
+                                                                    <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             updateShot(node.id, shot.id, { image_url: '' });
                                                                         }}
                                                                         className={`absolute top-1 right-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
-                                                                            theme === 'dark' 
-                                                                                ? 'bg-black/60 hover:bg-red-600 text-white' 
+                                                                            theme === 'dark'
+                                                                                ? 'bg-black/60 hover:bg-red-600 text-white'
                                                                                 : 'bg-white/80 hover:bg-red-500 text-white'
                                                                         }`}
                                                                         title="移除图片"
@@ -12977,7 +12972,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     <span>点击粘贴/拖入</span>
                                                                 </div>
                                                             )}
-                                                            
+
                                                             {/* Hover Overlay for Upload（仅在无视频和图片时显示） */}
                                                             {!shot.video_url && !shot.image_url && (
                                                                 <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs transition-opacity cursor-pointer">
@@ -12985,11 +12980,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         <FolderOpen size={14}/>
                                                                         选择图片
                                                                     </span>
-                                                                    <input 
-                                                                        type="file" 
-                                                                        className="hidden" 
-                                                                        accept="image/*" 
-                                                                        onChange={(e) => handleShotImageUpload(e, shot.id)} 
+                                                                    <input
+                                                                        type="file"
+                                                                        className="hidden"
+                                                                        accept="image/*"
+                                                                        onChange={(e) => handleShotImageUpload(e, shot.id)}
                                                                     />
                                                                 </label>
                                                             )}
@@ -13006,7 +13001,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         const newModel = e.target.value;
                                                                         const config = apiConfigs.find(c => c.id === newModel);
                                                                         const defaultDuration = getDefaultDurationForModel(newModel);
-                                                                        updateShot(node.id, shot.id, { 
+                                                                        updateShot(node.id, shot.id, {
                                                                             model: newModel,
                                                                             duration: shot.duration || defaultDuration
                                                                         });
@@ -13025,7 +13020,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         </option>
                                                                     ))}
                                                                 </select>
-                                                                
+
                                                                 {/* Ratio Select */}
                                                                 <select
                                                                     value={shot.ratio || '16:9'}
@@ -13042,7 +13037,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         <option key={ratio} value={ratio}>{ratio}</option>
                                                                     ))}
                                                                 </select>
-                                                                
+
                                                                 {/* Duration Select */}
                                                                 {(() => {
                                                                     const currentModel = shot.model || (apiConfigs.find(c => c.type === 'Video' && c.id === 'sora-2')?.id || apiConfigs.find(c => c.type === 'Video')?.id || '');
@@ -13068,13 +13063,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     );
                                                                 })()}
                                                             </div>
-                                                            
-                                                            <textarea 
+
+                                                            <textarea
                                                                 className={`text-sm outline-none resize-none bg-transparent transition-all ${
-                                                                    theme === 'dark' 
-                                                                        ? 'text-zinc-200 placeholder:text-zinc-700' 
+                                                                    theme === 'dark'
+                                                                        ? 'text-zinc-200 placeholder:text-zinc-700'
                                                                         : 'text-zinc-800 placeholder:text-zinc-400'
-                                                                }`} 
+                                                                }`}
                                                                 value={shot.description || ''}
                                                                 placeholder="画面描述..."
                                                                 onChange={(e) => updateShot(node.id, shot.id, { description: e.target.value })}
@@ -13114,8 +13109,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 }}
                                                             />
                                                             <div className={`p-2 rounded text-xs font-mono border transition-all relative ${
-                                                                theme === 'dark' 
-                                                                    ? 'bg-zinc-950 border-zinc-800 text-zinc-400' 
+                                                                theme === 'dark'
+                                                                    ? 'bg-zinc-950 border-zinc-800 text-zinc-400'
                                                                     : 'bg-zinc-50 border-zinc-200 text-zinc-600'
                                                             }`}
                                                             style={{
@@ -13179,20 +13174,20 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                            
+
                                                             {/* 角色引用栏 (仅 Sora 模型) */}
                                                             {(() => {
                                                                 const currentModel = shot.model || '';
                                                                 const isSora = currentModel && (currentModel.includes('sora') || currentModel === 'sora-2' || currentModel === 'sora-2-pro');
-                                                                
+
                                                                 if (!isSora || characterLibrary.length === 0) return null;
-                                                                
+
                                                                 const currentPrompt = shot.prompt || '';
                                                                 const expandKey = `${node.id}-${shot.id}`;
                                                                 const isExpanded = characterReferenceBarExpanded[expandKey] || false;
                                                                 const maxVisible = 5; // 最多显示5个角色，超过则显示展开按钮
                                                                 const shouldShowExpand = characterLibrary.length > maxVisible;
-                                                                
+
                                                                 return (
                                                                     <div className="border-t border-dashed mt-1" style={{
                                                                         borderColor: theme === 'dark' ? 'rgba(63, 63, 70, 0.5)' : 'rgba(161, 161, 170, 0.5)'
@@ -13202,7 +13197,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                 {(isExpanded ? characterLibrary : characterLibrary.slice(0, maxVisible)).map(char => {
                                                                             const tag = `@${char.username}`;
                                                                             const isActive = currentPrompt.includes(tag);
-                                                                            
+
                                                                             return (
                                                                                 <button
                                                                                     key={char.id}
@@ -13222,12 +13217,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                     className={`relative shrink-0 transition-all ${isActive ? 'scale-110' : 'opacity-70 hover:opacity-100'}`}
                                                                                     title={char.username}
                                                                                 >
-                                                                                    <img 
-                                                                                        src={char.profile_picture_url || ''} 
+                                                                                    <img
+                                                                                        src={char.profile_picture_url || ''}
                                                                                         alt={char.username}
                                                                                         className={`w-8 h-8 rounded-full object-cover border-2 ${
-                                                                                            isActive 
-                                                                                                ? 'border-blue-500 ring-2 ring-blue-500' 
+                                                                                            isActive
+                                                                                                ? 'border-blue-500 ring-2 ring-blue-500'
                                                                                                 : 'border-transparent'
                                                                                         }`}
                                                                                         onError={(e) => {
@@ -13273,19 +13268,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     </div>
                                                                 );
                                                             })()}
-                                                            
+
                                                             <div className="flex gap-1 flex-wrap items-center mt-1">
                                                                 {shot.tags?.map((tag, tagIdx) => (
                                                                     <span key={tagIdx} className={`px-1.5 py-0.5 text-[10px] rounded border ${
-                                                                        theme === 'dark' 
-                                                                            ? 'bg-blue-900/30 text-blue-300 border-blue-800' 
+                                                                        theme === 'dark'
+                                                                            ? 'bg-blue-900/30 text-blue-300 border-blue-800'
                                                                             : 'bg-blue-50 text-blue-600 border-blue-200'
                                                                     }`}>{tag}</span>
                                                                 ))}
                                                                 {shot.camera && (
                                                                     <span className={`px-1.5 py-0.5 text-[10px] rounded border flex items-center gap-1 ${
-                                                                        theme === 'dark' 
-                                                                            ? 'bg-purple-900/30 text-purple-300 border-purple-800' 
+                                                                        theme === 'dark'
+                                                                            ? 'bg-purple-900/30 text-purple-300 border-purple-800'
                                                                             : 'bg-purple-50 text-purple-600 border-purple-200'
                                                                     }`}>
                                                                         <Video size={8} /> {shot.camera}
@@ -13303,13 +13298,13 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         <div className={`flex flex-col gap-2 justify-center border-l pl-2 shrink-0 ${
                                                             theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
                                                         }`}>
-                                                            <button 
+                                                            <button
                                                                 onClick={() => generateSingleShot(node.id, shot)}
                                                                 className={`p-1.5 rounded text-white shadow-sm transition-all active:scale-95 ${
-                                                                    shot.status === 'generating' 
-                                                                        ? 'bg-zinc-500 cursor-not-allowed' 
+                                                                    shot.status === 'generating'
+                                                                        ? 'bg-zinc-500 cursor-not-allowed'
                                                                         : 'bg-green-600 hover:bg-green-500'
-                                                                }`} 
+                                                                }`}
                                                                 title="生成此镜头"
                                                                 onMouseDown={(e) => e.stopPropagation()}
                                                                 disabled={shot.status === 'generating'}
@@ -13320,11 +13315,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                     <Play size={14} fill="currentColor"/>
                                                                 )}
                                                             </button>
-                                                            <button 
+                                                            <button
                                                                 onClick={() => deleteShot(node.id, shot.id)}
                                                                 className={`p-1.5 transition-colors ${
-                                                                    theme === 'dark' 
-                                                                        ? 'text-zinc-600 hover:text-red-500' 
+                                                                    theme === 'dark'
+                                                                        ? 'text-zinc-600 hover:text-red-500'
                                                                         : 'text-zinc-400 hover:text-red-600'
                                                                 }`}
                                                                 title="删除镜头"
@@ -13345,16 +13340,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 </div>
                                             )}
                                         </div>
-                                        
+
                                         {/* Footer */}
                                         <div className={`p-3 border-t shrink-0 ${
                                             theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
                                         }`}>
-                                            <button 
+                                            <button
                                                 onClick={() => addEmptyShot(node.id)}
                                                 className={`w-full py-2 border border-dashed text-xs rounded transition-colors flex items-center justify-center gap-2 ${
-                                                    theme === 'dark' 
-                                                        ? 'border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200' 
+                                                    theme === 'dark'
+                                                        ? 'border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
                                                         : 'border-zinc-300 text-zinc-500 hover:bg-white hover:text-blue-600 hover:border-blue-400'
                                                 }`}
                                                 onMouseDown={(e) => e.stopPropagation()}
@@ -13368,9 +13363,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
 
                             {node.type === 'image-compare' && (
                                 <div className="w-full h-full pointer-events-auto">
-                                    <ImageCompareView 
-                                        img1={connectedImages[0]} 
-                                        img2={connectedImages[1]} 
+                                    <ImageCompareView
+                                        img1={connectedImages[0]}
+                                        img2={connectedImages[1]}
                                     />
                                 </div>
                             )}
@@ -13379,18 +13374,18 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 // 获取预览内容：优先使用连接的图片，其次使用node.content
                                 const previewConnectedImages = connectedImages.length > 0 ? connectedImages : [];
                                 const hasContent = node.content || (node.previewMjImages && node.previewMjImages.length > 0) || previewConnectedImages.length > 0;
-                                const allPreviewImages = node.previewMjImages && node.previewMjImages.length > 0 
-                                    ? node.previewMjImages 
-                                    : previewConnectedImages.length > 0 
-                                        ? previewConnectedImages 
+                                const allPreviewImages = node.previewMjImages && node.previewMjImages.length > 0
+                                    ? node.previewMjImages
+                                    : previewConnectedImages.length > 0
+                                        ? previewConnectedImages
                                         : (node.content ? [node.content] : []);
                                 // 优先使用连接的图片，其次使用node.content
-                                const primaryPreviewUrl = previewConnectedImages.length > 0 
-                                    ? previewConnectedImages[0] 
+                                const primaryPreviewUrl = previewConnectedImages.length > 0
+                                    ? previewConnectedImages[0]
                                     : (node.content || (allPreviewImages.length > 0 ? allPreviewImages[0] : null));
                                 const isMultiImage = allPreviewImages.length > 1;
                                 const hasVideo = allPreviewImages.some(url => isVideoUrl(url));
-                                
+
                                 return (
                                 <div className="flex flex-col h-full pointer-events-auto">
                                     <div
@@ -13448,8 +13443,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     // 选择此图片作为输出
-                                                                    setNodes(prev => prev.map(n => 
-                                                                        n.id === node.id 
+                                                                    setNodes(prev => prev.map(n =>
+                                                                        n.id === node.id
                                                                             ? { ...n, selectedPreviewImage: imgUrl }
                                                                             : n
                                                                     ));
@@ -13464,15 +13459,15 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 )}
                                                                 {/* 序号标记 */}
                                                                 <div className={`absolute top-1 right-1 z-30 text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                                                    isSelected 
-                                                                        ? 'bg-blue-500/80 text-white' 
+                                                                    isSelected
+                                                                        ? 'bg-blue-500/80 text-white'
                                                                         : theme === 'dark' ? 'bg-black/60 text-white/70' : 'bg-white/60 text-zinc-700'
                                                                 }`}>
                                                                     {idx + 1}
                                                                 </div>
-                                                                <img 
-                                                                    src={imgUrl} 
-                                                                    className="max-w-full max-h-full w-auto h-auto object-contain" 
+                                                                <img
+                                                                    src={imgUrl}
+                                                                    className="max-w-full max-h-full w-auto h-auto object-contain"
                                                                     alt={`预览图 ${idx + 1}`}
                                                                     draggable={false}
                                                                     style={{
@@ -13492,7 +13487,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         if (container && img.naturalWidth && img.naturalHeight) {
                                                                             const containerWidth = container.clientWidth;
                                                                             const containerHeight = container.clientHeight;
-                                                                            
+
                                                                             // 如果图片比容器小，保持原始尺寸；否则按比例缩放
                                                                             if (img.naturalWidth <= containerWidth && img.naturalHeight <= containerHeight) {
                                                                                 img.style.width = `${img.naturalWidth}px`;
@@ -13517,10 +13512,10 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                                 // 获取图片尺寸
                                                                                 const img = e.target.closest('.group').querySelector('img');
                                                                                 if (img && img.naturalWidth && img.naturalHeight) {
-                                                                                    setNodes((prev) => prev.map((n) => 
-                                                                                        n.id === node.id 
-                                                                                            ? { 
-                                                                                                ...n, 
+                                                                                    setNodes((prev) => prev.map((n) =>
+                                                                                        n.id === node.id
+                                                                                            ? {
+                                                                                                ...n,
                                                                                                 isMasking: !n.isMasking,
                                                                                                 maskingImageUrl: imgUrl,
                                                                                                 maskingImageDimensions: { w: img.naturalWidth, h: img.naturalHeight }
@@ -13547,7 +13542,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                 )}
                                                                 {/* 非编辑模式下的蒙版回显（gen-image 节点） */}
                                                                 {node.type === 'gen-image' && !node.isMasking && node.maskContent && node.maskingImageUrl === imgUrl && (
-                                                                    <div 
+                                                                    <div
                                                                         className="absolute inset-0 z-20 pointer-events-none"
                                                                         style={{
                                                                             background: 'rgba(255, 0, 0, 0.3)',
@@ -13570,8 +13565,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                         isActive={node.isMasking}
                                                                         isPerformanceMode={isPerformanceMode}
                                                                         onClose={() => {
-                                                                            setNodes((prev) => prev.map((n) => 
-                                                                                n.id === node.id 
+                                                                            setNodes((prev) => prev.map((n) =>
+                                                                                n.id === node.id
                                                                                     ? { ...n, isMasking: false }
                                                                                     : n
                                                                             ));
@@ -13580,8 +13575,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                                             console.log('蒙版已保存:', maskDataUrl);
                                                                         }}
                                                                         onUpdateNode={(nodeId, updates) => {
-                                                                            setNodes((prev) => prev.map((n) => 
-                                                                                n.id === nodeId 
+                                                                            setNodes((prev) => prev.map((n) =>
+                                                                                n.id === nodeId
                                                                                     ? { ...n, ...updates }
                                                                                     : n
                                                                             ));
@@ -13607,7 +13602,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             if (container && img.naturalWidth && img.naturalHeight) {
                                                                 const containerWidth = container.clientWidth;
                                                                 const containerHeight = container.clientHeight;
-                                                                
+
                                                                 // 如果图片比容器小，保持原始尺寸；否则按比例缩放
                                                                 if (img.naturalWidth <= containerWidth && img.naturalHeight <= containerHeight) {
                                                                     img.style.width = `${img.naturalWidth}px`;
@@ -13711,336 +13706,29 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             })()}
 
                             {node.type === 'local-save' && (
-                                <div className="flex flex-col h-full pointer-events-auto">
-                                    <div
-                                        className={`flex items-center justify-between px-3 py-2 border-b text-xs font-semibold ${
-                                            theme === 'dark'
-                                                ? 'border-zinc-800 text-zinc-200'
-                                                : 'border-zinc-200 text-zinc-700'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <FolderOpen size={13} className="text-green-500" />
-                                            <span>保存到本地</span>
-                                        </div>
-                                        <div className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
-                                            node.settings?.serverStatus === 'connected' 
-                                                ? 'bg-green-500/20 text-green-400' 
-                                                : node.settings?.serverStatus === 'error'
-                                                    ? 'bg-red-500/20 text-red-400'
-                                                    : 'bg-zinc-500/20 text-zinc-400'
-                                        }`}>
-                                            <div className={`w-1.5 h-1.5 rounded-full ${
-                                                node.settings?.serverStatus === 'connected' 
-                                                    ? 'bg-green-400' 
-                                                    : node.settings?.serverStatus === 'error'
-                                                        ? 'bg-red-400'
-                                                        : 'bg-zinc-400'
-                                            }`} />
-                                            {node.settings?.serverStatus === 'connected' ? '已连接' : 
-                                             node.settings?.serverStatus === 'error' ? '未连接' : '检测中'}
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 flex flex-col p-3 gap-2 overflow-auto">
-                                        <div className="space-y-2">
-                                            <label className={`text-[10px] font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                                                服务器地址
-                                            </label>
-                                            <div className="flex gap-1">
-                                                <input
-                                                    type="text"
-                                                    value={node.settings?.serverUrl || 'http://127.0.0.1:9527'}
-                                                    onChange={(e) => updateNodeSettings(node.id, { serverUrl: e.target.value })}
-                                                    placeholder="http://127.0.0.1:9527"
-                                                    className={`flex-1 px-2 py-1.5 text-xs rounded border outline-none ${
-                                                        theme === 'dark'
-                                                            ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
-                                                            : 'bg-white border-zinc-300 text-zinc-800'
-                                                    }`}
-                                                    onMouseDown={(e) => e.stopPropagation()}
-                                                />
-                                                <button
-                                                    className={`px-2 py-1 text-xs rounded border transition-colors ${
-                                                        theme === 'dark'
-                                                            ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-                                                            : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
-                                                    }`}
-                                                    onMouseDown={(e) => e.stopPropagation()}
-                                                    onClick={async () => {
-                                                        const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
-                                                        try {
-                                                            const response = await fetch(`${serverUrl}/ping`, { method: 'GET' });
-                                                            if (response.ok) {
-                                                                const data = await response.json();
-                                                                updateNodeSettings(node.id, { 
-                                                                    serverStatus: 'connected',
-                                                                    savePath: data.save_path || ''
-                                                                });
-                                                            } else {
-                                                                updateNodeSettings(node.id, { serverStatus: 'error' });
-                                                            }
-                                                        } catch (e) {
-                                                            updateNodeSettings(node.id, { serverStatus: 'error' });
-                                                        }
-                                                    }}
-                                                >
-                                                    测试
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className={`text-[10px] font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                                                子文件夹（可选）
-                                            </label>
-                                            <div className="relative">
-                                                <input
-                                                    type="text"
-                                                    value={node.settings?.subfolder || ''}
-                                                    onChange={(e) => updateNodeSettings(node.id, { subfolder: e.target.value })}
-                                                    placeholder="例如: project1/images"
-                                                    className={`w-full px-2 py-1.5 text-xs rounded border outline-none ${
-                                                        theme === 'dark'
-                                                            ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
-                                                            : 'bg-white border-zinc-300 text-zinc-800'
-                                                    }`}
-                                                    onMouseDown={(e) => e.stopPropagation()}
-                                                    list={`folder-history-${node.id}`}
-                                                />
-                                                {savedFolderHistory.length > 0 && (
-                                                    <datalist id={`folder-history-${node.id}`}>
-                                                        {savedFolderHistory.map((folder, idx) => (
-                                                            <option key={idx} value={folder} />
-                                                        ))}
-                                                    </datalist>
-                                                )}
-                                            </div>
-                                            {savedFolderHistory.length > 0 && (
-                                                <div className="flex flex-wrap gap-1 mt-1">
-                                                    {savedFolderHistory.slice(0, 5).map((folder, idx) => (
-                                                        <button
-                                                            key={idx}
-                                                            className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
-                                                                theme === 'dark'
-                                                                    ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                                                                    : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300'
-                                                            } ${node.settings?.subfolder === folder ? 'ring-1 ring-green-500' : ''}`}
-                                                            onMouseDown={(e) => e.stopPropagation()}
-                                                            onClick={() => updateNodeSettings(node.id, { subfolder: folder })}
-                                                            title={folder}
-                                                        >
-                                                            {folder.length > 12 ? folder.slice(0, 12) + '...' : folder}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                id={`auto-save-${node.id}`}
-                                                checked={node.settings?.autoSave || false}
-                                                onChange={(e) => updateNodeSettings(node.id, { autoSave: e.target.checked })}
-                                                className="w-3.5 h-3.5 rounded"
-                                                onMouseDown={(e) => e.stopPropagation()}
-                                            />
-                                            <label 
-                                                htmlFor={`auto-save-${node.id}`}
-                                                className={`text-[10px] ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}
-                                            >
-                                                有新输入时自动保存
-                                            </label>
-                                        </div>
-                                        {node.settings?.savePath && (
-                                            <div className={`text-[10px] p-2 rounded ${
-                                                theme === 'dark' ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600'
-                                            }`}>
-                                                保存路径: {node.settings.savePath}
-                                            </div>
-                                        )}
-                                        {connectedImages.length > 0 && (
-                                            <div className={`p-2 rounded border ${
-                                                theme === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'
-                                            }`}>
-                                                <div className={`text-[10px] font-medium mb-1.5 ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                                                    待保存文件 ({connectedImages.length})
-                                                </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {connectedImages.slice(0, 6).map((img, idx) => {
-                                                        const isVideo = isVideoUrl(img);
-                                                        return isVideo ? (
-                                                            <div key={idx} className={`w-8 h-8 rounded flex items-center justify-center ${
-                                                                theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
-                                                            }`}>
-                                                                <Video size={14} className="text-blue-400" />
-                                                            </div>
-                                                        ) : (
-                                                            <img key={idx} src={img} className="w-8 h-8 rounded object-cover" />
-                                                        );
-                                                    })}
-                                                    {connectedImages.length > 6 && (
-                                                        <div className={`w-8 h-8 rounded flex items-center justify-center text-[10px] ${
-                                                            theme === 'dark' ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-600'
-                                                        }`}>
-                                                            +{connectedImages.length - 6}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {node.settings?.lastSaved && (
-                                            <div className={`text-[10px] ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>
-                                                ✓ 上次保存: {new Date(node.settings.lastSaved).toLocaleTimeString()}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className={`px-3 py-2 border-t ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                                        <button
-                                            className={`w-full px-3 py-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                                                node.settings?.serverStatus === 'connected'
-                                                    ? theme === 'dark'
-                                                        ? 'bg-green-600 hover:bg-green-500 text-white'
-                                                        : 'bg-green-500 hover:bg-green-600 text-white'
-                                                    : theme === 'dark'
-                                                        ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
-                                                        : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
-                                            }`}
-                                            disabled={node.settings?.serverStatus !== 'connected'}
-                                            onMouseDown={(e) => e.stopPropagation()}
-                                            onClick={async () => {
-                                                if (node.settings?.serverStatus !== 'connected') {
-                                                    alert('请先连接本地服务器！\n\n运行 "启动本地接收器.bat" 启动服务。');
-                                                    return;
-                                                }
-                                                if (connectedImages.length === 0) {
-                                                    alert('没有可保存的图片。请将图片节点连接到此节点。');
-                                                    return;
-                                                }
-                                                const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
-                                                const subfolder = node.settings?.subfolder || '';
-                                                const files = [];
-                                                
-                                                // PNG转高质量JPG的辅助函数
-                                                const convertToJpg = async (imgUrl) => {
-                                                    return new Promise(async (resolve) => {
-                                                        try {
-                                                            const img = new Image();
-                                                            img.crossOrigin = 'anonymous';
-                                                            img.onload = () => {
-                                                                const canvas = document.createElement('canvas');
-                                                                canvas.width = img.naturalWidth;
-                                                                canvas.height = img.naturalHeight;
-                                                                const ctx = canvas.getContext('2d');
-                                                                ctx.fillStyle = '#FFFFFF';
-                                                                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                                                                ctx.drawImage(img, 0, 0);
-                                                                // 使用95%质量的JPG，接近无损
-                                                                const jpgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-                                                                resolve(jpgDataUrl);
-                                                            };
-                                                            img.onerror = () => resolve(null);
-                                                            img.src = imgUrl;
-                                                        } catch (e) {
-                                                            resolve(null);
-                                                        }
-                                                    });
-                                                };
-                                                
-                                                for (let i = 0; i < connectedImages.length; i++) {
-                                                    const imgUrl = connectedImages[i];
-                                                    const isVideo = isVideoUrl(imgUrl);
-                                                    try {
-                                                        let content = imgUrl;
-                                                        let ext = '.jpg';
-                                                        
-                                                        if (isVideo) {
-                                                            // 视频直接保存，不转换
-                                                            ext = '.mp4';
-                                                            if (!imgUrl.startsWith('data:')) {
-                                                                const response = await fetch(imgUrl);
-                                                                const blob = await response.blob();
-                                                                content = await new Promise((resolve) => {
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => resolve(reader.result);
-                                                                    reader.readAsDataURL(blob);
-                                                                });
-                                                            }
-                                                        } else {
-                                                            // 图片转换为高质量JPG
-                                                            const jpgContent = await convertToJpg(imgUrl);
-                                                            if (jpgContent) {
-                                                                content = jpgContent;
-                                                            } else if (!imgUrl.startsWith('data:')) {
-                                                                // 转换失败时回退到原始格式
-                                                                const response = await fetch(imgUrl);
-                                                                const blob = await response.blob();
-                                                                content = await new Promise((resolve) => {
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => resolve(reader.result);
-                                                                    reader.readAsDataURL(blob);
-                                                                });
-                                                                ext = '.png';
-                                                            }
-                                                        }
-                                                        const timestamp = Date.now();
-                                                        files.push({
-                                                            filename: `tapnow_${timestamp}_${i}${ext}`,
-                                                            content: content
-                                                        });
-                                                    } catch (e) {
-                                                        console.error('处理文件失败:', e);
-                                                    }
-                                                }
-                                                if (files.length === 0) {
-                                                    alert('没有可保存的文件');
-                                                    return;
-                                                }
-                                                try {
-                                                    const response = await fetch(`${serverUrl}/save-batch`, {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ files, subfolder })
-                                                    });
-                                                    const result = await response.json();
-                                                    if (result.success) {
-                                                        updateNodeSettings(node.id, { 
-                                                            lastSaved: new Date().toISOString(),
-                                                            savedFiles: result.results || [],
-                                                            lastSavedUrls: [...connectedImages]
-                                                        });
-                                                        // 保存成功后，将子文件夹添加到历史记录
-                                                        if (subfolder && subfolder.trim() !== '') {
-                                                            addFolderToHistory(subfolder.trim());
-                                                        }
-                                                        alert(`保存成功！\n${result.message}`);
-                                                    } else {
-                                                        alert(`保存失败: ${result.error || '未知错误'}`);
-                                                    }
-                                                } catch (e) {
-                                                    console.error('保存请求失败:', e);
-                                                    alert('保存失败: 无法连接到本地服务器');
-                                                    updateNodeSettings(node.id, { serverStatus: 'error' });
-                                                }
-                                            }}
-                                        >
-                                            <Save size={14} />
-                                            保存到本地
-                                        </button>
-                                    </div>
-                                </div>
+                                <LocalSaveNode
+                                    node={node}
+                                    theme={theme}
+                                    connectedImages={connectedImages}
+                                    savedFolderHistory={savedFolderHistory}
+                                    updateNodeSettings={updateNodeSettings}
+                                    addFolderToHistory={addFolderToHistory}
+                                    isVideoUrl={isVideoUrl}
+                                />
                             )}
 
                             {(node.type === 'gen-image' || node.type === 'gen-video') && (() => {
                                 // 查找当前节点对应的正在生成的历史记录
-                                const activeTask = history.find(h => 
-                                    h.sourceNodeId === node.id && 
+                                const activeTask = history.find(h =>
+                                    h.sourceNodeId === node.id &&
                                     (h.status === 'generating' || h.status === 'completed')
                                 );
                                 const isGenerating = activeTask && activeTask.status === 'generating';
-                                const finalDuration = activeTask?.durationMs 
-                                    ? (activeTask.durationMs / 1000).toFixed(1) 
+                                const finalDuration = activeTask?.durationMs
+                                    ? (activeTask.durationMs / 1000).toFixed(1)
                                     : null;
                                 const elapsedSeconds = nodeTimers[node.id] || 0;
-                                
+
                                 return (
                                 <div className="p-3 flex flex-col h-full pointer-events-auto">
                                     {/* 计时器显示 */}
@@ -14134,19 +13822,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         {node.type === 'gen-image' && (() => {
                                             // 检查当前节点或上游节点是否有蒙版
                                             const hasMaskInCurrent = node?.maskContent;
-                                            
+
                                             // 查找连接到当前节点的源节点（优先查找 default 输入，如果没有则查找所有输入）
                                             let incomingConn = connections.find(c => c.to === node.id && (!c.inputType || c.inputType === 'default'));
                                             if (!incomingConn) {
                                                 // 如果没有 default 连接，查找任何连接到该节点的连接
                                                 incomingConn = connections.find(c => c.to === node.id);
                                             }
-                                            
+
                                             // 使用 nodesMap 进行 O(1) 查找
                                             const sourceNode = incomingConn ? nodesMap.get(incomingConn.from) : null;
                                             const hasMaskFromSource = sourceNode && sourceNode.maskContent;
                                             const hasMask = hasMaskInCurrent || hasMaskFromSource;
-                                            
+
                                             if (hasMask) {
                                                 return (
                                                     <div className={`flex items-center gap-1.5 mb-2 px-2 py-1 rounded text-[10px] font-medium ${
@@ -14193,21 +13881,21 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             )}
                                         </div>
                                     </div>
-                                    
+
                                     {/* 角色引用栏 (仅 Sora 模型) */}
                                     {node.type === 'gen-video' && (() => {
                                         const currentModel = node.settings?.model || '';
                                         const modelConfig = apiConfigsMap.get(currentModel);
                                         const modelName = modelConfig?.modelName || modelConfig?.id || currentModel;
                                         const isSora = modelName && (modelName.includes('sora') || currentModel.includes('sora'));
-                                        
+
                                         if (!isSora || characterLibrary.length === 0) return null;
-                                        
+
                                         const currentPrompt = node.settings?.videoPrompt || '';
                                         const isExpanded = characterReferenceBarExpanded[node.id] || false;
                                         const maxVisible = 5; // 最多显示5个角色，超过则显示展开按钮
                                         const shouldShowExpand = characterLibrary.length > maxVisible;
-                                        
+
                                         return (
                                             <div className="border-t border-dashed mt-1" style={{
                                                 borderColor: theme === 'dark' ? 'rgba(63, 63, 70, 0.5)' : 'rgba(161, 161, 170, 0.5)'
@@ -14217,7 +13905,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         {(isExpanded ? characterLibrary : characterLibrary.slice(0, maxVisible)).map(char => {
                                                     const tag = `@${char.username}`;
                                                     const isActive = currentPrompt.includes(tag);
-                                                    
+
                                                     return (
                                                         <button
                                                             key={char.id}
@@ -14237,12 +13925,12 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             className={`relative shrink-0 transition-all ${isActive ? 'scale-110' : 'opacity-70 hover:opacity-100'}`}
                                                             title={char.username}
                                                         >
-                                                            <img 
-                                                                src={char.profile_picture_url || ''} 
+                                                            <img
+                                                                src={char.profile_picture_url || ''}
                                                                 alt={char.username}
                                                                 className={`w-8 h-8 rounded-full object-cover border-2 ${
-                                                                    isActive 
-                                                                        ? 'border-blue-500 ring-2 ring-blue-500' 
+                                                                    isActive
+                                                                        ? 'border-blue-500 ring-2 ring-blue-500'
                                                                         : 'border-transparent'
                                                                 }`}
                                                                 onError={(e) => {
@@ -14380,7 +14068,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             </div>
                                         );
                                     })()}
-                                    
+
                                     {/* Midjourney指令UI: oref, ow, sref */}
                                     {node.type === 'gen-image' && (() => {
                                         const currentModel = apiConfigsMap.get(node.settings?.model);
@@ -14393,16 +14081,16 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             <div className="flex flex-col gap-1.5 mb-2 relative" data-mj-instructions="true">
                                                 {/* oref指令 */}
                                                 <div className="relative flex items-center gap-1.5" data-mj-oref="true">
-                                                    <div className={`input-point ${orefConnected ? 'connected' : ''} ${connectingTarget === node.id && connectingInputType === 'oref' ? 'active' : ''}`} 
-                                                         title="oref输入" 
-                                                         onMouseDown={(e) => { 
-                                                             e.stopPropagation(); 
-                                                             e.preventDefault(); 
+                                                    <div className={`input-point ${orefConnected ? 'connected' : ''} ${connectingTarget === node.id && connectingInputType === 'oref' ? 'active' : ''}`}
+                                                         title="oref输入"
+                                                         onMouseDown={(e) => {
+                                                             e.stopPropagation();
+                                                             e.preventDefault();
                                                              // 立即计算并更新当前鼠标的世界坐标，防止线条乱飞
                                                              const world = screenToWorld(e.clientX, e.clientY);
-                                                             setMousePos(world); 
-                                                             setConnectingTarget(node.id); 
-                                                             setConnectingInputType('oref'); 
+                                                             setMousePos(world);
+                                                             setConnectingTarget(node.id);
+                                                             setConnectingInputType('oref');
                                                          }}
                                                          onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'oref')}
                                                          data-input-type="oref"
@@ -14415,7 +14103,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         )}
                                                     </div>
                                                 </div>
-                                                
+
                                                 {/* ow指令 */}
                                                 <div className="relative flex items-center gap-1.5">
                                                     <div className="w-0.5rem h-0.5rem mr-0.25rem ml-2"></div>
@@ -14449,19 +14137,19 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                         }`}
                                                     />
                                                 </div>
-                                                
+
                                                 {/* sref指令 */}
                                                 <div className="relative flex items-center gap-1.5" data-mj-sref="true">
-                                                    <div className={`input-point ${srefConnected ? 'connected' : ''} ${connectingTarget === node.id && connectingInputType === 'sref' ? 'active' : ''}`} 
-                                                         title="sref输入" 
-                                                         onMouseDown={(e) => { 
-                                                             e.stopPropagation(); 
-                                                             e.preventDefault(); 
+                                                    <div className={`input-point ${srefConnected ? 'connected' : ''} ${connectingTarget === node.id && connectingInputType === 'sref' ? 'active' : ''}`}
+                                                         title="sref输入"
+                                                         onMouseDown={(e) => {
+                                                             e.stopPropagation();
+                                                             e.preventDefault();
                                                              // 立即计算并更新当前鼠标的世界坐标，防止线条乱飞
                                                              const world = screenToWorld(e.clientX, e.clientY);
-                                                             setMousePos(world); 
-                                                             setConnectingTarget(node.id); 
-                                                             setConnectingInputType('sref'); 
+                                                             setMousePos(world);
+                                                             setConnectingTarget(node.id);
+                                                             setConnectingInputType('sref');
                                                          }}
                                                          onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'sref')}
                                                          data-input-type="sref"
@@ -14575,9 +14263,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         }`}
                                     >
                                         <div className="relative flex-1 min-w-0">
-                                            <button 
+                                            <button
                                                 title={apiConfigsMap.get(node.settings?.model)?.provider}
-                                                onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown?.type === 'model' ? null : { nodeId: node.id, type: 'model' }); }} 
+                                                onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown?.type === 'model' ? null : { nodeId: node.id, type: 'model' }); }}
                                                 className={`flex items-center gap-2 pl-1 pr-2 py-1 rounded text-[10px] transition-colors border w-full ${
                                                     theme === 'dark'
                                                         ? 'bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 border-zinc-700/50'
@@ -14785,8 +14473,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                             const availableResolutions = getResolutionsForModel(modelId);
                                                             const currentResolution = node.settings?.resolution || 'Auto';
                                                             // 如果当前分辨率不在可用选项中，使用第一个可用选项作为显示值
-                                                            const displayResolution = availableResolutions.includes(currentResolution) 
-                                                                ? currentResolution 
+                                                            const displayResolution = availableResolutions.includes(currentResolution)
+                                                                ? currentResolution
                                                                 : (availableResolutions[0] || 'Auto');
                                                             // 如果当前分辨率不在可用选项中，自动更新
                                                             if (!availableResolutions.includes(currentResolution) && availableResolutions.length > 0) {
@@ -14944,11 +14632,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
             const isPerfMode = nodes.length > 50;
             // 交互模式：正在拖拽或缩放时启用
             const isInteracting = isDragging || isPanning;
-            
+
             return (
                 <>
                     {/* 极简艺术进度条 */}
-                    <ArtisticProgress 
+                    <ArtisticProgress
                         visible={progressState.visible}
                         progress={progressState.progress}
                         status={progressState.status}
@@ -14958,7 +14646,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                         className={`w-full h-screen font-sans overflow-hidden select-none flex flex-col transition-colors duration-300 ${
                             theme === 'dark' ? 'bg-[#09090b] text-white' : 'bg-zinc-100 text-zinc-900'
                         } ${isPerfMode ? 'perf-mode' : ''} ${isInteracting ? 'interacting' : ''}`}
-                        onClick={() => { 
+                        onClick={() => {
                             if(historyContextMenu.visible) setHistoryContextMenu(prev => ({ ...prev, visible: false }));
                             if(frameContextMenu.visible) setFrameContextMenu(prev => ({ ...prev, visible: false }));
                         }}
@@ -15103,8 +14791,8 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             {[ { id: 'select', icon: MousePointer2 }, { id: 'history', icon: History }, { id: 'characters', icon: Users } ].map((tool) => (
                                 <button
                                     key={tool.id}
-                                    onClick={() => { 
-                                        setActiveTool(tool.id); 
+                                    onClick={() => {
+                                        setActiveTool(tool.id);
                                         if (tool.id === 'history') setHistoryOpen(!historyOpen);
                                         if (tool.id === 'characters') setCharactersOpen(!charactersOpen);
                                     }}
@@ -15199,528 +14887,65 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             />
 
                             {/* Characters Panel */}
-                        {charactersOpen && (
-                            <div
-                                className={`w-72 z-30 flex flex-col animate-in slide-in-from-left border-r transition-colors duration-300 ${
-                                    theme === 'dark' ? 'bg-[#121214] border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                                }`}
-                            >
-                                <div
-                                    className={`p-3 border-b flex justify-between items-center ${
-                                        theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
-                                    }`}
-                                >
-                                    <h3
-                                        className={`font-bold text-xs ${
-                                            theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
-                                        }`}
-                                    >
-                                        Sora 角色库
-                                    </h3>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => {
-                                                // 自动计算默认 endpoint
-                                                const soraConfig = apiConfigs.find(c => c.type === 'Video' && (c.id === 'sora-2' || c.id === 'sora-2-pro'));
-                                                if (soraConfig) {
-                                                    const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                                                    setCreateCharacterEndpoint(`${baseUrl}/sora/v1/characters`);
-                                                } else {
-                                                    const baseUrl = DEFAULT_BASE_URL.replace(/\/+$/, '');
-                                                    setCreateCharacterEndpoint(`${baseUrl}/sora/v1/characters`);
-                                                }
-                                                setCreateCharacterOpen(true);
-                                            }}
-                                            className={`px-2 py-1 text-[10px] rounded transition-colors ${
-                                                theme === 'dark'
-                                                    ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                                                    : 'bg-blue-500 hover:bg-blue-600 text-white'
-                                            }`}
-                                        >
-                                            新建角色
-                                        </button>
-                                        <button onClick={() => setCharactersOpen(false)}>
-                                            <X
-                                                size={12}
-                                                className={theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}
-                                            />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-                                    {characterLibrary.length === 0 ? (
-                                        <div className={`text-center py-8 text-sm ${
-                                            theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
-                                        }`}>
-                                            暂无角色，点击"新建角色"开始创建
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {characterLibrary.map((character) => (
-                                                <div
-                                                    key={character.id}
-                                                    className={`group rounded-lg overflow-hidden border cursor-pointer hover:border-blue-500/50 transition-colors ${
-                                                        theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
-                                                    }`}
-                                                    onClick={() => {
-                                                        const tag = ` @${character.username} `;
-                                                        // 尝试找到当前激活的输入框
-                                                        const activeElement = document.activeElement;
-                                                        if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
-                                                            const textarea = activeElement;
-                                                            const start = textarea.selectionStart || 0;
-                                                            const end = textarea.selectionEnd || 0;
-                                                            const text = textarea.value;
-                                                            const newText = text.slice(0, start) + tag + text.slice(end);
-                                                            textarea.value = newText;
-                                                            const newCursorPos = start + tag.length;
-                                                            textarea.setSelectionRange(newCursorPos, newCursorPos);
-                                                            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                                                            textarea.focus();
-                                                        } else {
-                                                            // 复制到剪贴板
-                                                            navigator.clipboard.writeText(tag.trim()).then(() => {
-                                                                alert(`已复制角色标签: ${tag.trim()}`);
-                                                            });
-                                                        }
-                                                    }}
-                                                >
-                                                    <div className="aspect-square bg-zinc-800 relative group/char">
-                                                        {character.profile_picture_url || character.localCacheUrl ? (
-                                                            <img
-                                                                src={character.localCacheUrl || character.profile_picture_url}
-                                                                alt={character.username}
-                                                                className="w-full h-full object-cover"
-                                                                onError={(e) => {
-                                                                    // 如果本地缓存失败，尝试原始URL
-                                                                    if (character.localCacheUrl && e.target.src === character.localCacheUrl && character.profile_picture_url) {
-                                                                        e.target.src = character.profile_picture_url;
-                                                                    } else {
-                                                                        e.target.style.display = 'none';
-                                                                    }
-                                                                }}
-                                                            />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-zinc-500">
-                                                                <User size={24} />
-                                                            </div>
-                                                        )}
-                                                        {/* 本地缓存标识 */}
-                                                        {character.localCacheUrl && (
-                                                            <div className="absolute top-1 left-1 px-1 py-0.5 rounded text-[8px] bg-green-500/80 text-white">
-                                                                本地
-                                                            </div>
-                                                        )}
-                                                        {/* 删除按钮 */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (confirm(`确定要删除角色 "${character.username}" 吗？`)) {
-                                                                    const updated = characterLibrary.filter(c => c.id !== character.id);
-                                                                    setCharacterLibrary(updated);
-                                                                    try {
-                                                                        localStorage.setItem('tapnow_characters', JSON.stringify(updated));
-                                                                    } catch (err) {
-                                                                        console.error('保存角色库失败:', err);
-                                                                    }
-                                                                }
-                                                            }}
-                                                            className="absolute top-1 right-1 p-1.5 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
-                                                            title="删除角色"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </div>
-                                                    <div className="p-2 relative">
-                                                        <p className={`text-xs truncate flex items-center gap-1 ${
-                                                            theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
-                                                        }`}>
-                                                            {character.username}
-                                                            <LinkIcon 
-                                                                size={12} 
-                                                                className="text-green-500 shrink-0" 
-                                                                title="Sora 2 已同步"
-                                                            />
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                            <CharacterPanel
+                                isOpen={charactersOpen}
+                                theme={theme}
+                                characters={characterLibrary}
+                                setCharacters={setCharacterLibrary}
+                                onCreateCharacter={() => {
+                                    const soraConfig = apiConfigs.find((config) => config.type === 'Video' && (config.id === 'sora-2' || config.id === 'sora-2-pro'));
+                                    const baseUrl = soraConfig
+                                        ? (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '')
+                                        : DEFAULT_BASE_URL.replace(/\/+$/, '');
+                                    setCreateCharacterEndpoint(baseUrl + '/sora/v1/characters');
+                                    setCreateCharacterOpen(true);
+                                }}
+                                onClose={() => setCharactersOpen(false)}
+                            />
 
-                        {/* Create Character Modal */}
-                        {createCharacterOpen && (
-                            <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center" onClick={() => setCreateCharacterOpen(false)}>
-                                <div 
-                                    className={`w-[500px] max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl flex flex-col ${
-                                        theme === 'dark' ? 'bg-[#121214] border-zinc-800' : 'bg-white border-zinc-200'
-                                    } border`}
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <div className={`p-4 border-b flex justify-between items-center ${
-                                        theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
-                                    }`}>
-                                        <h3 className={`font-bold text-sm ${
-                                            theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
-                                        }`}>
-                                            新建角色
-                                        </h3>
-                                        <button onClick={() => setCreateCharacterOpen(false)}>
-                                            <X size={16} className={theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} />
-                                        </button>
-                                    </div>
-                                    <div className="p-4 space-y-4">
-                                        {/* 视频源选择 */}
-                                        <div>
-                                            <label className={`block text-xs mb-2 ${
-                                                theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
-                                            }`}>
-                                                视频源
-                                            </label>
-                                            <div className="flex gap-2 mb-2">
-                                                <button
-                                                    onClick={() => {
-                                                        setCreateCharacterVideoSourceType('url');
-                                                        setCreateCharacterSelectedTaskId('');
-                                                    }}
-                                                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                                                        createCharacterVideoSourceType === 'url'
-                                                            ? theme === 'dark'
-                                                                ? 'bg-blue-600 text-white'
-                                                                : 'bg-blue-500 text-white'
-                                                            : theme === 'dark'
-                                                                ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                                                                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                                                    }`}
-                                                >
-                                                    输入视频 URL
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setCreateCharacterVideoSourceType('history');
-                                                        setCreateCharacterVideoUrl('');
-                                                        setCreateCharacterVideoError(null);
-                                                    }}
-                                                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                                                        createCharacterVideoSourceType === 'history'
-                                                            ? theme === 'dark'
-                                                                ? 'bg-blue-600 text-white'
-                                                                : 'bg-blue-500 text-white'
-                                                            : theme === 'dark'
-                                                                ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                                                                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                                                    }`}
-                                                >
-                                                    从历史记录选择
-                                                </button>
-                                            </div>
-                                            
-                                            {createCharacterVideoSourceType === 'url' ? (
-                                                <input
-                                                    type="text"
-                                                    value={createCharacterVideoUrl}
-                                                    onChange={(e) => setCreateCharacterVideoUrl(e.target.value)}
-                                                    placeholder="输入视频 URL..."
-                                                    className={`w-full px-3 py-2 text-xs rounded border outline-none ${
-                                                        theme === 'dark'
-                                                            ? 'bg-zinc-900 border-zinc-700 text-zinc-200 placeholder-zinc-600'
-                                                            : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
-                                                    }`}
-                                                />
-                                            ) : (
-                                                <div className="relative">
-                                                    {/* 自定义下拉框触发器 */}
-                                                    <div
-                                                        onClick={() => setCreateCharacterHistoryDropdownOpen(!createCharacterHistoryDropdownOpen)}
-                                                        className={`w-full px-3 py-2 text-xs rounded border outline-none cursor-pointer flex items-center justify-between ${
-                                                            theme === 'dark'
-                                                                ? 'bg-zinc-900 border-zinc-700 text-zinc-200'
-                                                                : 'bg-white border-zinc-300 text-zinc-800'
-                                                        }`}
-                                                    >
-                                                        <span className={createCharacterSelectedTaskId ? '' : 'opacity-60'}>
-                                                            {createCharacterSelectedTaskId 
-                                                                ? (() => {
-                                                                    const item = historyMap.get(createCharacterSelectedTaskId);
-                                                                    return item ? `${item.prompt?.slice(0, 40) || '未命名'} - ${item.time}` : '选择历史记录中的视频...';
-                                                                })()
-                                                                : '选择历史记录中的视频...'
-                                                            }
-                                                        </span>
-                                                        <ChevronDown size={14} className={`transition-transform ${createCharacterHistoryDropdownOpen ? 'rotate-180' : ''}`} />
-                                                    </div>
-                                                    
-                                                    {/* 下拉列表 - 带缩略图 */}
-                                                    {createCharacterHistoryDropdownOpen && (
-                                                        <div className={`absolute z-50 w-full mt-1 rounded-lg border shadow-xl max-h-80 overflow-y-auto custom-scrollbar ${
-                                                            theme === 'dark'
-                                                                ? 'bg-zinc-900 border-zinc-700'
-                                                                : 'bg-white border-zinc-300'
-                                                        }`}>
-                                                            {getCompletedVideoHistory(history).length === 0 ? (
-                                                                <div className={`p-4 text-xs text-center ${
-                                                                    theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
-                                                                }`}>
-                                                                    暂无已完成的视频
-                                                                </div>
-                                                            ) : (
-                                                                getCompletedVideoHistory(history).map(item => (
-                                                                    <div
-                                                                        key={item.id}
-                                                                        onClick={() => {
-                                                                            setCreateCharacterSelectedTaskId(item.id);
-                                                                            setCreateCharacterHistoryDropdownOpen(false);
-                                                                            // 自动填充URL
-                                                                            if (item.url) {
-                                                                                setCreateCharacterVideoSourceType('url');
-                                                                                setCreateCharacterVideoUrl(item.url);
-                                                                                setCreateCharacterSelectedTaskId('');
-                                                                            }
-                                                                        }}
-                                                                        className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
-                                                                            theme === 'dark'
-                                                                                ? 'hover:bg-zinc-800'
-                                                                                : 'hover:bg-zinc-100'
-                                                                        }`}
-                                                                    >
-                                                                        {/* 视频缩略图 */}
-                                                                        <div className={`w-20 h-12 flex-shrink-0 rounded overflow-hidden ${
-                                                                            theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'
-                                                                        }`}>
-                                                                            <video
-                                                                                src={item.localCacheUrl || item.url || item.originalUrl}
-                                                                                className="w-full h-full object-cover"
-                                                                                muted
-                                                                                preload="metadata"
-                                                                                onLoadedMetadata={(e) => {
-                                                                                    // 跳到第一帧作为缩略图
-                                                                                    e.target.currentTime = 0.1;
-                                                                                }}
-                                                                            />
-                                                                        </div>
-                                                                        {/* 视频信息 */}
-                                                                        <div className="flex-1 min-w-0">
-                                                                            <div className={`text-xs font-medium truncate ${
-                                                                                theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'
-                                                                            }`}>
-                                                                                {item.prompt?.slice(0, 50) || '未命名视频'}
-                                                                            </div>
-                                                                            <div className={`text-[10px] mt-0.5 flex items-center gap-2 ${
-                                                                                theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
-                                                                            }`}>
-                                                                                <span>{item.modelName || '未知模型'}</span>
-                                                                                <span>•</span>
-                                                                                <span>{item.time}</span>
-                                                                                {item.localCacheUrl && (
-                                                                                    <>
-                                                                                        <span>•</span>
-                                                                                        <span className="text-green-500">本地缓存</span>
-                                                                                    </>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                ))
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {/* 点击外部关闭下拉框 */}
-                                                    {createCharacterHistoryDropdownOpen && (
-                                                        <div 
-                                                            className="fixed inset-0 z-40" 
-                                                            onClick={() => setCreateCharacterHistoryDropdownOpen(false)}
-                                                        />
-                                                    )}
-                                                </div>
-                                            )}
-                                            
-                                            {/* 视频预览区域 */}
-                                            {(() => {
-                                                let currentVideoUrl = null;
-                                                if (createCharacterVideoSourceType === 'url' && createCharacterVideoUrl.trim()) {
-                                                    currentVideoUrl = createCharacterVideoUrl.trim();
-                                                } else if (createCharacterVideoSourceType === 'history' && createCharacterSelectedTaskId) {
-                                                    const selectedHistoryItem = historyMap.get(createCharacterSelectedTaskId);
-                                                    if (selectedHistoryItem && selectedHistoryItem.url) {
-                                                        currentVideoUrl = selectedHistoryItem.url;
-                                                    }
-                                                }
-                                                
-                                                return currentVideoUrl ? (
-                                                    <div className="mt-2 mb-2">
-                                                        <video 
-                                                            key={currentVideoUrl}
-                                                            controls 
-                                                            crossOrigin="anonymous"
-                                                            className="w-full h-40 object-contain bg-black rounded-lg" 
-                                                            src={currentVideoUrl}
-                                                            onError={(e) => {
-                                                                console.error('视频加载失败:', currentVideoUrl, e);
-                                                                setCreateCharacterVideoError('无法加载视频预览，请检查链接有效性或跨域限制');
-                                                            }}
-                                                            onLoadStart={() => {
-                                                                // 清除错误提示
-                                                                setCreateCharacterVideoError(null);
-                                                            }}
-                                                            onLoadedData={() => {
-                                                                // 视频加载成功，清除错误
-                                                                setCreateCharacterVideoError(null);
-                                                            }}
-                                                        />
-                                                        {createCharacterVideoError && (
-                                                            <div className="text-red-500 text-xs mt-1 text-center">
-                                                                {createCharacterVideoError}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ) : null;
-                                            })()}
-                                        </div>
-                                        
-                                        {/* 时间范围 */}
-                                        <div>
-                                            <label className={`block text-xs mb-2 ${
-                                                theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
-                                            }`}>
-                                                时间范围（秒，间隔需在 1-3 秒之间）
-                                            </label>
-                                            <div className="flex gap-2 items-center">
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.1"
-                                                    value={createCharacterStartSecond}
-                                                    onChange={(e) => setCreateCharacterStartSecond(parseFloat(e.target.value) || 0)}
-                                                    className={`w-20 px-2 py-1.5 text-xs rounded border outline-none ${
-                                                        theme === 'dark'
-                                                            ? 'bg-zinc-900 border-zinc-700 text-zinc-200'
-                                                            : 'bg-white border-zinc-300 text-zinc-800'
-                                                    }`}
-                                                />
-                                                <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>到</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.1"
-                                                    value={createCharacterEndSecond}
-                                                    onChange={(e) => setCreateCharacterEndSecond(parseFloat(e.target.value) || 0)}
-                                                    className={`w-20 px-2 py-1.5 text-xs rounded border outline-none ${
-                                                        theme === 'dark'
-                                                            ? 'bg-zinc-900 border-zinc-700 text-zinc-200'
-                                                            : 'bg-white border-zinc-300 text-zinc-800'
-                                                    }`}
-                                                />
-                                                <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                                    秒（间隔: {(createCharacterEndSecond - createCharacterStartSecond).toFixed(1)}s）
-                                                </span>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* 高级设置：API 接口地址 */}
-                                        <div>
-                                            <label className={`block text-xs mb-2 ${
-                                                theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
-                                            }`}>
-                                                API 接口地址 (API Endpoint)
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={createCharacterEndpoint}
-                                                onChange={(e) => setCreateCharacterEndpoint(e.target.value)}
-                                                placeholder="例如: https://your-domain.com/sora/v1/characters"
-                                                className={`w-full px-3 py-2 text-xs rounded border outline-none font-mono ${
-                                                    theme === 'dark'
-                                                        ? 'bg-zinc-900 border-zinc-700 text-zinc-200 placeholder-zinc-600'
-                                                        : 'bg-white border-zinc-300 text-zinc-800 placeholder-zinc-400'
-                                                }`}
-                                                onFocus={(e) => {
-                                                    // 如果为空，自动填充默认值
-                                                    if (!e.target.value) {
-                                                        const soraConfig = apiConfigs.find(c => c.type === 'Video' && (c.id === 'sora-2' || c.id === 'sora-2-pro'));
-                                                        const baseUrl = soraConfig 
-                                                            ? (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '')
-                                                            : DEFAULT_BASE_URL.replace(/\/+$/, '');
-                                                        setCreateCharacterEndpoint(`${baseUrl}/sora/v1/characters`);
-                                                    }
-                                                }}
-                                            />
-                                            <p className={`text-[10px] mt-1 ${
-                                                theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
-                                            }`}>
-                                                默认自动填充，可根据服务商要求修改路径
-                                            </p>
-                                        </div>
-                                        
-                                        {/* 提交按钮 */}
-                                        <div className="flex justify-end gap-2 pt-2">
-                                            <button
-                                                onClick={() => setCreateCharacterOpen(false)}
-                                                className={`px-4 py-2 text-xs rounded transition-colors ${
-                                                    theme === 'dark'
-                                                        ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                                                        : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                                                }`}
-                                            >
-                                                取消
-                                            </button>
-                                            <button
-                                                onClick={async () => {
-                                                    if (createCharacterVideoSourceType === 'url' && !createCharacterVideoUrl.trim()) {
-                                                        alert('请输入视频 URL');
-                                                        return;
-                                                    }
-                                                    if (createCharacterVideoSourceType === 'history' && !createCharacterSelectedTaskId) {
-                                                        alert('请选择历史记录中的视频');
-                                                        return;
-                                                    }
-                                                    if (createCharacterEndSecond - createCharacterStartSecond < 1 || createCharacterEndSecond - createCharacterStartSecond > 3) {
-                                                        alert('时间范围必须在 1-3 秒之间');
-                                                        return;
-                                                    }
-                                                    setCreateCharacterSubmitting(true);
-                                                    try {
-                                                        // 优先使用用户手动输入的 API 地址，如果为空则使用默认地址
-                                                        const endpointToUse = createCharacterEndpoint.trim() || null;
-                                                        
-                                                        if (createCharacterVideoSourceType === 'url') {
-                                                            await createCharacter(createCharacterVideoUrl, createCharacterStartSecond, createCharacterEndSecond, null, endpointToUse);
-                                                        } else {
-                                                            await createCharacter('', createCharacterStartSecond, createCharacterEndSecond, createCharacterSelectedTaskId, endpointToUse);
-                                                        }
-                                                    } finally {
-                                                        setCreateCharacterSubmitting(false);
-                                                    }
-                                                }}
-                                                disabled={createCharacterSubmitting}
-                                                className={`px-4 py-2 text-xs rounded transition-colors ${
-                                                    createCharacterSubmitting
-                                                        ? 'bg-zinc-400 text-zinc-200 cursor-not-allowed'
-                                                        : theme === 'dark'
-                                                            ? 'bg-blue-600 text-white hover:bg-blue-500'
-                                                            : 'bg-blue-500 text-white hover:bg-blue-600'
-                                                }`}
-                                            >
-                                                {createCharacterSubmitting ? '创建中...' : '创建角色'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                            <CreateCharacterModal
+                                isOpen={createCharacterOpen}
+                                theme={theme}
+                                history={history}
+                                historyMap={historyMap}
+                                sourceType={createCharacterVideoSourceType}
+                                setSourceType={setCreateCharacterVideoSourceType}
+                                videoUrl={createCharacterVideoUrl}
+                                setVideoUrl={setCreateCharacterVideoUrl}
+                                selectedTaskId={createCharacterSelectedTaskId}
+                                setSelectedTaskId={setCreateCharacterSelectedTaskId}
+                                historyDropdownOpen={createCharacterHistoryDropdownOpen}
+                                setHistoryDropdownOpen={setCreateCharacterHistoryDropdownOpen}
+                                startSecond={createCharacterStartSecond}
+                                setStartSecond={setCreateCharacterStartSecond}
+                                endSecond={createCharacterEndSecond}
+                                setEndSecond={setCreateCharacterEndSecond}
+                                endpoint={createCharacterEndpoint}
+                                setEndpoint={setCreateCharacterEndpoint}
+                                submitting={createCharacterSubmitting}
+                                setSubmitting={setCreateCharacterSubmitting}
+                                videoError={createCharacterVideoError}
+                                setVideoError={setCreateCharacterVideoError}
+                                getDefaultEndpoint={() => {
+                                    const soraConfig = apiConfigs.find((config) => config.type === 'Video' && (config.id === 'sora-2' || config.id === 'sora-2-pro'));
+                                    const baseUrl = soraConfig
+                                        ? (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '')
+                                        : DEFAULT_BASE_URL.replace(/\/+$/, '');
+                                    return baseUrl + '/sora/v1/characters';
+                                }}
+                                createCharacter={createCharacter}
+                                onClose={() => setCreateCharacterOpen(false)}
+                            />
 
                         {/* Main Canvas Area */}
                         <div className="flex-1 relative overflow-hidden flex">
                              <div ref={canvasRef} id="canvas-bg" className="flex-1 h-full cursor-default relative"
                                 onMouseDown={handleMouseDown} onClick={handleBackgroundClick} onDoubleClick={handleDoubleClick} onContextMenu={handleCanvasContextMenu}
-                                style={{ 
-                                    backgroundImage: theme === 'dark' 
-                                        ? 'radial-gradient(#27272a 1px, transparent 1px)' 
-                                        : 'radial-gradient(rgba(0, 0, 0, 0.08) 0.5px, transparent 0.5px)', 
-                                    backgroundSize: `${20 * view.zoom}px ${20 * view.zoom}px`, 
+                                style={{
+                                    backgroundImage: theme === 'dark'
+                                        ? 'radial-gradient(#27272a 1px, transparent 1px)'
+                                        : 'radial-gradient(rgba(0, 0, 0, 0.08) 0.5px, transparent 0.5px)',
+                                    backgroundSize: `${20 * view.zoom}px ${20 * view.zoom}px`,
                                     backgroundPosition: `${view.x}px ${view.y}px`,
                                     WebkitFontSmoothing: 'antialiased',
                                     MozOsxFontSmoothing: 'grayscale',
@@ -15728,9 +14953,9 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     transform: 'translateZ(0)',
                                     backfaceVisibility: 'hidden'
                                 }}>
-                                <div className="absolute origin-top-left will-change-transform" style={{ 
-                                    transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.zoom})`, 
-                                    width: VIRTUAL_CANVAS_WIDTH, 
+                                <div className="absolute origin-top-left will-change-transform" style={{
+                                    transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.zoom})`,
+                                    width: VIRTUAL_CANVAS_WIDTH,
                                     height: VIRTUAL_CANVAS_HEIGHT,
                                     WebkitFontSmoothing: 'antialiased',
                                     MozOsxFontSmoothing: 'grayscale',
@@ -15753,7 +14978,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                     />
                                     {visibleNodes.map((node) => renderNode(node))}
                                 </div>
-                                
+
                                 {/* 框选框 */}
                                 {selectionBox && (
                                     <div
@@ -15769,412 +14994,33 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                             </div>
 
                             {/* Chat Sidebar Panel */}
-                            <div
-                                className={`fixed right-0 top-12 bottom-0 border-l shadow-2xl flex flex-col z-50 transition-transform duration-300 ease-in-out select-text ${
-                                    theme === 'dark' ? 'bg-[#121214] border-zinc-800' : 'bg-white border-zinc-200'
-                                } ${isChatOpen ? 'translate-x-0' : 'translate-x-full'}`}
-                                style={{ 
-                                    width: chatWidth,
-                                    pointerEvents: isChatOpen ? 'auto' : 'none'
-                                }}
-                            >
-                                <div
-                                    className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize transition-colors z-50 flex items-center justify-center group ${
-                                        theme === 'dark' ? 'hover:bg-blue-600/50' : 'hover:bg-blue-400/30'
-                                    }`}
-                                    onMouseDown={handleChatResizeStart}
-                                >
-                                    <div
-                                        className={`h-8 w-1 rounded transition-colors ${
-                                            theme === 'dark'
-                                                ? 'bg-zinc-700 group-hover:bg-blue-500'
-                                                : 'bg-zinc-300 group-hover:bg-blue-500'
-                                        }`}
-                                    ></div>
-                                </div>
-                                <div
-                                    className={`h-12 flex items-center justify-between px-3 shrink-0 border-b ${
-                                        theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-2 overflow-hidden">
-                                        <div className="relative">
-                                            <select
-                                                value={chatModel}
-                                                onChange={(e) => setChatModel(e.target.value)}
-                                                className={`text-xs border rounded pl-2 pr-6 py-1 appearance-none outline-none focus:border-blue-500 cursor-pointer max-w-[180px] truncate ${
-                                                    theme === 'dark'
-                                                        ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
-                                                        : 'bg-white text-zinc-800 border-zinc-300'
-                                                }`}
-                                            >
-                                                {apiConfigs.filter(c => c.type === 'Chat').map(c => <option key={c.id} value={c.id}>{c.provider} ({c.modelName})</option>)}
-                                            </select>
-                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"><div className={`w-1.5 h-1.5 rounded-full ${getStatusColor(chatModel)}`}></div></div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            onClick={createNewChat}
-                                            className={`p-1.5 rounded ${
-                                                theme === 'dark'
-                                                    ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                                                    : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
-                                            }`}
-                                            title="新对话"
-                                        >
-                                            <Plus size={16} />
-                                        </button>
-                                        {chatSessions.length > 1 && (
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => setChatSessionDropdownOpen(!chatSessionDropdownOpen)}
-                                                    className={`p-1.5 rounded ${
-                                                        theme === 'dark'
-                                                        ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                                                            : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
-                                                    }`}
-                                                >
-                                                    <History size={16} />
-                                                </button>
-                                                {chatSessionDropdownOpen && (
-                                                    <div
-                                                        className={`absolute right-0 top-full mt-1 w-48 rounded-lg shadow-xl py-1 z-50 border ${
-                                                            theme === 'dark'
-                                                                ? 'bg-[#18181b] border-zinc-700'
-                                                                : 'bg-white border-zinc-200'
-                                                        }`}
-                                                        onMouseLeave={() => setChatSessionDropdownOpen(false)}
-                                                    >
-                                                        {chatSessions.map(s => (
-                                                            <div
-                                                                key={s.id}
-                                                                className={`flex items-center justify-between px-3 py-2 text-xs cursor-pointer ${
-                                                                    currentChatId === s.id
-                                                                        ? theme === 'dark'
-                                                                            ? 'bg-zinc-800 text-white'
-                                                                            : 'bg-zinc-100 text-zinc-900'
-                                                                        : theme === 'dark'
-                                                                            ? 'text-zinc-400 hover:bg-zinc-800/50'
-                                                                            : 'text-zinc-500 hover:bg-zinc-100'
-                                                                }`}
-                                                                onClick={() => {
-                                                                    setCurrentChatId(s.id);
-                                                                    setChatSessionDropdownOpen(false);
-                                                                }}
-                                                            >
-                                                                <span className="truncate flex-1">{s.title}</span>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        deleteChatSession(e, s.id);
-                                                                    }}
-                                                                    className={`p-1 ${
-                                                                        theme === 'dark'
-                                                                            ? 'text-zinc-600 hover:text-red-500'
-                                                                            : 'text-zinc-400 hover:text-red-500'
-                                                                    }`}
-                                                                >
-                                                                    <X size={10} />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                        <button
-                                            onClick={() => setIsChatOpen(false)}
-                                            className={`p-1.5 rounded ${
-                                                theme === 'dark'
-                                                    ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                                                    : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
-                                            }`}
-                                        >
-                                            <ChevronRight size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 select-text">
-                                    {currentSession?.messages.map((msg) => (
-                                        <div key={msg.id || msg.timestamp || `msg-${Math.random()}`} className={`flex gap-3 select-text ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 select-none ${msg.role === 'user' ? 'bg-blue-600' : 'bg-green-600'}`}>{msg.role === 'user' ? <User size={16} className="text-white" /> : <Bot size={16} className="text-white" />}</div>
-                                            <div className={`flex flex-col gap-1 max-w-[85%] select-text ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                                {msg.files && msg.files.length > 0 && (
-                                                    <div className={`flex flex-wrap gap-2 mb-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                        {msg.files.map((f, i) => (
-                                                            <div
-                                                                key={i}
-                                                                className={`rounded p-1 border flex items-center gap-1 ${
-                                                                    theme === 'dark'
-                                                                        ? 'bg-zinc-800 border-zinc-700'
-                                                                        : 'bg-zinc-100 border-zinc-300'
-                                                                }`}
-                                                            >
-                                                                {f.isImage ? (
-                                                                    <img src={f.content} className="w-16 h-16 object-cover rounded" alt={f.name} />
-                                                                ) : f.isVideo ? (
-                                                                    <video
-                                                                        src={f.content}
-                                                                        controls
-                                                                        className={`max-w-full rounded-lg bg-black max-h-[300px] border ${
-                                                                            theme === 'dark' ? 'border-zinc-700' : 'border-zinc-300'
-                                                                        }`}
-                                                                        playsInline
-                                                                    />
-                                                                ) : f.isAudio ? (
-                                                                    <div
-                                                                        className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                            theme === 'dark'
-                                                                                ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                                : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                                        }`}
-                                                                    >
-                                                                        <FileAudio size={16} />
-                                                                        <span className="text-[8px] mt-1">音频</span>
-                                                                    </div>
-                                                                ) : f.isPDF ? (
-                                                                    <div
-                                                                        className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                            theme === 'dark'
-                                                                                ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                                : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                                        }`}
-                                                                    >
-                                                                        <FileText size={16} />
-                                                                        <span className="text-[8px] mt-1">PDF</span>
-                                                                    </div>
-                                                                ) : f.isDoc ? (
-                                                                    <div
-                                                                        className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                            theme === 'dark'
-                                                                                ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                                : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                                        }`}
-                                                                    >
-                                                                        <FileText size={16} />
-                                                                        <span className="text-[8px] mt-1">DOC</span>
-                                                                    </div>
-                                                                ) : f.isExcel ? (
-                                                                    <div
-                                                                        className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                            theme === 'dark'
-                                                                                ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                                : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                                        }`}
-                                                                    >
-                                                                        <FileText size={16} />
-                                                                        <span className="text-[8px] mt-1">XLS</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div
-                                                                        className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                            theme === 'dark'
-                                                                                ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                                : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                                        }`}
-                                                                    >
-                                                                        <FileText size={16} />
-                                                                        <span className="text-[8px] mt-1 max-w-full truncate px-1">
-                                                                            {f.fileExt || f.name.split('.').pop() || '文件'}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                {(msg.content || (msg.files && msg.files.length > 0)) && (
-                                                    <div
-                                                        className={`rounded-2xl px-4 py-2 text-sm select-text break-words whitespace-pre-wrap ${
-                                                            msg.role === 'user'
-                                                                ? theme === 'dark'
-                                                                    ? 'bg-zinc-800 text-white rounded-tr-none'
-                                                                    : 'bg-zinc-300 text-zinc-900 rounded-tr-none'
-                                                                : theme === 'dark'
-                                                                    ? 'bg-zinc-800/50 text-zinc-300 rounded-tl-none border border-zinc-800'
-                                                                    : 'bg-zinc-100 text-zinc-800 rounded-tl-none border border-zinc-200'
-                                                        }`}
-                                                        style={{ userSelect: 'text', cursor: 'text' }}
-                                                    >
-                                                        {msg.isError ? (
-                                                            <span className="text-red-500 select-text cursor-text" style={{ userSelect: 'text', cursor: 'text' }}>{msg.content}</span>
-                                                        ) : msg.content ? (
-                                                            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} style={{ userSelect: 'text', cursor: 'text' }}></div>
-                                                        ) : null}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {isChatSending && (
-                                        <div className="flex gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center shrink-0">
-                                                <Bot size={16} className="text-white" />
-                                            </div>
-                                            <div
-                                                className={`rounded-2xl rounded-tl-none px-4 py-2 border flex items-center ${
-                                                    theme === 'dark'
-                                                        ? 'bg-zinc-800/50 border-zinc-800'
-                                                        : 'bg-zinc-100 border-zinc-200'
-                                                }`}
-                                            >
-                                                <div className="flex gap-1">
-                                                    <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-                                                    <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                                                    <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div ref={chatEndRef} />
-                                </div>
-                                <div
-                                    className={`p-3 border-t ${
-                                        theme === 'dark' ? 'border-zinc-800 bg-[#121214]' : 'border-zinc-200 bg-zinc-50'
-                                    }`}
-                                >
-                                    {chatFiles.length > 0 && (
-                                        <div className="flex gap-2 overflow-x-auto pb-2 mb-2 custom-scrollbar">
-                                            {chatFiles.map((f, i) => (
-                                                <div key={i} className="relative group shrink-0">
-                                                    {f.isImage ? (
-                                                        <img
-                                                            src={f.content}
-                                                            className={`w-12 h-12 object-cover rounded border ${
-                                                                theme === 'dark' ? 'border-zinc-700' : 'border-zinc-300'
-                                                            }`}
-                                                            alt={f.name}
-                                                        />
-                                                    ) : f.isVideo ? (
-                                                        <video
-                                                            src={f.content}
-                                                            className={`w-16 h-12 object-cover rounded border bg-black ${
-                                                                theme === 'dark' ? 'border-zinc-700' : 'border-zinc-300'
-                                                            }`}
-                                                            muted
-                                                            playsInline
-                                                        />
-                                                    ) : f.isAudio ? (
-                                                        <div
-                                                            className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                theme === 'dark'
-                                                                    ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                    : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                            }`}
-                                                        >
-                                                            <FileAudio size={16} />
-                                                            <span className="text-[8px] mt-1">音频</span>
-                                                        </div>
-                                                    ) : f.isPDF ? (
-                                                        <div
-                                                            className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                theme === 'dark'
-                                                                    ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                    : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                            }`}
-                                                        >
-                                                            <FileText size={16} />
-                                                            <span className="text-[8px] mt-1">PDF</span>
-                                                        </div>
-                                                    ) : f.isDoc ? (
-                                                        <div
-                                                            className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                theme === 'dark'
-                                                                    ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                    : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                            }`}
-                                                        >
-                                                            <FileText size={16} />
-                                                            <span className="text-[8px] mt-1">DOC</span>
-                                                        </div>
-                                                    ) : f.isExcel ? (
-                                                        <div
-                                                            className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                theme === 'dark'
-                                                                    ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                    : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                            }`}
-                                                        >
-                                                            <FileText size={16} />
-                                                            <span className="text-[8px] mt-1">XLS</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div
-                                                            className={`w-12 h-12 rounded flex flex-col items-center justify-center ${
-                                                                theme === 'dark'
-                                                                    ? 'bg-zinc-800 border border-zinc-700 text-zinc-400'
-                                                                    : 'bg-zinc-100 border border-zinc-300 text-zinc-500'
-                                                            }`}
-                                                        >
-                                                            <FileText size={16} />
-                                                            <span className="text-[8px] mt-1 max-w-full truncate px-1">
-                                                                {f.fileExt || f.name.split('.').pop() || '文件'}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                    <button
-                                                        onClick={() => removeChatFile(i)}
-                                                        className={`absolute -top-1 -right-1 rounded-full p-0.5 border opacity-0 group-hover:opacity-100 transition-opacity ${
-                                                            theme === 'dark'
-                                                                ? 'bg-zinc-900 text-zinc-400 hover:text-white border-zinc-700'
-                                                                : 'bg-white text-zinc-500 hover:text-zinc-900 border-zinc-300'
-                                                        }`}
-                                                    >
-                                                        <X size={10} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <div
-                                        className={`relative rounded-xl flex items-end p-2 focus-within:border-blue-500/50 transition-colors border ${
-                                            theme === 'dark'
-                                                ? 'bg-zinc-800/50 border-zinc-700'
-                                                : 'bg-white border-zinc-300'
-                                        }`}
-                                    >
-                                        <label
-                                            className={`p-2 cursor-pointer transition-colors ${
-                                                theme === 'dark'
-                                                    ? 'text-zinc-400 hover:text-white'
-                                                    : 'text-zinc-500 hover:text-zinc-900'
-                                            }`}
-                                            title="上传文件"
-                                        >
-                                            <Paperclip size={18} />
-                                            <input type="file" multiple className="hidden" onChange={handleChatFileUpload} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.js,.py,.html,.css,.json,.csv" />
-                                        </label>
-                                        <textarea
-                                            value={chatInput}
-                                            onChange={(e) => setChatInput(e.target.value)}
-                                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
-                                            placeholder="发送消息..."
-                                            className={`w-full bg-transparent text-sm resize-none outline-none max-h-32 py-2 px-1 custom-scrollbar ${
-                                                theme === 'dark'
-                                                    ? 'text-white placeholder-zinc-500'
-                                                    : 'text-zinc-800 placeholder-zinc-400'
-                                            }`}
-                                            rows={1}
-                                            style={{ minHeight: '36px' }}
-                                        />
-                                        <button
-                                            onClick={sendChatMessage}
-                                            disabled={(!chatInput.trim() && chatFiles.length === 0) || isChatSending}
-                                            className={`p-2 rounded-lg transition-all mb-0.5 ${
-                                                (!chatInput.trim() && chatFiles.length === 0) || isChatSending
-                                                    ? 'opacity-50 bg-transparent text-zinc-400'
-                                                    : 'bg-blue-600 text-white hover:bg-blue-500'
-                                            }`}
-                                        >
-                                            <Send size={16} />
-                                        </button>
-                                    </div>
-                                    <div className={`text-[10px] text-center mt-2 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-500'}`}>
-                                        支持 MP4/MP3/PDF/Doc/Excel/Code 等格式 • Enter 发送
-                                    </div>
-                                </div>
-                            </div>
+                            <ChatSidebar
+                                theme={theme}
+                                isOpen={isChatOpen}
+                                width={chatWidth}
+                                onResizeStart={handleChatResizeStart}
+                                chatModel={chatModel}
+                                setChatModel={setChatModel}
+                                apiConfigs={apiConfigs}
+                                getStatusColor={getStatusColor}
+                                createNewChat={createNewChat}
+                                chatSessions={chatSessions}
+                                currentChatId={currentChatId}
+                                setCurrentChatId={setCurrentChatId}
+                                chatSessionDropdownOpen={chatSessionDropdownOpen}
+                                setChatSessionDropdownOpen={setChatSessionDropdownOpen}
+                                deleteChatSession={deleteChatSession}
+                                currentSession={currentSession}
+                                isChatSending={isChatSending}
+                                chatEndRef={chatEndRef}
+                                chatFiles={chatFiles}
+                                removeChatFile={removeChatFile}
+                                handleChatFileUpload={handleChatFileUpload}
+                                chatInput={chatInput}
+                                setChatInput={setChatInput}
+                                sendChatMessage={sendChatMessage}
+                                onClose={() => setIsChatOpen(false)}
+                            />
 
                             {contextMenu.visible && (
                                 <div
@@ -16262,7 +15108,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 const previews = prev.filter(n => n.type === 'preview');
                                                 if (!previews.length) return prev;
                                                 const targetId = previews[previews.length - 1].id;
-                                                return prev.map(n => 
+                                                return prev.map(n =>
                                                     n.id === targetId
                                                         ? { ...n, content: item.url, previewType: item.type === 'video' ? 'video' : 'image' }
                                                         : n
@@ -16293,7 +15139,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                         onClick={() => {
                                             const item = historyContextMenu.item;
                                             if (!item?.url) return;
-                                            
+
                                             if (activeShot.nodeId && activeShot.shotId) {
                                                 // 发送到选中的分镜
                                                 updateShot(activeShot.nodeId, activeShot.shotId, { image_url: item.url });
@@ -16432,7 +15278,7 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                                 // 检查是否有框选的节点，且数量正好是9个
                                                 const currentSelectedIds = selectedNodeIdsRef.current;
                                                 const hasSelectedNodes = currentSelectedIds && currentSelectedIds.size === 9;
-                                                
+
                                                 if (hasSelectedNodes) {
                                                     // 替换模式：直接替换已选中的9个节点
                                                     handleSplitGridFromUrl(item.url, { replaceSelected: true });
@@ -16487,11 +15333,11 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                             const nodeId = inputImageContextMenu.nodeId;
                                             const node = nodesMap.get(nodeId);
                                             if (!node || !node.content) return;
-                                            
+
                                             // 检查是否有框选的节点，且数量正好是9个
                                             const currentSelectedIds = selectedNodeIdsRef.current;
                                             const hasSelectedNodes = currentSelectedIds && currentSelectedIds.size === 9;
-                                            
+
                                             if (hasSelectedNodes) {
                                                 // 替换模式：直接替换已选中的9个节点
                                                 handleSplitGridFromUrl(node.content, { replaceSelected: true });
@@ -16538,22 +15384,22 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 </div>
                             )}
 
-                            <Lightbox 
-                                item={lightboxItem} 
+                            <Lightbox
+                                item={lightboxItem}
                                 onClose={() => setLightboxItem(null)}
                                 onNavigate={(newIndex) => {
                                     if (lightboxItem && lightboxItem.mjImages && lightboxItem.mjImages.length > newIndex && newIndex >= 0) {
                                         // 确保newIndex在有效范围内
                                         const validIndex = Math.max(0, Math.min(newIndex, lightboxItem.mjImages.length - 1));
                                         // 更新历史记录中的selectedMjImageIndex（只更新当前lightboxItem对应的历史项）
-                                        setHistory((prev) => prev.map((hItem) => 
-                                            hItem.id === lightboxItem.id 
-                                                ? { ...hItem, url: lightboxItem.mjImages[validIndex], selectedMjImageIndex: validIndex } 
+                                        setHistory((prev) => prev.map((hItem) =>
+                                            hItem.id === lightboxItem.id
+                                                ? { ...hItem, url: lightboxItem.mjImages[validIndex], selectedMjImageIndex: validIndex }
                                                 : hItem
                                         ));
                                         // 更新lightboxItem显示
-                                        setLightboxItem({ 
-                                            ...lightboxItem, 
+                                        setLightboxItem({
+                                            ...lightboxItem,
                                             url: lightboxItem.mjImages[validIndex],
                                             selectedMjImageIndex: validIndex
                                         });
@@ -16561,174 +15407,25 @@ import { HistoryPanel } from './history/HistoryPanel.jsx';
                                 }}
                             />
 
-                            <Modal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} title="模型接口配置" theme={theme}>
-                                <div className="p-4 space-y-3">
-                                    <div className="mb-2">
-                                        <label className={`text-[10px] font-medium uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600'}`}>Global API Key（可选，全局默认 Key）</label>
-                                        <div className="mt-1 flex gap-2">
-                                            <input
-                                                type="password"
-                                                value={globalApiKey}
-                                                onChange={(e) => setGlobalApiKey(e.target.value)}
-                                                className={`flex-1 rounded px-2 py-1 text-xs outline-none focus:border-blue-600/50 border ${
-                                                    theme === 'dark'
-                                                        ? 'bg-zinc-900 border-zinc-800 text-zinc-300'
-                                                        : 'bg-white border-zinc-300 text-zinc-900'
-                                                }`}
-                                                placeholder="如果不想每个模型单独填 Key，可以在这里填一个全局 Key"
-                                            />
-                                    </div>
-                                    </div>
-                                    <div className="mb-2">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex-1">
-                                                <label className={`text-[10px] font-medium uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                                                    即梦图生图使用本地文件
-                                                </label>
-                                                <p className={`text-[10px] mt-0.5 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-500'}`}>
-                                                    启用后，即梦模型的图生图功能将强制使用本地文件（FormData），URL图片会自动下载转换为本地文件
-                                                </p>
-                                            </div>
-                                            <label className="relative inline-flex items-center cursor-pointer ml-3">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={jimengUseLocalFile}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.checked;
-                                                        setJimengUseLocalFile(newValue);
-                                                        localStorage.setItem('tapnow_jimeng_use_local_file', String(newValue));
-                                                    }}
-                                                    className="sr-only peer"
-                                                />
-                                                <div className={`w-11 h-6 rounded-full peer peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500/50 ${
-                                                    jimengUseLocalFile
-                                                        ? 'bg-blue-600'
-                                                        : theme === 'dark'
-                                                            ? 'bg-zinc-700'
-                                                            : 'bg-zinc-300'
-                                                } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>管理您的第三方模型接口。</span>
-                                        <Button className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-500" onClick={addNewModel}><Plus size={14} className="mr-1" /> 添加模型</Button>
-                                    </div>
-                                    <div className="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-1">
-                                        {apiConfigs.filter(api => !DELETED_MODEL_IDS.includes(api.id)).map((api) => (
-                                            <div
-                                                key={api.id}
-                                                className={`p-3 rounded-lg border relative group ${
-                                                    theme === 'dark' ? 'bg-[#18181b] border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                                                }`}
-                                            >
-                                                {api.isCustom && (
-                                                    <button
-                                                        onClick={() => deleteApiConfig(api.id)}
-                                                        className={`absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                                            theme === 'dark'
-                                                                ? 'text-zinc-600 hover:text-red-500'
-                                                                : 'text-zinc-400 hover:text-red-500'
-                                                        }`}
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                )}
-                                                <div className="flex items-center gap-2 mb-3">
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${getStatusColor(api.id)}`}></div>
-                                                    <span className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>{api.provider}</span>
-                                                    <span
-                                                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded ml-auto border ${
-                                                            theme === 'dark'
-                                                                ? 'bg-zinc-900 text-zinc-500 border-zinc-800'
-                                                                : 'bg-white text-zinc-500 border-zinc-200'
-                                                        }`}
-                                                    >
-                                                        {api.type}
-                                                    </span>
-                                                </div>
-                                                <div className="space-y-2 pl-1">
-                                                    {[
-                                                        { key: 'modelName', label: 'Model ID', type: 'text', placeholder: 'model-id' },
-                                                        { 
-                                                            key: 'key', 
-                                                            label: (api.id.includes('jimeng') || api.provider?.includes('Jimeng')) ? 'Session ID' : 'API Key', 
-                                                            type: 'password', 
-                                                            placeholder: (api.id.includes('jimeng') || api.provider?.includes('Jimeng')) ? '粘贴Session ID...' : 'sk-...' 
-                                                        },
-                                                        { key: 'url', label: 'Base URL', type: 'text', placeholder: 'https://...' },
-                                                    ].map((field) => (
-                                                        <div key={field.key} className="grid grid-cols-4 items-center gap-2">
-                                                            <label className={`text-[10px] font-medium uppercase tracking-wider text-right ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                                                                {field.label}
-                                                            </label>
-                                                            <input
-                                                                type={field.type}
-                                                                value={api[field.key]}
-                                                                onChange={(e) => {
-                                                                    const newValue = e.target.value;
-                                                                    updateApiConfig(api.id, { [field.key]: newValue });
-                                                                    
-                                                                    // 如果是jimeng模型的Session ID字段，首次粘贴后自动保存到localStorage
-                                                                    if (field.key === 'key' && (api.id.includes('jimeng') || api.provider?.includes('Jimeng')) && newValue && newValue.trim().length > 0) {
-                                                                        const savedSessionId = localStorage.getItem('tapnow_jimeng_session_id');
-                                                                        // 如果localStorage中没有保存的Session ID，或者当前值不同，则保存
-                                                                        if (!savedSessionId || savedSessionId !== newValue.trim()) {
-                                                                            localStorage.setItem('tapnow_jimeng_session_id', newValue.trim());
-                                                                            // 同时更新所有jimeng模型的Session ID
-                                                                            setApiConfigs((prev) => prev.map((c) => 
-                                                                                (c.id.includes('jimeng') || c.provider?.includes('Jimeng')) && c.key !== newValue.trim()
-                                                                                    ? { ...c, key: newValue.trim() }
-                                                                                    : c
-                                                                            ));
-                                                                        }
-                                                                    }
-                                                                }}
-                                                                className={`col-span-3 w-full rounded px-2 py-1 text-xs outline-none focus:border-blue-600/50 border ${
-                                                                    theme === 'dark'
-                                                                        ? 'bg-zinc-900 border-zinc-800 text-zinc-300'
-                                                                        : 'bg-white border-zinc-300 text-zinc-900'
-                                                                }`}
-                                                                placeholder={field.placeholder}
-                                                            />
-                                                </div>
-                                                    ))}
-                                                </div>
-                                                <div className={`mt-3 pt-2 border-t flex justify-end ${theme === 'dark' ? 'border-zinc-800/50' : 'border-zinc-200'}`}>
-                                                    <button
-                                                        onClick={() => testApiConnection(api.id)}
-                                                        disabled={apiTesting === api.id}
-                                                        className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-all ${
-                                                            apiStatus[api.id] === 'success'
-                                                                ? 'bg-green-500/10 text-green-500'
-                                                                : theme === 'dark'
-                                                                    ? 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700'
-                                                                    : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
-                                                        }`}
-                                                    >
-                                                        {apiTesting === api.id ? (
-                                                            <>
-                                                                <Loader2 size={10} className="animate-spin" /> 测试中...
-                                                            </>
-                                                        ) : apiStatus[api.id] === 'success' ? (
-                                                            <>
-                                                                <CheckCircle2 size={10} /> 正常
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <LinkIcon size={10} /> 测试连接
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className={`pt-2 flex justify-end gap-2 border-t mt-3 ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                                        <Button variant="secondary" onClick={() => setSettingsOpen(false)}>关闭</Button>
-                                    </div>
-                                </div>
-                            </Modal>
+                            <ApiSettingsModal
+                                isOpen={settingsOpen}
+                                theme={theme}
+                                globalApiKey={globalApiKey}
+                                setGlobalApiKey={setGlobalApiKey}
+                                jimengUseLocalFile={jimengUseLocalFile}
+                                setJimengUseLocalFile={setJimengUseLocalFile}
+                                apiConfigs={apiConfigs}
+                                setApiConfigs={setApiConfigs}
+                                updateApiConfig={updateApiConfig}
+                                deleteApiConfig={deleteApiConfig}
+                                addNewModel={addNewModel}
+                                testApiConnection={testApiConnection}
+                                apiTesting={apiTesting}
+                                apiStatus={apiStatus}
+                                getStatusColor={getStatusColor}
+                                deletedModelIds={DELETED_MODEL_IDS}
+                                onClose={() => setSettingsOpen(false)}
+                            />
                         </div>
 
                         <BatchHistoryModal
