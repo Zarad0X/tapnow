@@ -28,26 +28,27 @@ export const useLocalCacheServer = ({
 
     const localCacheServerUrl = LOCAL_CACHE_SERVER_URL;
 
-    useEffect(() => {
-        const checkServer = async () => {
-            try {
-                const result = await checkLocalCacheServer(localCacheServerUrl);
-                if (result.connected) {
-                    setLocalCacheServerConnected(true);
-                    setLocalServerConfig((prev) => ({ ...prev, ...result.config }));
-                    console.log('[缓存] 本地缓存服务器已连接', result.data);
-                } else {
-                    setLocalCacheServerConnected(false);
-                }
-            } catch (error) {
+    const refreshLocalCacheServer = useCallback(async () => {
+        try {
+            const result = await checkLocalCacheServer(localCacheServerUrl);
+            if (result.connected) {
+                setLocalCacheServerConnected(true);
+                setLocalServerConfig((prev) => ({ ...prev, ...result.config }));
+                console.log('[缓存] 本地缓存服务器已连接', result.data);
+            } else {
                 setLocalCacheServerConnected(false);
             }
-        };
-
-        checkServer();
-        const interval = setInterval(checkServer, 30000);
-        return () => clearInterval(interval);
+        } catch (error) {
+            setLocalCacheServerConnected(false);
+        }
     }, [localCacheServerUrl]);
+
+    useEffect(() => {
+        if (!localCacheSettingsOpen) return;
+        refreshLocalCacheServer();
+        const interval = setInterval(refreshLocalCacheServer, 30000);
+        return () => clearInterval(interval);
+    }, [localCacheSettingsOpen, refreshLocalCacheServer]);
 
     const updateLocalServerConfig = useCallback(async (newConfig) => {
         if (!localCacheServerConnected) return false;
@@ -235,6 +236,6 @@ export const useLocalCacheServer = ({
         localCacheSettingsOpen,
         setLocalCacheSettingsOpen,
         updateLocalServerConfig,
+        refreshLocalCacheServer,
     };
 };
-

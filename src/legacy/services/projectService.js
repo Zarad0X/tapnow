@@ -1,4 +1,4 @@
-import { isVideoUrl } from '../support.jsx';
+import { isVideoUrl } from '../utils/mediaUtils.js';
 import {
     LOCAL_LIBRARY_SERVER_URL,
     findLocalFileUrlBySize,

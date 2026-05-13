@@ -1,0 +1,107 @@
+import {
+    DEFAULT_API_CONFIGS,
+    DELETED_MODEL_IDS,
+    calculateResolution,
+    getModelParams,
+    getRatiosForModel,
+    getResolutionsForModel,
+} from '../src/legacy/config/modelConfig.js';
+import {
+    CHARACTER_SHEET_PROMPT_TEXT,
+    GRID_PROMPT_TEXT,
+    MOOD_BOARD_PROMPT_TEXT,
+    STORYBOARD_PROMPT_TEXT,
+    UPSCALE_PROMPT_TEXT,
+} from '../src/legacy/config/promptTemplates.js';
+import {
+    createDefaultNodeSettings,
+    getDefaultNodeSize,
+    getNodeLabel,
+} from '../src/legacy/nodes/nodeCatalog.js';
+import {
+    buildRequestHeaders,
+    denormalizePromptForSoraRequest,
+    extractAsyncTaskId,
+    extractImageUrls,
+    getImageModelFeatures,
+    getJimengModelName,
+    getModelDisplayName,
+    getNanoBanana2ImageSizeFlag,
+    normalizeBananaResolution,
+    normalizePromptForSora,
+    parseDurationSeconds,
+    resolveEndpointUrl,
+} from '../src/legacy/services/generationService.js';
+import {
+    getBatchHistoryCardDisplay,
+    getCanvasSendableHistoryItems,
+    getCompletedVideoHistory,
+    getHistoryCanvasContentUrl,
+    getHistoryLightboxItem,
+    getLocalHistoryFiles,
+    getSelectedHistoryItems,
+    splitHistoryCacheItems,
+} from '../src/legacy/history/historyUtils.js';
+
+const assert = (condition, message) => {
+    if (!condition) {
+        throw new Error(message);
+    }
+};
+
+const ids = DEFAULT_API_CONFIGS.map((config) => config.id);
+assert(ids.length > 0, 'default API config list must not be empty');
+assert(new Set(ids).size === ids.length, 'default API config ids must be unique');
+assert(DEFAULT_API_CONFIGS.every((config) => config.type && config.modelName && config.url), 'every default API config needs type, modelName, and url');
+assert(DEFAULT_API_CONFIGS.every((config) => !DELETED_MODEL_IDS.includes(config.id)), 'default API configs must not include deleted model ids');
+
+assert(getRatiosForModel('grok-3').join(',') === '3:2,2:3,1:1', 'grok ratio list should stay constrained');
+assert(getRatiosForModel('gpt-image').includes('16:9'), 'general image models should expose common ratios');
+assert(getResolutionsForModel('jimeng-4.5').join(',') === '2K,4K', 'jimeng-4.5 should expose 2K/4K only');
+
+assert(calculateResolution('16:9', '1080P').str === '1920x1088', '16:9 1080P resolution should be 16-aligned');
+assert(calculateResolution('bad', 'Auto').str === '1024x1024', 'invalid ratios should fall back safely');
+assert(getModelParams('grok-3', '1:1', '720P').sizeStr === '1:1', 'grok model params should use aspect ratio as size');
+
+assert(getDefaultNodeSize('storyboard-node').w === 600, 'storyboard node default size should be cataloged');
+assert(getNodeLabel('generate-scene-image') === '生成场景图片', 'node labels should be cataloged');
+assert(createDefaultNodeSettings('extract-characters-scenes', { apiConfigs: DEFAULT_API_CONFIGS }).model, 'extract node should pick a chat model');
+
+assert(normalizeBananaResolution('2k') === '2K', 'banana resolution normalization should preserve API casing');
+assert(normalizePromptForSora('hello @alice', 'sora-2') === 'hello @{alice}', 'sora prompt references should be normalized');
+assert(denormalizePromptForSoraRequest('hello @{alice}') === 'hello @alice', 'sora API request prompt references should be denormalized');
+assert(parseDurationSeconds('15s') === 15, 'duration parsing should strip units');
+assert(getImageModelFeatures('nano-banana-2', { modelName: 'nano-banana-2' }).isNanoBanana2, 'image model features should detect nano-banana-2');
+assert(getJimengModelName('jimeng-4.1', {}) === 'jimeng-4.1', 'jimeng model name should follow selected model');
+assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) === '4K', 'nano-banana-2 image_size should normalize casing');
+assert(getModelDisplayName({ modelId: 'jimeng-3.1', config: {} }) === 'Jimeng 3.1', 'display name should special-case jimeng');
+assert(buildRequestHeaders({ apiKey: 'k', useMultipart: true })['Content-Type'] === undefined, 'multipart requests should not force content-type');
+assert(resolveEndpointUrl({ endpoint: '/v1/images', baseUrl: 'https://example.com/' }) === 'https://example.com/v1/images', 'relative endpoints should be resolved once');
+assert(extractAsyncTaskId({ data: { task_id: 'task-1' } }) === 'task-1', 'async task id extraction should handle nested task_id');
+assert(extractImageUrls({ data: [{ url: 'a.png' }, 'b.png'] }).join(',') === 'a.png,b.png', 'image URL extraction should handle OpenAI-like arrays');
+
+const sampleHistory = [
+    { id: '1', type: 'video', status: 'completed', url: 'video.mp4' },
+    { id: '2', type: 'image', status: 'completed', url: 'image.png' },
+];
+assert(getCompletedVideoHistory(sampleHistory).length === 1, 'history video picker should only include completed videos');
+assert(getHistoryLightboxItem({ id: '3', mjImages: ['a.png', 'b.png'], selectedMjImageIndex: 1 }).url === 'b.png', 'history lightbox should preserve MJ image selection');
+const selectedHistoryItems = getSelectedHistoryItems(sampleHistory, new Set(['1']));
+assert(selectedHistoryItems.length === 1 && selectedHistoryItems[0].id === '1', 'selected history helper should filter by ids');
+assert(getLocalHistoryFiles([{ localCacheUrl: 'u', localFilePath: 'p' }])[0].path === 'p', 'local history file helper should keep delete payload shape');
+assert(splitHistoryCacheItems([{ url: 'https://remote/image.png' }, { localCacheUrl: 'local.png' }]).remote.length === 1, 'cache split helper should detect remote cache');
+assert(getCanvasSendableHistoryItems(sampleHistory, new Set(['1', '2'])).length === 2, 'canvas send helper should keep items with content URLs');
+assert(getHistoryCanvasContentUrl({ type: 'video', url: 'clip' }, { isVideoUrl: () => false }).includes('force_video_display=true'), 'video canvas URLs should opt into video display when needed');
+assert(getBatchHistoryCardDisplay({ mjImages: ['a.png', 'b.png'], selectedMjImageIndex: 1 }).displayUrl === 'b.png', 'batch card display should preserve selected MJ image');
+
+[
+    CHARACTER_SHEET_PROMPT_TEXT,
+    GRID_PROMPT_TEXT,
+    MOOD_BOARD_PROMPT_TEXT,
+    STORYBOARD_PROMPT_TEXT,
+    UPSCALE_PROMPT_TEXT,
+].forEach((prompt, index) => {
+    assert(typeof prompt === 'string' && prompt.trim().length > 40, `prompt template ${index} should be non-empty`);
+});
+
+console.log('config smoke checks passed');
