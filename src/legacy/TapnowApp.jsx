@@ -85,6 +85,7 @@ import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
+import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import {
   findScrollableNodeArea,
   getCanvasDetailLevel,
@@ -120,6 +121,7 @@ import { CreateCharacterModal } from './characters/CreateCharacterModal.jsx';
 import { ApiSettingsModal } from './settings/ApiSettingsModal.jsx';
 import { ChatSidebar } from './chat/ChatSidebar.jsx';
 import { LocalSaveNode } from './nodes/LocalSaveNode.jsx';
+import { LowDetailNode } from './nodes/LowDetailNode.jsx';
 
         function TapnowApp() {
             const [theme, setTheme] = useLocalStorage('tapnow_theme', 'dark', {
@@ -9131,206 +9133,29 @@ import { LocalSaveNode } from './nodes/LocalSaveNode.jsx';
                 // 低细节模式：只渲染核心内容
                 if (isLowDetail) {
                     return (
-                        <div
-                            key={node.id}
-                            data-node-id={node.id}
-                            className={`absolute node-wrapper flex flex-col ${
-                                isSelected
-                                    ? 'ring-1 ring-blue-500'
-                                    : theme === 'dark'
-                                        ? 'border border-zinc-800'
-                                        : 'border border-zinc-200'
-                            } ${theme === 'dark' ? 'bg-[#18181b]' : 'bg-white'}`}
-                            style={{
-                                left: node.x,
-                                top: node.y,
-                                width: node.width,
-                                height: node.height,
-                                cursor: (dragNodeId === node.id || (dragNodeId && selectedNodeIds.has(node.id))) ? 'grabbing' : 'default',
-                                zIndex: isDragging ? 50 : 10, // 拖动时提升 z-index，避免被其他节点遮挡
-                                border: `1px solid ${theme === 'dark' ? '#3f3f46' : '#e4e4e7'}`,
-                                background: theme === 'dark' ? '#18181b' : '#fff',
-                                boxShadow: 'none',
-                                borderRadius: '0',
-                                transform: 'translateZ(0)',
-                                backfaceVisibility: 'hidden'
-                            }}
-                            onMouseDown={(e) => {
-                                if (e.button === 0) {
-                                    e.stopPropagation();
-                                    if (e.ctrlKey || e.metaKey) {
-                                        setSelectedNodeIds(prev => {
-                                            const newSet = new Set(prev);
-                                            if (newSet.has(node.id)) {
-                                                newSet.delete(node.id);
-                                            } else {
-                                                newSet.add(node.id);
-                                            }
-                                            if (newSet.size === 1) {
-                                                setSelectedNodeId(Array.from(newSet)[0]);
-                                            } else {
-                                                setSelectedNodeId(null);
-                                            }
-                                            return newSet;
-                                        });
-                                    } else {
-                                        const isAlreadySelected = selectedNodeIds.has(node.id);
-                                        if (isAlreadySelected && selectedNodeIds.size > 1) {
-                                            setSelectedNodeId(node.id);
-                                        } else {
-                                            setSelectedNodeId(node.id);
-                                            setSelectedNodeIds(new Set([node.id]));
-                                        }
-                                    }
-                                    setDragNodeId(node.id);
-                                }
-                            }}
-                            onMouseEnter={() => { if (connectingSource || connectingTarget) setHoverTargetId(node.id); }}
-                            onMouseLeave={() => { if ((connectingSource || connectingTarget) && hoverTargetId === node.id) setHoverTargetId(null); }}
-                            onMouseUp={(e) => handleNodeMouseUp(node.id, e)}
-                        >
-                            {/* 仅显示核心图片/视频 */}
-                            {node.type === 'input-image' && node.content && (
-                                <div className="w-full h-full relative">
-                                    {isVideoUrl(node.content) ? (
-                                        <video
-                                            src={node.content}
-                                            className="w-full h-full object-cover opacity-80"
-                                            muted
-                                            playsInline
-                                        />
-                                    ) : (
-                                        <LazyBase64Image
-                                            src={node.content}
-                                            className="w-full h-full object-cover opacity-80"
-                                            alt=""
-                                        />
-                                    )}
-                                </div>
-                            )}
-                            {node.type === 'video-input' && node.content && (
-                                <video
-                                    src={node.content}
-                                    className="w-full h-full object-cover opacity-80"
-                                    muted
-                                    playsInline
-                                />
-                            )}
-                            {!node.content && (
-                                <div className={`p-2 font-bold text-sm truncate ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                                    {getNodeLabel(node.type)}
-                                </div>
-                            )}
-
-                            {/* 保留连接点占位符，确保连线位置正确（简化样式） */}
-                            {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && (
-                                node.type === 'image-compare' ? (
-                                    <>
-                                        <div
-                                            className="input-point"
-                                            style={{
-                                                top: '33%',
-                                                left: '-0.25rem',
-                                                width: '0.5rem',
-                                                height: '0.5rem',
-                                                backgroundColor: isConnected ? '#60a5fa' : '#52525b',
-                                                borderRadius: '50%',
-                                                position: 'absolute',
-                                                zIndex: 20,
-                                                pointerEvents: 'auto'
-                                            }}
-                                            onMouseDown={(e) => {
-                                                e.stopPropagation();
-                                                e.preventDefault();
-                                                const world = screenToWorld(e.clientX, e.clientY);
-                                                setMousePos(world);
-                                                setConnectingTarget(node.id);
-                                                setConnectingInputType('default');
-                                            }}
-                                            onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
-                                        />
-                                        <div
-                                            className="input-point"
-                                            style={{
-                                                top: '66%',
-                                                left: '-0.25rem',
-                                                width: '0.5rem',
-                                                height: '0.5rem',
-                                                backgroundColor: isConnected ? '#60a5fa' : '#52525b',
-                                                borderRadius: '50%',
-                                                position: 'absolute',
-                                                zIndex: 20,
-                                                pointerEvents: 'auto'
-                                            }}
-                                            onMouseDown={(e) => {
-                                                e.stopPropagation();
-                                                e.preventDefault();
-                                                const world = screenToWorld(e.clientX, e.clientY);
-                                                setMousePos(world);
-                                                setConnectingTarget(node.id);
-                                                setConnectingInputType('default');
-                                            }}
-                                            onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
-                                        />
-                                    </>
-                                ) : (
-                                    <div
-                                        className="input-point"
-                                        style={{
-                                            top: '50%',
-                                            left: '-0.25rem',
-                                            width: '0.5rem',
-                                            height: '0.5rem',
-                                            backgroundColor: isConnected ? '#60a5fa' : '#52525b',
-                                            borderRadius: '50%',
-                                            position: 'absolute',
-                                            zIndex: 20,
-                                            pointerEvents: 'auto'
-                                        }}
-                                        onMouseDown={(e) => {
-                                            e.stopPropagation();
-                                            e.preventDefault();
-                                            const world = screenToWorld(e.clientX, e.clientY);
-                                            setMousePos(world);
-                                            setConnectingTarget(node.id);
-                                            setConnectingInputType('default');
-                                        }}
-                                        onMouseUp={(e) => handleNodeMouseUp(node.id, e, 'default')}
-                                    />
-                                )
-                            )}
-                            {node.type !== 'local-save' && (
-                                <div
-                                    className="connector connector-right"
-                                    style={{
-                                        position: 'absolute',
-                                        top: '50%',
-                                        right: '-0.45rem',
-                                        width: '0.9rem',
-                                        height: '0.9rem',
-                                        backgroundColor: connectingSource === node.id ? '#d4d4d8' : '#27272a',
-                                        border: '1px solid #71717a',
-                                        borderRadius: '50%',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'crosshair',
-                                        zIndex: 30,
-                                        opacity: connectingSource === node.id ? 1 : 0.5,
-                                        pointerEvents: 'auto'
-                                    }}
-                                    onMouseDown={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        const world = screenToWorld(e.clientX, e.clientY);
-                                        setMousePos(world);
-                                        setConnectingSource(node.id);
-                                    }}
-                                >
-                                    <Plus size={10} />
-                                </div>
-                            )}
-                        </div>
+                        <LowDetailNode
+                            node={node}
+                            theme={theme}
+                            isSelected={isSelected}
+                            isConnected={isConnected}
+                            isDragging={isDragging}
+                            dragNodeId={dragNodeId}
+                            selectedNodeIds={selectedNodeIds}
+                            setSelectedNodeIds={setSelectedNodeIds}
+                            setSelectedNodeId={setSelectedNodeId}
+                            setDragNodeId={setDragNodeId}
+                            connectingSource={connectingSource}
+                            connectingTarget={connectingTarget}
+                            hoverTargetId={hoverTargetId}
+                            setHoverTargetId={setHoverTargetId}
+                            handleNodeMouseUp={handleNodeMouseUp}
+                            isVideoUrl={isVideoUrl}
+                            screenToWorld={screenToWorld}
+                            setMousePos={setMousePos}
+                            setConnectingTarget={setConnectingTarget}
+                            setConnectingInputType={setConnectingInputType}
+                            setConnectingSource={setConnectingSource}
+                        />
                     );
                 }
 
@@ -15022,367 +14847,40 @@ import { LocalSaveNode } from './nodes/LocalSaveNode.jsx';
                                 onClose={() => setIsChatOpen(false)}
                             />
 
-                            {contextMenu.visible && (
-                                <div
-                                    className={`fixed z-50 w-40 rounded-lg shadow-xl border ${
-                                        theme === 'dark' ? 'bg-[#18181b] border-zinc-800' : 'bg-white border-zinc-200'
-                                    }`}
-                                    style={{ left: contextMenu.x, top: contextMenu.y, transform: 'translate(-50%, -50%)' }}
-                                    onMouseLeave={() => setContextMenu(prev => ({ ...prev, visible: false }))}
-                                >
-                                    <div className="p-1">
-                                        {[
-                                            { type: 'input-image', label: '图片输入' },
-                                            { type: 'text-node', label: '文字节点' },
-                                            { type: 'novel-input', label: '小说输入' },
-                                            { type: 'video-input', label: '视频输入' },
-                                            { type: 'video-analyze', label: '视频拆解 / 提示词反推' },
-                                            { type: 'storyboard-node', label: '智能分镜表' },
-                                            { type: 'gen-image', label: 'AI 绘图' },
-                                            { type: 'gen-video', label: 'AI 视频' },
-                                            { type: 'image-compare', label: '图像对比' },
-                                            { type: 'preview', label: '预览窗口' },
-                                            { type: 'local-save', label: '保存到本地' },
-                                        ].map(item => (
-                                            <button
-                                                key={item.type}
-                                                className={`w-full text-left px-3 py-2 text-xs rounded transition-colors ${
-                                                    theme === 'dark'
-                                                        ? 'text-zinc-300 hover:bg-zinc-800'
-                                                        : 'text-zinc-700 hover:bg-zinc-100'
-                                                }`}
-                                                onClick={() => addNode(item.type, contextMenu.worldX, contextMenu.worldY, contextMenu.sourceNodeId, undefined, undefined, contextMenu.targetNodeId, contextMenu.inputType)}
-                                            >
-                                                {item.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {historyContextMenu.visible && (
-                                <div
-                                    className={`fixed z-[100] w-48 rounded-lg shadow-2xl py-1 animate-in fade-in duration-100 border ${
-                                        theme === 'dark' ? 'bg-[#18181b] border-zinc-700' : 'bg-white border-zinc-200'
-                                    }`}
-                                    style={{ left: historyContextMenu.x, top: historyContextMenu.y }}
-                                >
-                                    <div
-                                        className={`px-3 py-1.5 text-[10px] font-medium border-b mb-1 ${
-                                            theme === 'dark' ? 'text-zinc-500 border-zinc-800' : 'text-zinc-500 border-zinc-200'
-                                        }`}
-                                    >
-                                        操作
-                                    </div>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendHistoryToChat}
-                                    >
-                                        <MessageSquare size={14} className="text-purple-500" /> 发送到当前对话
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendHistoryToCanvas}
-                                    >
-                                        <CopyPlus size={14} className="text-blue-500" /> 发送到画布
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={() => {
-                                            const item = historyContextMenu.item;
-                                            if (!item?.url) return;
-                                            // 找到所有预览节点，默认更新最近创建的一个
-                                            setNodes(prev => {
-                                                const previews = prev.filter(n => n.type === 'preview');
-                                                if (!previews.length) return prev;
-                                                const targetId = previews[previews.length - 1].id;
-                                                return prev.map(n =>
-                                                    n.id === targetId
-                                                        ? { ...n, content: item.url, previewType: item.type === 'video' ? 'video' : 'image' }
-                                                        : n
-                                                );
-                                            });
-                                            setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-                                        }}
-                                    >
-                                        <Maximize2 size={14} className="text-emerald-500" /> 发送到预览窗口
-                                    </button>
-                                    {/* 拓展图片功能已移除 */}
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={applyHistoryToSelectedNode}
-                                    >
-                                        <ArrowRightSquare size={14} className={selectedNodeId ? 'text-green-500' : 'text-zinc-400'} /> 应用到选中节点
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={() => {
-                                            const item = historyContextMenu.item;
-                                            if (!item?.url) return;
-
-                                            if (activeShot.nodeId && activeShot.shotId) {
-                                                // 发送到选中的分镜
-                                                updateShot(activeShot.nodeId, activeShot.shotId, { image_url: item.url });
-                                                // 可选：添加一个小提示或动画
-                                            } else {
-                                                alert("请先点击分镜表中的某一行使其处于选中状态");
-                                            }
-                                            setHistoryContextMenu({ visible: false, x: 0, y: 0, worldX: 0, worldY: 0, item: null });
-                                        }}
-                                    >
-                                        <LayoutGrid size={14} className={activeShot.nodeId && activeShot.shotId ? 'text-orange-500' : 'text-zinc-400'} /> 发送到当前分镜
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={() => {
-                                            const item = historyContextMenu.item;
-                                            if (item?.url) {
-                                                // 将九宫格切割结果推到历史卡片右侧，避免遮挡列表
-                                                const startX = (historyContextMenu.worldX || 0) + 340; // 侧边栏约 320px，再留 20px 间距
-                                                const startY = historyContextMenu.worldY || 0;
-                                                handleSplitGridFromUrl(item.url, { originX: startX, originY: startY });
-                                            }
-                                            setHistoryContextMenu({ visible: false, x: 0, y: 0, worldX: 0, worldY: 0, item: null });
-                                        }}
-                                    >
-                                        <Scissors size={14} className="text-blue-500" /> 九宫格裁切
-                                    </button>
-                                </div>
-                            )}
-
-                            {frameContextMenu.visible && (
-                                <div
-                                    className={`fixed z-[110] w-48 rounded-lg shadow-2xl py-1 animate-in fade-in duration-100 border ${
-                                        theme === 'dark' ? 'bg-[#18181b] border-zinc-700' : 'bg-white border-zinc-200'
-                                    }`}
-                                    style={{ left: frameContextMenu.x, top: frameContextMenu.y }}
-                                >
-                                    <div
-                                        className={`px-3 py-1.5 text-[10px] font-medium border-b mb-1 ${
-                                            theme === 'dark' ? 'text-zinc-500 border-zinc-800' : 'text-zinc-500 border-zinc-200'
-                                        }`}
-                                    >
-                                        操作
-                                    </div>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendFrameToChat}
-                                    >
-                                        <MessageSquare size={14} className="text-purple-500" /> 发送到当前对话
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendFrameToCanvas}
-                                    >
-                                        <CopyPlus size={14} className="text-blue-500" /> 发送到画布
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendFrameToPreview}
-                                    >
-                                        <Maximize2 size={14} className="text-emerald-500" /> 发送到预览窗口
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={applyFrameToSelectedNode}
-                                    >
-                                        <ArrowRightSquare size={14} className={selectedNodeId ? 'text-green-500' : 'text-zinc-400'} /> 应用到选中节点
-                                    </button>
-                                </div>
-                            )}
-
-                            {previewContextMenu.visible && (
-                                <div
-                                    className={`fixed z-[110] w-48 rounded-lg shadow-2xl py-1 animate-in fade-in duration-100 border ${
-                                        theme === 'dark' ? 'bg-[#18181b] border-zinc-700' : 'bg-white border-zinc-200'
-                                    }`}
-                                    style={{ left: previewContextMenu.x, top: previewContextMenu.y }}
-                                    onMouseLeave={closePreviewContextMenu}
-                                >
-                                    <div
-                                        className={`px-3 py-1.5 text-[10px] font-medium border-b mb-1 ${
-                                            theme === 'dark' ? 'text-zinc-500 border-zinc-800' : 'text-zinc-500 border-zinc-200'
-                                        }`}
-                                    >
-                                        操作
-                                    </div>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendPreviewToChat}
-                                    >
-                                        <MessageSquare size={14} className="text-purple-500" /> 发送到当前对话
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendPreviewToCanvas}
-                                    >
-                                        <CopyPlus size={14} className="text-blue-500" /> 发送到画布
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={() => {
-                                            const item = previewContextMenu.item;
-                                            if (item?.url) {
-                                                // 检查是否有框选的节点，且数量正好是9个
-                                                const currentSelectedIds = selectedNodeIdsRef.current;
-                                                const hasSelectedNodes = currentSelectedIds && currentSelectedIds.size === 9;
-
-                                                if (hasSelectedNodes) {
-                                                    // 替换模式：直接替换已选中的9个节点
-                                                    handleSplitGridFromUrl(item.url, { replaceSelected: true });
-                                                } else {
-                                                    // 创建新节点模式：在源节点旁边创建
-                                                    const source = item.sourceNode;
-                                                    const originX = source ? source.x + source.width + 20 : undefined;
-                                                    const originY = source ? source.y : undefined;
-                                                    handleSplitGridFromUrl(item.url, { originX, originY });
-                                                }
-                                            }
-                                            closePreviewContextMenu();
-                                        }}
-                                    >
-                                        <Scissors size={14} className="text-blue-500" /> 九宫格裁切
-                                    </button>
-                                </div>
-                            )}
-
-                            {inputImageContextMenu.visible && (
-                                <div
-                                    className={`fixed z-[110] w-48 rounded-lg shadow-2xl py-1 animate-in fade-in duration-100 border ${
-                                        theme === 'dark' ? 'bg-[#18181b] border-zinc-700' : 'bg-white border-zinc-200'
-                                    }`}
-                                    style={{ left: inputImageContextMenu.x, top: inputImageContextMenu.y }}
-                                    onMouseLeave={closeInputImageContextMenu}
-                                >
-                                    <div
-                                        className={`px-3 py-1.5 text-[10px] font-medium border-b mb-1 ${
-                                            theme === 'dark' ? 'text-zinc-500 border-zinc-800' : 'text-zinc-500 border-zinc-200'
-                                        }`}
-                                    >
-                                        操作
-                                    </div>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={sendInputImageToChat}
-                                    >
-                                        <MessageSquare size={14} className="text-purple-500" /> 发送到当前对话
-                                    </button>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={() => {
-                                            const nodeId = inputImageContextMenu.nodeId;
-                                            const node = nodesMap.get(nodeId);
-                                            if (!node || !node.content) return;
-
-                                            // 检查是否有框选的节点，且数量正好是9个
-                                            const currentSelectedIds = selectedNodeIdsRef.current;
-                                            const hasSelectedNodes = currentSelectedIds && currentSelectedIds.size === 9;
-
-                                            if (hasSelectedNodes) {
-                                                // 替换模式：直接替换已选中的9个节点
-                                                handleSplitGridFromUrl(node.content, { replaceSelected: true });
-                                            } else {
-                                                // 创建新节点模式：在源节点旁边创建
-                                                const originX = node.x + node.width + 20;
-                                                const originY = node.y;
-                                                handleSplitGridFromUrl(node.content, { originX, originY });
-                                            }
-                                            closeInputImageContextMenu();
-                                        }}
-                                    >
-                                        <Scissors size={14} className="text-blue-500" /> 九宫格裁切
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* 框选节点右键菜单 */}
-                            {selectionContextMenu.visible && (
-                                <div
-                                    className={`fixed z-[120] w-52 rounded-lg shadow-2xl py-1 animate-in fade-in duration-100 border ${
-                                        theme === 'dark' ? 'bg-[#18181b] border-zinc-700' : 'bg-white border-zinc-200'
-                                    }`}
-                                    style={{ left: selectionContextMenu.x, top: selectionContextMenu.y }}
-                                    onMouseLeave={() => setSelectionContextMenu({ visible: false, x: 0, y: 0 })}
-                                >
-                                    <div
-                                        className={`px-3 py-1.5 text-[10px] font-medium border-b mb-1 ${
-                                            theme === 'dark' ? 'text-zinc-500 border-zinc-800' : 'text-zinc-500 border-zinc-200'
-                                        }`}
-                                    >
-                                        选中 {selectedNodeIds.size > 0 ? selectedNodeIds.size : (selectedNodeId ? 1 : 0)} 个节点
-                                    </div>
-                                    <button
-                                        className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-                                            theme === 'dark'
-                                                ? 'text-zinc-300 hover:bg-zinc-800'
-                                                : 'text-zinc-700 hover:bg-zinc-100'
-                                        }`}
-                                        onClick={handleSaveSelectedWorkflow}
-                                    >
-                                        <Save size={14} className="text-blue-500" /> 保存当前选取工作流
-                                    </button>
-                                </div>
-                            )}
+                            <CanvasContextMenus
+                                theme={theme}
+                                contextMenu={contextMenu}
+                                setContextMenu={setContextMenu}
+                                addNode={addNode}
+                                historyContextMenu={historyContextMenu}
+                                setHistoryContextMenu={setHistoryContextMenu}
+                                sendHistoryToChat={sendHistoryToChat}
+                                sendHistoryToCanvas={sendHistoryToCanvas}
+                                setNodes={setNodes}
+                                applyHistoryToSelectedNode={applyHistoryToSelectedNode}
+                                selectedNodeId={selectedNodeId}
+                                activeShot={activeShot}
+                                updateShot={updateShot}
+                                handleSplitGridFromUrl={handleSplitGridFromUrl}
+                                frameContextMenu={frameContextMenu}
+                                sendFrameToChat={sendFrameToChat}
+                                sendFrameToCanvas={sendFrameToCanvas}
+                                sendFrameToPreview={sendFrameToPreview}
+                                applyFrameToSelectedNode={applyFrameToSelectedNode}
+                                previewContextMenu={previewContextMenu}
+                                closePreviewContextMenu={closePreviewContextMenu}
+                                sendPreviewToChat={sendPreviewToChat}
+                                sendPreviewToCanvas={sendPreviewToCanvas}
+                                selectedNodeIdsRef={selectedNodeIdsRef}
+                                inputImageContextMenu={inputImageContextMenu}
+                                closeInputImageContextMenu={closeInputImageContextMenu}
+                                sendInputImageToChat={sendInputImageToChat}
+                                nodesMap={nodesMap}
+                                selectionContextMenu={selectionContextMenu}
+                                setSelectionContextMenu={setSelectionContextMenu}
+                                selectedNodeIds={selectedNodeIds}
+                                handleSaveSelectedWorkflow={handleSaveSelectedWorkflow}
+                            />
 
                             <Lightbox
                                 item={lightboxItem}
