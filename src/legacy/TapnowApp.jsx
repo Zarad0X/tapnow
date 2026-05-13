@@ -78,6 +78,7 @@ import {
 } from './support.jsx';
 import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
+import { useApiConfigActions } from './hooks/useApiConfigActions.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
@@ -266,8 +267,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
             const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
             const [activeTool, setActiveTool] = useState('select');
             const [activeDropdown, setActiveDropdown] = useState(null);
-            const [apiTesting, setApiTesting] = useState(null);
-            const [apiStatus, setApiStatus] = useState({});
             // 实时计时器状态：nodeId -> elapsedSeconds
             const [nodeTimers, setNodeTimers] = useState({});
 
@@ -469,6 +468,21 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 });
                 return map;
             }, [apiConfigs]);
+
+            const {
+                apiTesting,
+                apiStatus,
+                addNewModel,
+                updateApiConfig,
+                deleteApiConfig,
+                testApiConnection,
+                getStatusColor
+            } = useApiConfigActions({
+                apiConfigs,
+                setApiConfigs,
+                globalApiKey,
+                defaultBaseUrl: DEFAULT_BASE_URL
+            });
 
             // 使用 useMemo 创建 history Map，优化历史记录查找性能（O(1) 查找）
             const historyMap = useMemo(() => {
@@ -1765,47 +1779,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 if (historyContextMenu.item && historyContextMenu.item.id === id) {
                     setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
                 }
-            };
-
-            const addNewModel = () => {
-                const newConfig = { id: `custom-${Date.now()}`, provider: 'New Model', modelName: 'new-model-id', type: 'Chat', key: '', url: DEFAULT_BASE_URL, isCustom: true };
-                setApiConfigs([...apiConfigs, newConfig]);
-            };
-            const updateApiConfig = (id, updates) => setApiConfigs((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
-            const deleteApiConfig = (id) => setApiConfigs((prev) => prev.filter((c) => c.id !== id));
-
-            const testApiConnection = async (id) => {
-                setApiTesting(id);
-                setApiStatus((prev) => ({ ...prev, [id]: 'idle' }));
-                const config = apiConfigsMap.get(id);
-                const apiKey = config?.key || globalApiKey;
-
-                if (!apiKey) {
-                    setApiStatus((prev) => ({ ...prev, [id]: 'error' }));
-                    setApiTesting(null);
-                    return;
-                }
-
-                try {
-                    const response = await fetch(`${config?.url || DEFAULT_BASE_URL}/v1/models`, {
-                        method: 'GET',
-                        headers: { Authorization: `Bearer ${apiKey}` },
-                    });
-                    if (response.ok) setApiStatus((prev) => ({ ...prev, [id]: 'success' }));
-                    else setApiStatus((prev) => ({ ...prev, [id]: 'error' }));
-                } catch {
-                    setApiStatus((prev) => ({ ...prev, [id]: 'error' }));
-                }
-                setApiTesting(null);
-            };
-
-            const getStatusColor = (modelId) => {
-                if (!modelId) return 'bg-zinc-600';
-                const status = apiStatus[modelId];
-                if (status === 'success') return 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]';
-                if (status === 'error') return 'bg-red-500';
-                const config = apiConfigsMap.get(modelId);
-                return (config?.key || globalApiKey) ? 'bg-zinc-400' : 'bg-zinc-700';
             };
 
             const scrollToBottom = () => {
