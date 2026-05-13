@@ -4,7 +4,7 @@ import {
     DEFAULT_BASE_URL,
     JIMENG_API_BASE_URL,
     DELETED_MODEL_IDS,
-} from '../support.jsx';
+} from '../config/modelConfig.js';
 
 const cloneConfigList = (configs) => configs.map((config) => ({ ...config }));
 
@@ -103,4 +103,3 @@ export const useApiConfigs = () => {
 
     return [apiConfigs, setApiConfigs];
 };
-

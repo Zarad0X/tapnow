@@ -6,7 +6,7 @@ import {
     STORYBOARD_PROMPT_TEXT,
     CHARACTER_SHEET_PROMPT_TEXT,
     MOOD_BOARD_PROMPT_TEXT,
-} from '../support.jsx';
+} from '../config/promptTemplates.js';
 
 const DEFAULT_PROMPTS = [
     { id: 'grid-default', name: '九宫格分镜脚本', prompt: GRID_PROMPT_TEXT },
@@ -55,4 +55,3 @@ export const usePromptLibrary = () => {
         setPromptLibraryEditorOpen,
     };
 };
-
