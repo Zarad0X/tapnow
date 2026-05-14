@@ -80,6 +80,7 @@ import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
 import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
+import { useChatResize } from './hooks/useChatResize.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
@@ -566,18 +567,7 @@ import {
 
             useMidjourneyAutoSplit({ history, setHistory });
 
-            const handleChatResizeStart = (e) => { e.preventDefault(); setIsResizingChat(true); };
-            const [isResizingChat, setIsResizingChat] = useState(false);
-
-            const handleChatResizeMove = useCallback((e) => {
-                if (!isResizingChat) return;
-                const newWidth = window.innerWidth - e.clientX;
-                setChatWidth(Math.max(300, Math.min(newWidth, 800)));
-            }, [isResizingChat]);
-
-            const handleChatResizeEnd = useCallback(() => {
-                setIsResizingChat(false);
-            }, []);
+            const { handleChatResizeStart } = useChatResize({ setChatWidth });
 
             // 屏蔽滚轮事件相关的控制台错误（passive 事件监听器错误）- 双重保护
             useEffect(() => {
@@ -678,20 +668,6 @@ import {
                     canvasElement.removeEventListener('wheel', wheelHandler);
                 };
             }, []);
-
-            useEffect(() => {
-                if (isResizingChat) {
-                    window.addEventListener('mousemove', handleChatResizeMove);
-                    window.addEventListener('mouseup', handleChatResizeEnd);
-                } else {
-                    window.removeEventListener('mousemove', handleChatResizeMove);
-                    window.removeEventListener('mouseup', handleChatResizeEnd);
-                }
-                return () => {
-                    window.removeEventListener('mousemove', handleChatResizeMove);
-                    window.removeEventListener('mouseup', handleChatResizeEnd);
-                };
-            }, [isResizingChat, handleChatResizeMove, handleChatResizeEnd]);
 
             const screenToWorld = useCallback((sx, sy) => {
                 return screenToWorldPoint({
