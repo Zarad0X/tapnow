@@ -1,5 +1,10 @@
 import { isVideoUrl } from '../utils/mediaUtils.js';
 import {
+    blobToDataURL,
+    getBase64FromUrl,
+    getBlobFromUrl,
+} from '../utils/mediaProcessing.js';
+import {
     LOCAL_LIBRARY_SERVER_URL,
     findLocalFileUrlBySize,
     listLocalLibraryFiles,
@@ -27,30 +32,7 @@ export const getCSTFilenameTimestamp = () => {
     return `${year}-${month}-${day}T${hours}-${minutes}-${seconds}`;
 };
 
-export const getBlobFromUrl = async (url) => {
-    const res = await fetch(url);
-    return await res.blob();
-};
-
-export const getBase64FromUrl = async (url) => {
-    if (url.startsWith('data:')) {
-        return url.split(',')[1];
-    }
-    const blob = await getBlobFromUrl(url);
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-};
-
-export const blobToDataURL = (blob) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-});
+export { blobToDataURL, getBase64FromUrl, getBlobFromUrl };
 
 export const downloadJson = (jsonStr, filename) => {
     const blob = new Blob([jsonStr], { type: 'application/json' });

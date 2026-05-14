@@ -58,8 +58,6 @@ import {
   RATIOS,
   GROK_VIDEO_RATIOS,
   VIDEO_RES_OPTIONS,
-  GRID_PROMPT_TEXT,
-  UPSCALE_PROMPT_TEXT,
   DELETED_MODEL_IDS,
   getRatiosForModel,
   RESOLUTIONS,
@@ -79,23 +77,42 @@ import {
 import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
+import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
+import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
+import { useChatResize } from './hooks/useChatResize.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
 import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
+import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
+import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
+import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
+import {
+  uploadImageToGetHttpUrl,
+  uploadMidjourneyImages
+} from './services/midjourneyUploadService.js';
+import {
+  createGridImageNodes,
+  splitMidjourneyImage,
+  splitGridImage
+} from './services/gridSplitService.js';
+import {
+  createEmptyStoryboardShot,
+  createShotsFromAnalysisResults,
+  getDefaultDurationForModel,
+  getDefaultDurationsForModel,
+  renumberStoryboardShots,
+  updateStoryboardShot
+} from './services/storyboardService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import {
-  findScrollableNodeArea,
   getCanvasDetailLevel,
   getVisibleNodes,
-  preventCancelableEvent,
-  screenToWorldPoint,
-  scrollElementByWheel,
-  zoomViewAtPoint
+  screenToWorldPoint
 } from './canvas/viewport.js';
 import {
   createDefaultNodeSettings,
@@ -124,6 +141,17 @@ import { ApiSettingsModal } from './settings/ApiSettingsModal.jsx';
 import { ChatSidebar } from './chat/ChatSidebar.jsx';
 import { LocalSaveNode } from './nodes/LocalSaveNode.jsx';
 import { LowDetailNode } from './nodes/LowDetailNode.jsx';
+import {
+  base64ToBlobUrl,
+  blobToDataURL,
+  compressImage,
+  getBase64FromUrl,
+  getBlobFromUrl,
+  getSora2CompliantSize,
+  normalizeImageBlobToSize,
+  processMaskForInpainting,
+  resizeImageForVeo
+} from './utils/mediaProcessing.js';
 
         function TapnowApp() {
             const [theme, setTheme] = useLocalStorage('tapnow_theme', 'dark', {
@@ -281,8 +309,7 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
             const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
             const [activeTool, setActiveTool] = useState('select');
             const [activeDropdown, setActiveDropdown] = useState(null);
-            // 实时计时器状态：nodeId -> elapsedSeconds
-            const [nodeTimers, setNodeTimers] = useState({});
+            const nodeTimers = useNodeTimers(history);
 
             // 历史保存文件夹记忆
             const [savedFolderHistory, setSavedFolderHistory] = useLocalStorage('tapnow_saved_folder_history', []);
@@ -339,81 +366,7 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 });
             }, []);
 
-            // 性能模式变化时，为历史记录生成缩略图
-            useEffect(() => {
-                if (historyPerformanceMode === 'off') return;
-
-                const generateThumbnailsForHistory = async () => {
-                    const quality = historyPerformanceMode; // 'normal' 或 'ultra'
-                    const config = quality === 'ultra'
-                        ? { maxSize: 80, jpegQuality: 0.3 }
-                        : { maxSize: 150, jpegQuality: 0.6 };
-
-                    // 生成单张缩略图的辅助函数
-                    const genThumb = (url) => new Promise((resolve) => {
-                        const img = new Image();
-                        img.crossOrigin = 'anonymous';
-                        img.onload = () => {
-                            const canvas = document.createElement('canvas');
-                            let w = img.naturalWidth;
-                            let h = img.naturalHeight;
-                            if (w > h) {
-                                if (w > config.maxSize) { h = h * config.maxSize / w; w = config.maxSize; }
-                            } else {
-                                if (h > config.maxSize) { w = w * config.maxSize / h; h = config.maxSize; }
-                            }
-                            canvas.width = w;
-                            canvas.height = h;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, w, h);
-                            resolve(canvas.toDataURL('image/jpeg', config.jpegQuality));
-                        };
-                        img.onerror = () => resolve(null);
-                        img.src = url;
-                    });
-
-                    // 找出需要生成缩略图的项（已完成且有图片但没有缩略图的）
-                    const itemsNeedThumbnail = history.filter(item =>
-                        item.status === 'completed' &&
-                        item.type === 'image' &&
-                        (item.url || item.originalUrl) &&
-                        !item.thumbnailUrl
-                    );
-
-                    // 批量生成缩略图（每次最多处理5个，避免卡顿）
-                    const batchSize = 5;
-                    for (let i = 0; i < Math.min(itemsNeedThumbnail.length, batchSize); i++) {
-                        const item = itemsNeedThumbnail[i];
-                        try {
-                            const thumbnail = await genThumb(item.url || item.originalUrl);
-
-                            // 如果有MJ多图，也生成缩略图
-                            let mjThumbnails = null;
-                            if (item.mjImages && item.mjImages.length > 0) {
-                                mjThumbnails = await Promise.all(
-                                    item.mjImages.map(url => genThumb(url))
-                                );
-                            }
-
-                            if (thumbnail || mjThumbnails) {
-                                setHistory(prev => prev.map(h =>
-                                    h.id === item.id ? {
-                                        ...h,
-                                        thumbnailUrl: thumbnail || h.thumbnailUrl,
-                                        mjThumbnails: mjThumbnails || h.mjThumbnails
-                                    } : h
-                                ));
-                            }
-                        } catch (e) {
-                            console.warn('[缩略图] 生成失败:', e);
-                        }
-                    }
-                };
-
-                // 延迟执行，避免阻塞UI
-                const timer = setTimeout(generateThumbnailsForHistory, 100);
-                return () => clearTimeout(timer);
-            }, [historyPerformanceMode, history.length]);
+            useHistoryThumbnails({ history, setHistory, historyPerformanceMode });
 
             // 全局 Delete 键删除节点
             useEffect(() => {
@@ -599,336 +552,18 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 return byNode;
             }, [connections]);
 
-            // 实时更新节点计时器
-            useEffect(() => {
-                const interval = setInterval(() => {
-                    const now = Date.now();
-                    const activeTasks = history.filter(h =>
-                        h.sourceNodeId &&
-                        h.status === 'generating' &&
-                        h.startTime
-                    );
+            useAutoLocalSave({
+                nodes,
+                connections,
+                getConnectedInputImages,
+                updateNodeSettings,
+                isVideoUrl,
+            });
 
-                    const newTimers = {};
-                    activeTasks.forEach(task => {
-                        const elapsed = Math.floor((now - task.startTime) / 100);
-                        newTimers[task.sourceNodeId] = elapsed / 10; // 转换为秒，保留1位小数
-                    });
+            useMidjourneyAutoSplit({ history, setHistory });
 
-                    setNodeTimers(newTimers);
-                }, 100); // 每100ms更新一次
-
-                return () => clearInterval(interval);
-            }, [history]);
-
-            // 自动保存功能：监听local-save节点的连接变化
-            const autoSaveProcessingRef = useRef(new Set());
-            useEffect(() => {
-                const localSaveNodes = nodes.filter(n => n.type === 'local-save' && n.settings?.autoSave && n.settings?.serverStatus === 'connected');
-                if (localSaveNodes.length === 0) return;
-
-                localSaveNodes.forEach(async (node) => {
-                    const connectedImgs = getConnectedInputImages(node.id);
-                    if (connectedImgs.length === 0) return;
-
-                    // 检查是否有新的图片（与上次保存的不同）
-                    const lastSavedUrls = node.settings?.lastSavedUrls || [];
-                    const newImages = connectedImgs.filter(img => !lastSavedUrls.includes(img));
-
-                    if (newImages.length === 0) return;
-
-                    // 防止重复处理
-                    const processKey = `${node.id}-${newImages.join(',')}`;
-                    if (autoSaveProcessingRef.current.has(processKey)) return;
-                    autoSaveProcessingRef.current.add(processKey);
-
-                    // 延迟执行，避免频繁触发
-                    setTimeout(async () => {
-                        try {
-                            const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
-                            const subfolder = node.settings?.subfolder || '';
-                            const files = [];
-
-                            // PNG转高质量JPG的辅助函数
-                            const convertToJpg = async (imgUrl) => {
-                                return new Promise(async (resolve) => {
-                                    try {
-                                        const img = new Image();
-                                        img.crossOrigin = 'anonymous';
-                                        img.onload = () => {
-                                            const canvas = document.createElement('canvas');
-                                            canvas.width = img.naturalWidth;
-                                            canvas.height = img.naturalHeight;
-                                            const ctx = canvas.getContext('2d');
-                                            ctx.fillStyle = '#FFFFFF';
-                                            ctx.fillRect(0, 0, canvas.width, canvas.height);
-                                            ctx.drawImage(img, 0, 0);
-                                            const jpgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-                                            resolve(jpgDataUrl);
-                                        };
-                                        img.onerror = () => resolve(null);
-                                        img.src = imgUrl;
-                                    } catch (e) {
-                                        resolve(null);
-                                    }
-                                });
-                            };
-
-                            for (let i = 0; i < newImages.length; i++) {
-                                const imgUrl = newImages[i];
-                                const isVideo = isVideoUrl(imgUrl);
-                                try {
-                                    let content = imgUrl;
-                                    let ext = '.jpg';
-
-                                    if (isVideo) {
-                                        ext = '.mp4';
-                                        if (!imgUrl.startsWith('data:')) {
-                                            const response = await fetch(imgUrl);
-                                            const blob = await response.blob();
-                                            content = await new Promise((resolve) => {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => resolve(reader.result);
-                                                reader.readAsDataURL(blob);
-                                            });
-                                        }
-                                    } else {
-                                        const jpgContent = await convertToJpg(imgUrl);
-                                        if (jpgContent) {
-                                            content = jpgContent;
-                                        } else if (!imgUrl.startsWith('data:')) {
-                                            const response = await fetch(imgUrl);
-                                            const blob = await response.blob();
-                                            content = await new Promise((resolve) => {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => resolve(reader.result);
-                                                reader.readAsDataURL(blob);
-                                            });
-                                            ext = '.png';
-                                        }
-                                    }
-                                    const timestamp = Date.now();
-                                    files.push({
-                                        filename: `tapnow_${timestamp}_${i}${ext}`,
-                                        content: content
-                                    });
-                                } catch (e) {
-                                    console.error('自动保存处理文件失败:', e);
-                                }
-                            }
-
-                            if (files.length > 0) {
-                                const response = await fetch(`${serverUrl}/save-batch`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ files, subfolder })
-                                });
-                                const result = await response.json();
-                                if (result.success) {
-                                    updateNodeSettings(node.id, {
-                                        lastSaved: new Date().toISOString(),
-                                        savedFiles: result.results || [],
-                                        lastSavedUrls: [...connectedImgs]
-                                    });
-                                    console.log(`自动保存成功: ${files.length} 个文件`);
-                                }
-                            }
-                        } catch (e) {
-                            console.error('自动保存失败:', e);
-                        } finally {
-                            autoSaveProcessingRef.current.delete(processKey);
-                        }
-                    }, 1000); // 延迟1秒执行
-                });
-            }, [nodes, connections, getConnectedInputImages]);
-
-            // 检查并重新切割需要切割的Midjourney图片（使用useRef避免重复切割）
-            const splittingRef = useRef(new Set());
-            useEffect(() => {
-                history.forEach(item => {
-                    if (item.mjNeedsSplit && item.mjOriginalUrl && item.apiConfig?.modelId?.includes('mj') && item.status === 'completed') {
-                        // 避免重复切割
-                        if (splittingRef.current.has(item.id)) {
-                            return;
-                        }
-                        splittingRef.current.add(item.id);
-
-                        // 延迟切割，避免阻塞UI
-                        setTimeout(() => {
-                            // 获取比例信息
-                            let ratio = item.mjRatio || '1:1';
-                            if (item.prompt && item.prompt.includes('--ar ')) {
-                                const arMatch = item.prompt.match(/--ar\s+([\d:]+)/);
-                                if (arMatch && arMatch[1]) {
-                                    ratio = arMatch[1];
-                                }
-                            }
-
-                            console.log(`Midjourney: 开始重新切割图片，任务ID: ${item.id}, 比例: ${ratio}`);
-
-                            // 重新切割图片
-                            splitMidjourneyImage(item.mjOriginalUrl, ratio).then((splitImages) => {
-                                const imageUrls = splitImages.map(img => typeof img === 'string' ? img : img.url);
-                                const firstImage = splitImages[0];
-                                const firstUrl = typeof firstImage === 'string' ? firstImage : firstImage.url;
-
-                                setHistory((prev) => prev.map((hItem) =>
-                                    hItem.id === item.id
-                                        ? {
-                                            ...hItem,
-                                            mjImages: imageUrls,
-                                            url: firstUrl,
-                                            selectedMjImageIndex: 0,
-                                            mjRatio: ratio,
-                                            mjNeedsSplit: false, // 标记已切割
-                                            mjImageInfo: splitImages.map(img => typeof img === 'string' ? null : { width: img.width, height: img.height, ratio: img.ratio })
-                                        }
-                                        : hItem
-                                ));
-
-                                splittingRef.current.delete(item.id);
-                                console.log(`Midjourney: 重新切割完成，任务ID: ${item.id}`);
-                            }).catch((err) => {
-                                console.error('Midjourney: 重新切割图片失败:', err);
-                                splittingRef.current.delete(item.id);
-                                // 保持原图显示，标记需要重新切割
-                                setHistory((prev) => prev.map((hItem) =>
-                                    hItem.id === item.id
-                                        ? { ...hItem, mjNeedsSplit: true }
-                                        : hItem
-                                ));
-                            });
-                        }, 500); // 延迟500ms，确保UI已完全渲染
-                    }
-                });
-            }, [history]);
-
-            const handleChatResizeStart = (e) => { e.preventDefault(); setIsResizingChat(true); };
-            const [isResizingChat, setIsResizingChat] = useState(false);
-
-            const handleChatResizeMove = useCallback((e) => {
-                if (!isResizingChat) return;
-                const newWidth = window.innerWidth - e.clientX;
-                setChatWidth(Math.max(300, Math.min(newWidth, 800)));
-            }, [isResizingChat]);
-
-            const handleChatResizeEnd = useCallback(() => {
-                setIsResizingChat(false);
-            }, []);
-
-            // 屏蔽滚轮事件相关的控制台错误（passive 事件监听器错误）- 双重保护
-            useEffect(() => {
-                const originalError = console.error;
-                const originalWarn = console.warn;
-
-                const shouldFilter = (args) => {
-                    const msg = args.map(arg => {
-                        if (typeof arg === 'string') return arg;
-                        if (arg && arg.toString) return arg.toString();
-                        return '';
-                    }).join(' ');
-                    return msg.includes('Unable to preventDefault') ||
-                           msg.includes('passive event listener') ||
-                           (msg.includes('preventDefault') && msg.includes('passive'));
-                };
-
-                console.error = function(...args) {
-                    if (shouldFilter(args)) return;
-                    originalError.apply(console, args);
-                };
-
-                console.warn = function(...args) {
-                    if (shouldFilter(args)) return;
-                    originalWarn.apply(console, args);
-                };
-
-                return () => {
-                    console.error = originalError;
-                    console.warn = originalWarn;
-                };
-            }, []);
-
-            // 全局禁止 Ctrl+滚轮 缩放（捕获阶段，阻止浏览器缩放）；使用 try-catch 避免控制台报错
-            useEffect(() => {
-                const preventCtrlZoom = (e) => {
-                    if (!e.ctrlKey) return;
-                    try {
-                        if (e.cancelable) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }
-                    } catch (err) {
-                        // 静默处理 passive 事件监听器的错误
-                    }
-                };
-
-                const opts = { passive: false, capture: true };
-                window.addEventListener('wheel', preventCtrlZoom, opts);
-                document.addEventListener('wheel', preventCtrlZoom, opts);
-                window.addEventListener('mousewheel', preventCtrlZoom, opts);
-                document.addEventListener('mousewheel', preventCtrlZoom, opts);
-
-                return () => {
-                    window.removeEventListener('wheel', preventCtrlZoom, opts);
-                    document.removeEventListener('wheel', preventCtrlZoom, opts);
-                    window.removeEventListener('mousewheel', preventCtrlZoom, opts);
-                    document.removeEventListener('mousewheel', preventCtrlZoom, opts);
-                };
-            }, []);
-
-            // 使用原生事件监听器绑定 handleWheel，避免 React 合成事件的 passive 问题
-            useEffect(() => {
-                const canvasElement = canvasRef.current;
-                if (!canvasElement) return;
-
-                const wheelHandler = (e) => {
-                    // 如果按下了 Ctrl 键，直接阻止默认行为并不执行任何操作；使用 try-catch 避免控制台报错
-                    if (e.ctrlKey) {
-                        preventCancelableEvent(e, { stopPropagation: true });
-                        return;
-                    }
-
-                    const scrollableElement = findScrollableNodeArea({
-                        target: e.target,
-                        boundaryElement: canvasElement,
-                    });
-
-                    // 如果在节点内且找到可滚动元素，则滚动该元素而不是缩放画布
-                    if (scrollableElement) {
-                        preventCancelableEvent(e, { stopPropagation: true });
-                        scrollElementByWheel(scrollableElement, e.deltaY);
-                        return;
-                    }
-
-                    // 否则正常缩放画布
-                    preventCancelableEvent(e);
-                    const rect = canvasElement.getBoundingClientRect();
-                    const mouseX = e.clientX - rect.left;
-                    const mouseY = e.clientY - rect.top;
-                    setView((prev) => zoomViewAtPoint({ previousView: prev, mouseX, mouseY, deltaY: e.deltaY }));
-                };
-
-                // 使用 { passive: false } 确保可以调用 preventDefault
-                canvasElement.addEventListener('wheel', wheelHandler, { passive: false });
-
-                return () => {
-                    canvasElement.removeEventListener('wheel', wheelHandler);
-                };
-            }, []);
-
-            useEffect(() => {
-                if (isResizingChat) {
-                    window.addEventListener('mousemove', handleChatResizeMove);
-                    window.addEventListener('mouseup', handleChatResizeEnd);
-                } else {
-                    window.removeEventListener('mousemove', handleChatResizeMove);
-                    window.removeEventListener('mouseup', handleChatResizeEnd);
-                }
-                return () => {
-                    window.removeEventListener('mousemove', handleChatResizeMove);
-                    window.removeEventListener('mouseup', handleChatResizeEnd);
-                };
-            }, [isResizingChat, handleChatResizeMove, handleChatResizeEnd]);
+            const { handleChatResizeStart } = useChatResize({ setChatWidth });
+            useCanvasWheelGuards({ canvasRef, setView });
 
             const screenToWorld = useCallback((sx, sy) => {
                 return screenToWorldPoint({
@@ -938,33 +573,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                     view,
                 });
             }, [view]);
-
-            const handleWheel = (e) => {
-                // 如果按下了 Ctrl 键，直接阻止默认行为并不执行任何操作；使用 try-catch 避免控制台报错
-                if (e.ctrlKey) {
-                    preventCancelableEvent(e, { stopPropagation: true });
-                    return;
-                }
-
-                const scrollableElement = findScrollableNodeArea({
-                    target: e.target,
-                    boundaryElement: e.currentTarget,
-                });
-
-                // 如果在节点内且找到可滚动元素，则滚动该元素而不是缩放画布
-                if (scrollableElement) {
-                    preventCancelableEvent(e, { stopPropagation: true });
-                    scrollElementByWheel(scrollableElement, e.deltaY);
-                    return;
-                }
-
-                // 否则正常缩放画布
-                preventCancelableEvent(e);
-                const rect = e.currentTarget.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                setView((prev) => zoomViewAtPoint({ previousView: prev, mouseX, mouseY, deltaY: e.deltaY }));
-            };
 
             const handleMouseDown = (e) => {
                 if (e.button === 0 || e.button === 1) {
@@ -2081,702 +1689,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 }
             };
 
-            // 获取 Blob 对象（兼容 HTTP URL 和 Blob URL）
-            const getBlobFromUrl = async (url) => {
-                const res = await fetch(url);
-                return await res.blob();
-            };
-
-            // 获取 Base64 字符串（自动识别 Data URL 或 Blob URL 并转换）
-            const getBase64FromUrl = async (url) => {
-                if (url.startsWith('data:')) {
-                    return url.split(',')[1];
-                }
-                const blob = await getBlobFromUrl(url);
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const res = reader.result;
-                        // 返回纯 Base64 部分
-                        resolve(res.split(',')[1]);
-                    };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blob);
-                });
-            };
-
-            const blobToDataURL = (blob) => {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blob);
-                });
-            };
-
-            // 辅助函数：将 Base64 Data URL 转换为 Blob URL
-            const base64ToBlobUrl = async (base64Data) => {
-                try {
-                    if (!base64Data || typeof base64Data !== 'string') {
-                        return base64Data;
-                    }
-                    // 如果已经是 Blob URL 或 HTTP URL，直接返回
-                    if (base64Data.startsWith('blob:') || base64Data.startsWith('http://') || base64Data.startsWith('https://')) {
-                        return base64Data;
-                    }
-                    // 如果是 Base64 Data URL，转换为 Blob URL
-                    if (base64Data.startsWith('data:')) {
-                        const res = await fetch(base64Data);
-                        const blob = await res.blob();
-                        return URL.createObjectURL(blob);
-                    }
-                    // 其他情况直接返回
-                    return base64Data;
-                } catch (e) {
-                    console.error('Base64转Blob失败', e);
-                    return base64Data; // 失败则返回原数据
-                }
-            };
-
-            // 压缩/缩放图片用于Midjourney上传（Discord对图片有尺寸和大小限制）
-            const prepareImageForMidjourneyUpload = async (imageUrl, maxSize = 2048, maxFileSizeMB = 8) => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    img.onload = () => {
-                        const originalWidth = img.width;
-                        const originalHeight = img.height;
-
-                        // 计算缩放后的尺寸，保持宽高比
-                        let newWidth = originalWidth;
-                        let newHeight = originalHeight;
-
-                        if (originalWidth > maxSize || originalHeight > maxSize) {
-                            const scale = maxSize / Math.max(originalWidth, originalHeight);
-                            newWidth = Math.floor(originalWidth * scale);
-                            newHeight = Math.floor(originalHeight * scale);
-                            console.log(`Midjourney: 缩放图片 ${originalWidth}x${originalHeight} -> ${newWidth}x${newHeight}`);
-                        }
-
-                        // 创建canvas并绘制
-                        const canvas = document.createElement('canvas');
-                        canvas.width = newWidth;
-                        canvas.height = newHeight;
-                        const ctx = canvas.getContext('2d');
-
-                        // 使用高质量绘制
-                        ctx.imageSmoothingEnabled = true;
-                        ctx.imageSmoothingQuality = 'high';
-                        ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-                        // 转换为base64，使用JPEG格式压缩
-                        // 从高质量开始，如果文件太大则降低质量
-                        let quality = 0.92;
-                        let dataUrl = canvas.toDataURL('image/jpeg', quality);
-
-                        // 检查文件大小（base64编码后的大小约为原始大小的133%）
-                        const base64Length = dataUrl.split(',')[1]?.length || 0;
-                        const fileSizeMB = (base64Length * 3 / 4) / (1024 * 1024);
-
-                        // 如果文件太大，降低质量
-                        if (fileSizeMB > maxFileSizeMB) {
-                            console.log(`Midjourney: 图片文件大小 ${fileSizeMB.toFixed(2)}MB 超过限制，降低质量...`);
-                            quality = 0.75;
-                            dataUrl = canvas.toDataURL('image/jpeg', quality);
-                            const newBase64Length = dataUrl.split(',')[1]?.length || 0;
-                            const newFileSizeMB = (newBase64Length * 3 / 4) / (1024 * 1024);
-                            console.log(`Midjourney: 降低质量后文件大小 ${newFileSizeMB.toFixed(2)}MB`);
-                        }
-
-                        resolve(dataUrl);
-                    };
-
-                    img.onerror = (error) => {
-                        console.error('Midjourney: 图片加载失败', error);
-                        // 如果加载失败，返回原图
-                        resolve(imageUrl);
-                    };
-
-                    img.src = imageUrl;
-                });
-            };
-
-            // 上传图片到Midjourney并获取HTTP URL（用于oref和sref指令）
-            const uploadMidjourneyImages = async (base64Array, baseUrl, apiKey) => {
-                try {
-                    // 先处理所有图片：压缩/缩放
-                    console.log(`Midjourney: 准备上传 ${base64Array.length} 张图片，先进行压缩/缩放处理...`);
-                    const processedImages = await Promise.all(
-                        base64Array.map(async (imageUrl, index) => {
-                            // 如果是data URL，先压缩/缩放
-                            if (imageUrl.startsWith('data:')) {
-                                try {
-                                    const processed = await prepareImageForMidjourneyUpload(imageUrl, 2048, 8);
-                                    console.log(`Midjourney: 图片[${index}]处理完成`);
-                                    return processed;
-                                } catch (error) {
-                                    console.error(`Midjourney: 图片[${index}]处理失败，使用原图`, error);
-                                    return imageUrl;
-                                }
-                            } else {
-                                // 如果是HTTP URL，需要先转换为data URL再处理
-                                try {
-                                    const blob = await getBlobFromUrl(imageUrl);
-                                    const dataUrl = await blobToDataURL(blob);
-                                    const processed = await prepareImageForMidjourneyUpload(dataUrl, 2048, 8);
-                                    console.log(`Midjourney: 图片[${index}]从URL处理完成`);
-                                    return processed;
-                                } catch (error) {
-                                    console.error(`Midjourney: 图片[${index}]从URL处理失败`, error);
-                                    throw error;
-                                }
-                            }
-                        })
-                    );
-
-                    // 清理base64数组，确保每个元素都是纯base64字符串
-                    const cleanedBase64Array = processedImages.map((base64, index) => {
-                        // 如果是data URL，提取base64部分
-                        let cleaned = base64;
-                        if (typeof cleaned !== 'string') {
-                            throw new Error(`base64[${index}]不是字符串类型`);
-                        }
-
-                        // 如果是data URL，提取base64部分
-                        if (cleaned.includes(',')) {
-                            // 直接提取逗号后的部分（base64数据）
-                            cleaned = cleaned.split(',')[1];
-                        } else if (cleaned.startsWith('data:')) {
-                            // 如果没有逗号但有data:前缀，使用正则提取
-                            cleaned = cleaned.replace(/^data:[^;]*;base64,?/i, '');
-                        }
-
-                        // 严格清理：移除所有非base64字符（包括空白字符和不可见字符）
-                        // 只保留有效的base64字符：A-Z, a-z, 0-9, +, /, =
-                        const beforeClean = cleaned.length;
-                        cleaned = cleaned.replace(/[^A-Za-z0-9+/=]/g, '');
-                        const afterClean = cleaned.length;
-                        if (beforeClean !== afterClean) {
-                            console.log(`Midjourney: base64[${index}]清理了 ${beforeClean - afterClean} 个非法字符`);
-                        }
-
-                        if (!cleaned || cleaned.length < 100) {
-                            throw new Error(`base64[${index}]无效或太短，长度: ${cleaned?.length || 0}`);
-                        }
-
-                        // 验证base64格式：只包含 base64 字符（A-Z, a-z, 0-9, +, /, =）
-                        // 注意：base64字符串可能以0-2个=结尾作为填充
-                        const base64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
-                        if (!base64Regex.test(cleaned)) {
-                            console.error(`Midjourney: base64[${index}]格式验证失败，长度: ${cleaned.length}, 前50字符: ${cleaned.substring(0, 50)}`);
-                            throw new Error(`invalid_base64_format: base64[${index}]格式无效`);
-                        }
-
-                        // 验证base64长度是否为4的倍数（base64编码要求）
-                        // 如果不是4的倍数，添加填充
-                        const padding = cleaned.length % 4;
-                        if (padding !== 0) {
-                            // 移除现有的填充字符，然后重新添加正确的填充
-                            cleaned = cleaned.replace(/=+$/, '');
-                            cleaned += '='.repeat(4 - padding);
-
-                            // 填充后再次验证
-                            if (!base64Regex.test(cleaned)) {
-                                console.error(`Midjourney: base64[${index}]填充后验证失败，长度: ${cleaned.length}`);
-                                throw new Error(`invalid_base64_format: base64[${index}]填充后格式无效`);
-                            }
-                        }
-
-                        // 测试base64是否能正确解码（确保base64有效）
-                        try {
-                            const testDecode = atob(cleaned);
-                            if (!testDecode || testDecode.length === 0) {
-                                throw new Error('base64解码结果为空');
-                            }
-                            console.log(`Midjourney: base64[${index}]解码测试通过，解码后长度: ${testDecode.length}`);
-                        } catch (decodeError) {
-                            console.error(`Midjourney: base64[${index}]解码测试失败:`, decodeError);
-                            throw new Error(`invalid_base64_format: base64[${index}]无法解码`);
-                        }
-
-                        // 根据API文档，base64Array需要完整的data URL格式：data:image/png;base64,xxx
-                        // 而不是纯base64字符串
-                        const dataUrl = `data:image/jpeg;base64,${cleaned}`;
-                        console.log(`Midjourney: base64[${index}]清理完成，长度: ${cleaned.length}, 前20字符: ${cleaned.substring(0, 20)}`);
-                        return dataUrl;
-                    });
-
-                    // 使用Midjourney的上传接口：/mj/submit/upload-discord-images
-                    const uploadEndpoint = `${baseUrl}/mj/submit/upload-discord-images`;
-
-                    console.log('Midjourney: 上传图片，base64数组长度:', cleanedBase64Array.length, '第一个data URL长度:', cleanedBase64Array[0]?.length, '前50字符:', cleanedBase64Array[0]?.substring(0, 50));
-
-                    // 最终验证所有data URL字符串（现在返回的是完整的data URL格式）
-                    cleanedBase64Array.forEach((dataUrl, idx) => {
-                        if (!dataUrl || typeof dataUrl !== 'string') {
-                            throw new Error(`base64[${idx}]无效或不是字符串`);
-                        }
-                        // 验证是否是data URL格式：data:image/xxx;base64,xxx
-                        if (!dataUrl.startsWith('data:image/')) {
-                            throw new Error(`base64[${idx}]不是有效的data URL格式`);
-                        }
-                        // 提取base64部分进行验证
-                        let base64Part = '';
-                        if (dataUrl.includes(',')) {
-                            base64Part = dataUrl.split(',')[1];
-                        } else {
-                            throw new Error(`base64[${idx}]data URL格式不正确，缺少逗号`);
-                        }
-
-                        if (!base64Part || base64Part.length < 100) {
-                            throw new Error(`base64[${idx}]无效或太短`);
-                        }
-                        // 验证base64格式
-                        const base64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
-                        if (!base64Regex.test(base64Part)) {
-                            console.error(`Midjourney: base64[${idx}]最终验证失败，包含非法字符`);
-                            throw new Error(`base64[${idx}]格式无效`);
-                        }
-                        // 验证长度是4的倍数
-                        if (base64Part.length % 4 !== 0) {
-                            throw new Error(`base64[${idx}]长度不是4的倍数: ${base64Part.length}`);
-                        }
-                        // 再次测试解码
-                        try {
-                            atob(base64Part);
-                        } catch (e) {
-                            throw new Error(`base64[${idx}]无法解码: ${e.message}`);
-                        }
-                    });
-
-                    // 构建请求体
-                    const requestBody = {
-                        base64Array: cleanedBase64Array
-                    };
-
-                    // 验证JSON序列化后的数据
-                    const jsonString = JSON.stringify(requestBody);
-                    console.log('Midjourney: 请求体JSON长度:', jsonString.length, 'base64数组长度:', cleanedBase64Array.length);
-
-                    const uploadResp = await fetch(uploadEndpoint, {
-                        method: 'POST',
-                        headers: {
-                            Authorization: `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: jsonString
-                    });
-
-                    if (!uploadResp.ok) {
-                        let errorText = '';
-                        try {
-                            errorText = await uploadResp.text();
-                            // 尝试解析为JSON
-                            try {
-                                const errorJson = JSON.parse(errorText);
-                                throw new Error(`上传失败: ${uploadResp.status} - ${errorJson.description || errorJson.message || errorText}`);
-                            } catch {
-                                throw new Error(`上传失败: ${uploadResp.status} - ${errorText}`);
-                            }
-                        } catch (error) {
-                            throw new Error(`上传失败: ${uploadResp.status} - ${error.message || errorText}`);
-                        }
-                    }
-
-                    const uploadData = await uploadResp.json();
-                    console.log('Midjourney: 上传响应:', uploadData);
-
-                    // 检查响应格式
-                    if (uploadData.code === 1 && uploadData.result && Array.isArray(uploadData.result)) {
-                        console.log('Midjourney: 图片上传成功，获取URLs:', uploadData.result);
-                        return uploadData.result; // 返回URL数组
-                    } else {
-                        const errorMsg = uploadData.description || uploadData.message || '上传失败：响应格式错误';
-                        console.error('Midjourney: 上传失败，响应:', uploadData);
-                        throw new Error(errorMsg);
-                    }
-                } catch (error) {
-                    console.error('Midjourney: 图片上传失败:', error);
-                    throw error;
-                }
-            };
-
-            // 上传单个图片到图床并获取HTTP URL（用于Midjourney的oref和sref指令，以及拓展图片）
-            const uploadImageToGetHttpUrl = async (imageUrl, baseUrl, apiKey) => {
-                try {
-                    // 如果是HTTP/HTTPS URL，直接返回
-                    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                        return imageUrl;
-                    }
-
-                    // 如果是 Blob URL，需要转换为 Base64 再上传
-                    if (imageUrl.startsWith('blob:')) {
-                        const base64Data = await getBase64FromUrl(imageUrl);
-                        // 继续使用 data URL 的处理逻辑
-                        imageUrl = `data:image/png;base64,${base64Data}`;
-                    }
-
-                    // 如果是data URL，需要上传
-                    if (imageUrl.startsWith('data:')) {
-                        // 提取base64数据（去掉 data:image/png;base64, 前缀）
-                        // 确保正确提取纯base64字符串
-                        let base64Data = imageUrl;
-                        if (base64Data.includes(',')) {
-                            base64Data = base64Data.split(',')[1];
-                        } else {
-                            // 如果没有逗号，尝试去掉 data: 前缀
-                            base64Data = base64Data.replace(/^data:[^;]*;base64,?/i, '');
-                        }
-                        // 先清理所有非base64字符（包括所有空白字符和不可见字符）
-                        // 这是最严格的方式：只保留有效的base64字符
-                        base64Data = base64Data.replace(/[^A-Za-z0-9+/=]/g, '');
-
-                        if (!base64Data || base64Data.length < 100) {
-                            console.error('拓展图片: base64数据无效或太短，长度:', base64Data?.length);
-                            return null;
-                        }
-
-                        // 验证base64格式：只包含 base64 字符（A-Z, a-z, 0-9, +, /, =）
-                        const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-                        if (!base64Regex.test(base64Data)) {
-                            console.error('拓展图片: base64数据格式验证失败，包含非法字符');
-                            // 再次清理（理论上不应该到这里）
-                            base64Data = base64Data.replace(/[^A-Za-z0-9+/=]/g, '');
-                            if (!base64Regex.test(base64Data)) {
-                                console.error('拓展图片: 清理后仍无效，放弃上传');
-                                return null;
-                            }
-                        }
-
-                        // 验证base64长度是否为4的倍数（base64编码要求）
-                        const padding = base64Data.length % 4;
-                        if (padding !== 0) {
-                            console.warn('拓展图片: base64长度不是4的倍数，添加填充:', padding);
-                            base64Data += '='.repeat(4 - padding);
-                        }
-
-                        // 最终验证
-                        if (!base64Regex.test(base64Data)) {
-                            console.error('拓展图片: 最终验证失败');
-                            return null;
-                        }
-
-                        console.log('拓展图片: 提取的base64数据长度:', base64Data.length, '前50字符:', base64Data.substring(0, 50), '后10字符:', base64Data.substring(base64Data.length - 10), '格式验证通过:', base64Regex.test(base64Data));
-
-                        // 优先使用 Midjourney 官方上传接口
-                        try {
-                            // 确保 baseUrl 格式正确（移除末尾斜杠）
-                            const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-                            const uploadEndpoint = `${cleanBaseUrl}/mj/submit/upload-discord-images`;
-                            const uploadPayload = {
-                                base64Array: [base64Data]
-                            };
-
-                            console.log('拓展图片: 使用 Midjourney 上传接口上传图片...', uploadEndpoint, 'base64长度:', base64Data.length);
-
-                            const uploadResp = await fetch(uploadEndpoint, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${apiKey}`
-                                },
-                                body: JSON.stringify(uploadPayload)
-                            });
-
-                            const responseText = await uploadResp.text();
-                            console.log('拓展图片: Midjourney 上传响应状态:', uploadResp.status, '响应长度:', responseText.length);
-
-                            if (uploadResp.ok) {
-                                let uploadData;
-                                try {
-                                    uploadData = JSON.parse(responseText);
-                                } catch (parseError) {
-                                    console.error('拓展图片: Midjourney 上传响应解析失败', parseError, '响应内容:', responseText.substring(0, 200));
-                                    throw new Error('响应不是有效的JSON格式');
-                                }
-
-                                console.log('拓展图片: Midjourney 上传响应数据:', uploadData);
-                                console.log('拓展图片: 响应详细信息:', {
-                                    code: uploadData.code,
-                                    description: uploadData.description,
-                                    result: uploadData.result,
-                                    resultType: typeof uploadData.result,
-                                    isArray: Array.isArray(uploadData.result),
-                                    hasData: !!uploadData.data,
-                                    hasUrl: !!uploadData.url
-                                });
-
-                                // 检查响应格式
-                                if (uploadData.code === 1) {
-                                    // 尝试多种可能的响应格式
-                                    let httpUrl = null;
-
-                                    // 格式1: result 是数组
-                                    if (uploadData.result && Array.isArray(uploadData.result) && uploadData.result.length > 0) {
-                                        httpUrl = uploadData.result[0];
-                                    }
-                                    // 格式2: result 是字符串
-                                    else if (uploadData.result && typeof uploadData.result === 'string') {
-                                        httpUrl = uploadData.result;
-                                    }
-                                    // 格式3: data 字段
-                                    else if (uploadData.data && Array.isArray(uploadData.data) && uploadData.data.length > 0) {
-                                        httpUrl = uploadData.data[0];
-                                    }
-                                    // 格式4: url 字段
-                                    else if (uploadData.url) {
-                                        httpUrl = uploadData.url;
-                                    }
-
-                                    if (httpUrl && (httpUrl.startsWith('http://') || httpUrl.startsWith('https://'))) {
-                                        console.log('拓展图片: Midjourney 上传成功，获取HTTP URL:', httpUrl);
-                                        return httpUrl;
-                                    } else {
-                                        console.warn('拓展图片: Midjourney 返回的URL格式不正确或为空', {
-                                            httpUrl,
-                                            code: uploadData.code,
-                                            description: uploadData.description,
-                                            result: uploadData.result,
-                                            data: uploadData.data,
-                                            url: uploadData.url
-                                        });
-                                    }
-                                } else {
-                                    console.warn('拓展图片: Midjourney 上传失败', {
-                                        code: uploadData.code,
-                                        description: uploadData.description,
-                                        fullResponse: uploadData
-                                    });
-                                }
-                            } else {
-                                console.warn('拓展图片: Midjourney 上传失败', uploadResp.status, '响应内容:', responseText.substring(0, 200));
-                            }
-                        } catch (e) {
-                            console.error('拓展图片: Midjourney 上传接口调用失败', e);
-                        }
-
-                        // 如果 Midjourney 上传失败，尝试使用图床服务作为备选
-                        const mimeMatch = imageUrl.match(/data:([^;]+);base64/);
-                        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-
-                        // 将base64转换为Blob
-                        const byteCharacters = atob(base64Data);
-                        const byteNumbers = new Array(byteCharacters.length);
-                        for (let i = 0; i < byteCharacters.length; i++) {
-                            byteNumbers[i] = byteCharacters.charCodeAt(i);
-                        }
-                        const byteArray = new Uint8Array(byteNumbers);
-                        const blob = new Blob([byteArray], { type: mimeType });
-
-                        const imageBedServices = [
-                            // sm.ms图床
-                            {
-                                name: 'sm.ms',
-                                url: 'https://sm.ms/api/v2/upload',
-                                fieldName: 'smfile',
-                                parseResponse: (data) => data.success && data.data?.url ? data.data.url : null
-                            }
-                        ];
-
-                        for (const service of imageBedServices) {
-                            if (service.skip) continue;
-
-                            try {
-                                const formData = new FormData();
-                                formData.append(service.fieldName, blob, 'image.png');
-
-                                const resp = await fetch(service.url, {
-                                    method: 'POST',
-                                    body: formData
-                                });
-
-                                if (resp.ok) {
-                                    const data = await resp.json();
-                                    const httpUrl = service.parseResponse(data);
-                                    if (httpUrl && (httpUrl.startsWith('http://') || httpUrl.startsWith('https://'))) {
-                                        console.log(`拓展图片: 使用${service.name}图床上传成功，获取HTTP URL:`, httpUrl);
-                                        return httpUrl;
-                                    }
-                                }
-                            } catch (e) {
-                                console.warn(`拓展图片: ${service.name}图床上传失败:`, e);
-                                continue;
-                            }
-                        }
-
-                        // 如果所有上传方式都失败，返回null
-                        console.warn('拓展图片: 所有上传方式都失败，无法获取HTTP URL');
-                        return null;
-                    }
-
-                    // 其他格式，直接返回
-                    return imageUrl;
-                } catch (error) {
-                    console.error('拓展图片: 上传图片失败:', error);
-                    return null;
-                }
-            };
-
-            // 缩放图片到合理尺寸（用于Veo接口，避免图片过大）
-            const resizeImageForVeo = async (imageUrl, maxWidth = 1920, maxHeight = 1920) => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    img.onload = () => {
-                        const originalWidth = img.width;
-                        const originalHeight = img.height;
-
-                        // 如果图片尺寸已经小于等于目标尺寸，直接返回原图
-                        if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
-                            console.log(`Veo: 图片尺寸 ${originalWidth}x${originalHeight} 无需缩放`);
-                            if (imageUrl.startsWith('data:')) {
-                                resolve(imageUrl);
-                            } else {
-                                // 如果是URL，转换为data URL
-                                getBase64FromUrl(imageUrl).then(base64 => {
-                                    resolve(`data:image/png;base64,${base64}`);
-                                }).catch(reject);
-                            }
-                            return;
-                        }
-
-                        // 计算缩放后的尺寸，保持宽高比
-                        let newWidth = originalWidth;
-                        let newHeight = originalHeight;
-
-                        if (originalWidth > maxWidth || originalHeight > maxHeight) {
-                            const scale = Math.min(maxWidth / originalWidth, maxHeight / originalHeight);
-                            newWidth = Math.round(originalWidth * scale);
-                            newHeight = Math.round(originalHeight * scale);
-
-                            // 确保尺寸是偶数（某些编码器要求）
-                            newWidth = newWidth % 2 === 0 ? newWidth : newWidth - 1;
-                            newHeight = newHeight % 2 === 0 ? newHeight : newHeight - 1;
-                        }
-
-                        console.log(`Veo: 缩放图片 ${originalWidth}x${originalHeight} -> ${newWidth}x${newHeight}`);
-
-                        // 使用canvas缩放图片
-                        const canvas = document.createElement('canvas');
-                        canvas.width = newWidth;
-                        canvas.height = newHeight;
-                        const ctx = canvas.getContext('2d');
-
-                        // 使用高质量缩放
-                        ctx.imageSmoothingEnabled = true;
-                        ctx.imageSmoothingQuality = 'high';
-                        ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-                        // 转换为data URL
-                        const dataUrl = canvas.toDataURL('image/png', 0.95);
-                        resolve(dataUrl);
-                    };
-
-                    img.onerror = (e) => {
-                        console.error('Veo: 图片加载失败', e);
-                        reject(new Error('图片加载失败'));
-                    };
-
-                    // 设置图片源
-                    if (imageUrl.startsWith('data:')) {
-                        img.src = imageUrl;
-                    } else if (imageUrl.startsWith('blob:')) {
-                        img.src = imageUrl;
-                    } else {
-                        // 对于其他URL，先转换为blob再加载（避免CORS问题）
-                        getBlobFromUrl(imageUrl).then(blob => {
-                            const blobUrl = URL.createObjectURL(blob);
-                            img.src = blobUrl;
-                        }).catch(reject);
-                    }
-                });
-            };
-
-            // --- Sora 2: 强制将输入图片转换为合规尺寸/格式 ---
-            // 背景：/v1/videos 对 sora-2 会校验 size 与输入图像尺寸；若用户上传的是任意尺寸/比例，容易触发 invalid_size。
-            const getSora2CompliantSize = (ratio, w, h, enableHD = false) => {
-                // Sora2 仅支持 16:9 / 9:16；其它比例按当前 w/h 取最接近方向
-                const toAspectValue = (r) => {
-                    if (!r || typeof r !== 'string') return null;
-                    const [a, b] = r.split(':').map(Number);
-                    if (!a || !b) return null;
-                    return a / b;
-                };
-                const aspect = (ratio === '16:9' || ratio === '9:16')
-                    ? ratio
-                    : (() => {
-                        const rv = toAspectValue(ratio);
-                        const fallback = (w && h) ? (w / h) : (rv || (16 / 9));
-                        const d169 = Math.abs(fallback - (16 / 9));
-                        const d916 = Math.abs(fallback - (9 / 16));
-                        return d916 < d169 ? '9:16' : '16:9';
-                    })();
-
-                const portrait = aspect === '9:16';
-
-                // 采用固定像素尺寸集合（避免后端 size 校验失败）
-                // - 非HD：1280x720 / 720x1280
-                // - HD：1920x1080 / 1080x1920
-                if (enableHD) {
-                    return portrait
-                        ? { sizeStr: '1080x1920', w: 1080, h: 1920, aspect }
-                        : { sizeStr: '1920x1080', w: 1920, h: 1080, aspect };
-                }
-                return portrait
-                    ? { sizeStr: '720x1280', w: 720, h: 1280, aspect }
-                    : { sizeStr: '1280x720', w: 1280, h: 720, aspect };
-            };
-
-            const normalizeImageBlobToSize = async (blob, targetW, targetH, mime = 'image/png') => {
-                if (!(blob instanceof Blob) || !targetW || !targetH) return blob;
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    const objUrl = URL.createObjectURL(blob);
-                    img.onload = () => {
-                        try {
-                            const srcW = img.naturalWidth || img.width || 1;
-                            const srcH = img.naturalHeight || img.height || 1;
-
-                            const canvas = document.createElement('canvas');
-                            canvas.width = targetW;
-                            canvas.height = targetH;
-                            const ctx = canvas.getContext('2d');
-                            if (!ctx) {
-                                URL.revokeObjectURL(objUrl);
-                                resolve(blob);
-                                return;
-                            }
-                            ctx.imageSmoothingEnabled = true;
-                            ctx.imageSmoothingQuality = 'high';
-
-                            // cover 裁剪：保持主体充满目标画布，居中裁剪
-                            const scale = Math.max(targetW / srcW, targetH / srcH);
-                            const drawW = srcW * scale;
-                            const drawH = srcH * scale;
-                            const dx = (targetW - drawW) / 2;
-                            const dy = (targetH - drawH) / 2;
-                            ctx.clearRect(0, 0, targetW, targetH);
-                            ctx.drawImage(img, dx, dy, drawW, drawH);
-
-                            canvas.toBlob((out) => {
-                                URL.revokeObjectURL(objUrl);
-                                resolve(out || blob);
-                            }, mime, 0.92);
-                        } catch (e) {
-                            URL.revokeObjectURL(objUrl);
-                            resolve(blob);
-                        }
-                    };
-                    img.onerror = () => {
-                        URL.revokeObjectURL(objUrl);
-                        resolve(blob);
-                    };
-                    img.src = objUrl;
-                });
-            };
-
             const disconnectConnection = useCallback((connectionId) => {
                 setConnections(prev => {
                     const filtered = prev.filter(conn => conn.id !== connectionId);
@@ -2805,30 +1717,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
 
             const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('drag-over'); };
             const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('drag-over'); };
-
-            // 将HTML表格转换为Markdown表格格式
-            const convertTableToMarkdown = (table) => {
-                const rows = Array.from(table.querySelectorAll('tr'));
-                if (rows.length === 0) return '';
-
-                const markdownRows = rows.map((row, rowIndex) => {
-                    const cells = Array.from(row.querySelectorAll('td, th'));
-                    const cellTexts = cells.map(cell => {
-                        const text = cell.textContent.trim().replace(/\|/g, '\\|').replace(/\n/g, ' ');
-                        return text || ' ';
-                    });
-                    return '| ' + cellTexts.join(' | ') + ' |';
-                });
-
-                // 添加分隔行（第二行）
-                if (markdownRows.length > 0) {
-                    const firstRowCells = markdownRows[0].split('|').filter(c => c.trim()).length - 2;
-                    const separator = '| ' + Array(firstRowCells).fill('---').join(' | ') + ' |';
-                    markdownRows.splice(1, 0, separator);
-                }
-
-                return '\n' + markdownRows.join('\n') + '\n';
-            };
 
             // 优化后的复制粘贴逻辑
             useEffect(() => {
@@ -3576,117 +2464,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                             storyboardTaskMapRef.current.delete(taskId);
                         }
                     }
-                });
-            };
-
-            // 切割Midjourney返回的4张图（2x2网格）
-            // 压缩图片以减少存储大小
-            const compressImage = (dataUrl, maxWidth = 1024, quality = 0.8) => {
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-
-                        // 计算压缩后的尺寸
-                        let width = img.width;
-                        let height = img.height;
-                        if (width > maxWidth || height > maxWidth) {
-                            const scale = maxWidth / Math.max(width, height);
-                            width = Math.floor(width * scale);
-                            height = Math.floor(height * scale);
-                        }
-
-                        canvas.width = width;
-                        canvas.height = height;
-
-                        // 绘制并压缩
-                        ctx.drawImage(img, 0, 0, width, height);
-                        // 使用JPEG格式压缩，减少文件大小
-                        const compressed = canvas.toDataURL('image/jpeg', quality);
-                        resolve(compressed);
-                    };
-                    img.onerror = () => resolve(dataUrl); // 如果压缩失败，返回原图
-                    img.src = dataUrl;
-                });
-            };
-
-            const splitMidjourneyImage = async (imageUrl, ratio = '1:1') => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    // 设置超时，防止图片加载卡死
-                    const timeout = setTimeout(() => {
-                        reject(new Error('图片加载超时'));
-                    }, 30000); // 30秒超时
-
-                    img.onload = () => {
-                        clearTimeout(timeout);
-                        try {
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-
-                            // Midjourney返回的是2x2网格，每张图是原图的1/4
-                            // 计算每张图的尺寸（使用Math.floor确保整数像素）
-                            const singleWidth = Math.floor(img.width / 2);
-                            const singleHeight = Math.floor(img.height / 2);
-
-                            // 计算实际每张图的比例
-                            const actualRatio = singleWidth / singleHeight;
-
-                            const images = [];
-
-                            // 切割4张图：左上、右上、左下、右下
-                            for (let row = 0; row < 2; row++) {
-                                for (let col = 0; col < 2; col++) {
-                                    // 计算裁剪区域（确保不超出边界）
-                                    const cropX = Math.max(0, Math.min(col * singleWidth, img.width - singleWidth));
-                                    const cropY = Math.max(0, Math.min(row * singleHeight, img.height - singleHeight));
-                                    const cropW = Math.min(singleWidth, img.width - cropX);
-                                    const cropH = Math.min(singleHeight, img.height - cropY);
-
-                                    // 设置canvas尺寸
-                                    canvas.width = cropW;
-                                    canvas.height = cropH;
-
-                                    // 清空canvas并设置白色背景（防止透明区域）
-                                    ctx.fillStyle = '#ffffff';
-                                    ctx.fillRect(0, 0, cropW, cropH);
-
-                                    // 提取图片区域
-                                    ctx.drawImage(
-                                        img,
-                                        cropX, cropY, cropW, cropH,
-                                        0, 0, cropW, cropH
-                                    );
-
-                                    // 使用PNG格式，保持图片质量
-                                    const dataUrl = canvas.toDataURL('image/png');
-                                    images.push({
-                                        url: dataUrl,
-                                        width: cropW,
-                                        height: cropH,
-                                        ratio: actualRatio
-                                    });
-                                }
-                            }
-
-                            console.log(`Midjourney: 切割图片完成，原图尺寸 ${img.width}x${img.height}，每张图尺寸 ${singleWidth}x${singleHeight}，比例 ${actualRatio.toFixed(2)}`);
-                            resolve(images);
-                        } catch (error) {
-                            console.error('Midjourney: 切割图片时出错:', error);
-                            reject(error);
-                        }
-                    };
-
-                    img.onerror = (e) => {
-                        clearTimeout(timeout);
-                        console.error('Midjourney: Failed to load image for splitting:', e);
-                        reject(new Error('图片加载失败'));
-                    };
-
-                    img.src = imageUrl;
                 });
             };
 
@@ -4444,50 +3221,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                         setTimeout(() => pollMidjourneyJob(jobId, taskId, baseUrl, apiKey, mjMode, w, h, attempt + 1), delayMs);
                     }
                 });
-            };
-
-            // 处理蒙版用于 Inpainting：将"透明背景上的白色笔触"转换为"白色背景上的透明区域"
-            const processMaskForInpainting = async (maskContent) => {
-                if (!maskContent) return null;
-
-                try {
-                    // 加载蒙版图片
-                    const maskImg = new Image();
-                    maskImg.crossOrigin = 'anonymous';
-                    await new Promise((resolve, reject) => {
-                        maskImg.onload = resolve;
-                        maskImg.onerror = reject;
-                        maskImg.src = maskContent;
-                    });
-
-                    // 创建新 Canvas
-                    const canvas = document.createElement('canvas');
-                    canvas.width = maskImg.width;
-                    canvas.height = maskImg.height;
-                    const ctx = canvas.getContext('2d');
-
-                    // 填充黑色背景（代表保留区域，不透明 Alpha=1）
-                    ctx.fillStyle = '#000000';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    // 使用 destination-out 混合模式：绘制原蒙版，将用户涂抹的区域"挖空"变成透明（代表重绘区域，Alpha=0）
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.drawImage(maskImg, 0, 0);
-
-                    // 将 Canvas 转换为 Blob（PNG 格式保留透明度）
-                    return new Promise((resolve, reject) => {
-                        canvas.toBlob((blob) => {
-                            if (blob) {
-                                resolve(blob);
-                            } else {
-                                reject(new Error('蒙版转换失败'));
-                            }
-                        }, 'image/png');
-                    });
-                } catch (error) {
-                    console.error('[Inpainting] 蒙版处理失败:', error);
-                    return null;
-                }
             };
 
             const startGeneration = async (prompt, type, sourceImages, nodeId, options = {}) => {
@@ -6391,45 +5124,16 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 }
             }, [nodesMap, generateCharacterPrompt, generateScenePrompt]);
 
-            const getDefaultDurationForModel = (modelId) => {
-                if (!modelId) return '5s';
-                if (modelId === 'sora-2-pro') return '15s';
-                if (modelId.includes('sora-2') || modelId === 'sora-2') return '15s';
-                if (modelId.includes('veo') || modelId === 'google-veo3') return '8s';
-                if (modelId.includes('grok') || modelId === 'grok-3') return '8s';
-                return '5s';
-            };
-
-            // 获取模型可用的时长选项
-            const getDefaultDurationsForModel = (modelId) => {
-                if (!modelId) return ['5s', '10s', '8s'];
-                if (modelId === 'sora-2-pro') return ['15s', '25s'];
-                if (modelId.includes('sora-2') || modelId === 'sora-2') return ['5s', '10s', '15s'];
-                if (modelId.includes('veo') || modelId === 'google-veo3') return ['8s'];
-                if (modelId.includes('grok') || modelId === 'grok-3') return ['8s', '5s'];
-                return ['5s', '10s', '8s'];
-            };
-
             // 分镜表节点功能函数
             const addEmptyShot = (nodeId) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'storyboard-node') return;
                 // 获取默认视频模型（优先使用 sora-2，否则使用第一个视频模型）
                 const defaultModel = apiConfigs.find(c => c.type === 'Video' && c.id === 'sora-2')?.id || apiConfigs.find(c => c.type === 'Video')?.id || '';
-                const newShot = {
-                    id: `shot-${Date.now()}`,
-                    scene_index: (node.settings?.shots?.length || 0) + 1,
-                    time_range: '',
-                    image_url: '',
-                    description: '',
-                    prompt: '',
-                    camera: '',
-                    tags: [],
-                    status: 'draft',
-                    model: defaultModel,
-                    ratio: '16:9',
-                    duration: getDefaultDurationForModel(defaultModel)
-                };
+                const newShot = createEmptyStoryboardShot({
+                    shotCount: node.settings?.shots?.length || 0,
+                    defaultModel,
+                });
                 updateNodeSettings(nodeId, {
                     shots: [...(node.settings?.shots || []), newShot]
                 });
@@ -6438,20 +5142,14 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
             const deleteShot = (nodeId, shotId) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = (node.settings?.shots || []).filter(s => s.id !== shotId);
-                // 重新编号
-                updatedShots.forEach((shot, idx) => {
-                    shot.scene_index = idx + 1;
-                });
+                const updatedShots = renumberStoryboardShots((node.settings?.shots || []).filter(s => s.id !== shotId));
                 updateNodeSettings(nodeId, { shots: updatedShots });
             };
 
             const updateShot = (nodeId, shotId, updates) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = (node.settings?.shots || []).map(shot =>
-                    shot.id === shotId ? { ...shot, ...updates } : shot
-                );
+                const updatedShots = updateStoryboardShot(node.settings?.shots || [], shotId, updates);
                 updateNodeSettings(nodeId, { shots: updatedShots });
             };
 
@@ -6473,38 +5171,7 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                     return;
                 }
 
-                // 转换为 shots 格式
-                const newShots = analysisResults.map((result, idx) => {
-                    const keyframe = result.keyframes?.find(k => k.type === 'current') || result.keyframes?.[0];
-                    const mjPrompt = keyframe?.mj_prompt || '';
-                    const jimengPrompt = keyframe?.jimeng_prompt || '';
-                    const description = keyframe?.description || result.keyframes?.[0]?.description || '';
-
-                    // 提取标签
-                    const tags = [];
-                    if (result.global_tags?.style?.[0]) tags.push(result.global_tags.style[0]);
-                    if (keyframe?.description) {
-                        // 简单提取运镜信息
-                        const cameraKeywords = ['推', '拉', '摇', '移', '跟', '升', '降', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
-                        cameraKeywords.forEach(keyword => {
-                            if (description.includes(keyword)) {
-                                tags.push(keyword);
-                            }
-                        });
-                    }
-
-                    return {
-                        id: `shot-${Date.now()}-${idx}`,
-                        scene_index: idx + 1,
-                        time_range: result.time_range || '',
-                        image_url: '',
-                        description: description,
-                        prompt: mjPrompt || jimengPrompt,
-                        camera: tags.find(t => ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'].some(k => t.includes(k))) || '',
-                        tags: tags,
-                        status: 'draft'
-                    };
-                });
+                const newShots = createShotsFromAnalysisResults(analysisResults);
 
                 updateNodeSettings(nodeId, { shots: newShots });
             };
@@ -6518,42 +5185,8 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 }
 
                 // 1. 数据转换 (复用现有逻辑)
-                const newShots = analysisResults.map((result, idx) => {
-                    const keyframe = result.keyframes?.find(k => k.type === 'current') || result.keyframes?.[0];
-                    const mjPrompt = keyframe?.mj_prompt || '';
-                    const jimengPrompt = keyframe?.jimeng_prompt || '';
-                    const description = keyframe?.description || result.keyframes?.[0]?.description || '';
-
-                    // 提取标签
-                    const tags = [];
-                    if (result.global_tags?.style?.[0]) tags.push(result.global_tags.style[0]);
-                    if (result.global_tags?.camera?.[0]) tags.push(result.global_tags.camera[0]);
-                    if (keyframe?.description) {
-                        // 简单提取运镜信息
-                        const cameraKeywords = ['推', '拉', '摇', '移', '跟', '升', '降', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
-                        cameraKeywords.forEach(keyword => {
-                            if (description.includes(keyword)) {
-                                tags.push(keyword);
-                            }
-                        });
-                    }
-
-                    // 提取运镜信息
-                    const camera = result.global_tags?.camera?.[0] ||
-                                   tags.find(t => ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'].some(k => t.includes(k))) ||
-                                   '';
-
-                    return {
-                        id: `shot-${Date.now()}-${idx}`,
-                        scene_index: idx + 1,
-                        time_range: result.time_range || '',
-                        image_url: '',
-                        description: description,
-                        prompt: mjPrompt || jimengPrompt,
-                        camera: camera,
-                        tags: tags,
-                        status: 'draft'
-                    };
+                const newShots = createShotsFromAnalysisResults(analysisResults, {
+                    includeGlobalCamera: true,
                 });
 
                 // 2. 计算新节点位置（放在源节点右侧）
@@ -7656,217 +6289,6 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                 updateNodeSettings(nodeId, { prompt: promptText });
             };
 
-            // 生成九宫格分镜脚本提示词
-            const generateGridPrompt = () => {
-                const currentSelectedId = selectedNodeIdRef.current;
-                if (!currentSelectedId) {
-                    alert('请先选中一个AI绘图节点');
-                    return;
-                }
-
-                const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                if (!targetNode || targetNode.type !== 'gen-image') {
-                    alert('请选中一个AI绘图节点（gen-image）');
-                    return;
-                }
-
-                // 获取连接的参考图
-                const connectedImages = getConnectedInputImages(targetNode.id, 'default');
-                const hasReferenceImage = connectedImages.length > 0;
-
-                // 生成提示词
-                const gridPrompt = hasReferenceImage
-                    ? GRID_PROMPT_TEXT
-                    : `生成一张九宫格（3x3 grid）布局的分镜脚本。在9个格子中展示同一个角色不同的动作、表情和拍摄角度（如正面、侧面、背面、特写等）。要求风格高度统一，形成一张完整的角色动态表（Character Sheet）。`;
-
-                // 更新节点的提示词，保持模型、分辨率、比例不变
-                updateNodeSettings(targetNode.id, { prompt: gridPrompt });
-
-                // 提示用户
-                alert('已生成九宫格分镜脚本提示词！');
-            };
-
-            // 智能拆分放大：直接生成提示词
-            const handleUpscale = () => {
-                const currentSelectedId = selectedNodeIdRef.current;
-                if (!currentSelectedId) {
-                    alert('请选择图片生成节点进行放大。');
-                    return;
-                }
-
-                const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                if (!targetNode || targetNode.type !== 'gen-image') {
-                    alert('请选择图片生成节点进行放大。');
-                    return;
-                }
-
-                const upscalePrompt = UPSCALE_PROMPT_TEXT;
-
-                // 更新节点的提示词
-                updateNodeSettings(targetNode.id, { prompt: upscalePrompt });
-
-                // 提示用户
-                alert('已生成高清放大提示词！');
-            };
-
-            // 切割九宫格图片（3x3网格）
-            const splitGridImage = async (imageUrl) => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    const timeout = setTimeout(() => {
-                        reject(new Error('图片加载超时'));
-                    }, 30000);
-
-                    img.onload = () => {
-                        clearTimeout(timeout);
-                        try {
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-
-                            // 九宫格是3x3网格，每张图是原图的1/3
-                            const singleWidth = Math.floor(img.width / 3);
-                            const singleHeight = Math.floor(img.height / 3);
-
-                            const images = [];
-
-                            // 切割9张图：按从上到下、从左到右的顺序（1-9）
-                            const cropPromises = [];
-
-                            for (let row = 0; row < 3; row++) {
-                                for (let col = 0; col < 3; col++) {
-                                    const cropX = Math.max(0, Math.min(col * singleWidth, img.width - singleWidth));
-                                    const cropY = Math.max(0, Math.min(row * singleHeight, img.height - singleHeight));
-                                    const cropW = Math.min(singleWidth, img.width - cropX);
-                                    const cropH = Math.min(singleHeight, img.height - cropY);
-
-                                    const cropCanvas = document.createElement('canvas');
-                                    cropCanvas.width = cropW;
-                                    cropCanvas.height = cropH;
-                                    const cropCtx = cropCanvas.getContext('2d');
-
-                                    cropCtx.fillStyle = '#ffffff';
-                                    cropCtx.fillRect(0, 0, cropW, cropH);
-
-                                    cropCtx.drawImage(
-                                        img,
-                                        cropX, cropY, cropW, cropH,
-                                        0, 0, cropW, cropH
-                                    );
-
-                                    // 使用 toBlob 替代 toDataURL，生成 Blob URL
-                                    const cropPromise = new Promise((resolveCrop, rejectCrop) => {
-                                        cropCanvas.toBlob((blob) => {
-                                            if (blob) {
-                                                const blobUrl = URL.createObjectURL(blob);
-                                                resolveCrop({
-                                                    url: blobUrl,
-                                                    width: cropW,
-                                                    height: cropH
-                                                });
-                                            } else {
-                                                rejectCrop(new Error('Canvas toBlob 失败'));
-                                            }
-                                        }, 'image/png');
-                                    });
-
-                                    cropPromises.push(cropPromise);
-                                }
-                            }
-
-                            // 等待所有切割完成
-                            Promise.all(cropPromises).then((results) => {
-                                resolve(results);
-                            }).catch((error) => {
-                                reject(error);
-                            });
-                        } catch (error) {
-                            reject(error);
-                        }
-                    };
-
-                    img.onerror = () => {
-                        clearTimeout(timeout);
-                        reject(new Error('图片加载失败'));
-                    };
-
-                    img.src = imageUrl;
-                });
-            };
-
-            // 裁切九宫格图片并创建节点
-            const handleSplitGridImage = async () => {
-                const currentSelectedId = selectedNodeIdRef.current;
-                if (!currentSelectedId) {
-                    alert('请先选中一个图片节点');
-                    return;
-                }
-
-                const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                if (!targetNode) {
-                    alert('未找到选中的节点');
-                    return;
-                }
-
-                const imageUrl = targetNode.content;
-                if (!imageUrl) {
-                    alert('选中的节点没有图片内容');
-                    return;
-                }
-
-                try {
-                    // 切割图片
-                    const croppedImages = await splitGridImage(imageUrl);
-
-                    if (croppedImages.length !== 9) {
-                        alert('切割失败：未能生成9张图片');
-                        return;
-                    }
-
-                    // 获取原节点的位置和尺寸
-                    const sourceX = targetNode.x;
-                    const sourceY = targetNode.y;
-                    const sourceWidth = targetNode.width || 260;
-                    const nodeWidth = 260;
-                    const nodeHeight = 260;
-                    const spacing = 20;
-
-                    const cols = 3;
-                    const rows = 3;
-
-                    // 计算起始位置：位于原图的右侧开始排列
-                    const startX = sourceX + sourceWidth + spacing;
-                    const startY = sourceY;
-
-                    // 创建9个新节点
-                    const newNodes = [];
-                    for (let i = 0; i < croppedImages.length; i++) {
-                        const row = Math.floor(i / cols);
-                        const col = i % cols;
-                        const x = startX + col * (nodeWidth + spacing);
-                        const y = startY + row * (nodeHeight + spacing);
-
-                        const newNode = {
-                            id: `node-${Date.now()}-${i}`,
-                            type: 'input-image',
-                            x: x,
-                            y: y,
-                            width: nodeWidth,
-                            height: nodeHeight,
-                            content: croppedImages[i].url,
-                            dimensions: { w: croppedImages[i].width, h: croppedImages[i].height }
-                        };
-                        newNodes.push(newNode);
-                    }
-
-                    setNodes(prev => [...prev, ...newNodes]);
-                    // 静默创建，不显示成功提示
-                } catch (error) {
-                    alert('切割失败: ' + error.message);
-                }
-            };
-
             const handleSplitGridFromUrl = async (imageUrl, options = {}) => {
                 if (!imageUrl) return;
                 const {
@@ -7914,23 +6336,14 @@ import { LowDetailNode } from './nodes/LowDetailNode.jsx';
                     const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
                     const startX = originX !== undefined ? originX : world.x;
                     const startY = originY !== undefined ? originY : world.y;
-                    const newNodes = [];
-                    for (let i = 0; i < croppedImages.length; i++) {
-                        const row = Math.floor(i / cols);
-                        const col = i % cols;
-                        const x = startX + col * (nodeWidth + spacing);
-                        const y = startY + row * (nodeHeight + spacing);
-                        newNodes.push({
-                            id: `node-${Date.now()}-${i}`,
-                            type: 'input-image',
-                            x,
-                            y,
-                            width: nodeWidth,
-                            height: nodeHeight,
-                            content: croppedImages[i].url,
-                            dimensions: { w: croppedImages[i].width, h: croppedImages[i].height }
-                        });
-                    }
+                    const newNodes = createGridImageNodes(croppedImages, {
+                        startX,
+                        startY,
+                        cols,
+                        spacing,
+                        nodeWidth,
+                        nodeHeight,
+                    });
                     setNodes(prev => [...prev, ...newNodes]);
                     // 静默创建，不显示成功提示
                 } catch (e) {
