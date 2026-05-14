@@ -85,6 +85,7 @@ import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
 import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
+import { useDeleteKeyHandler } from './hooks/useDeleteKeyHandler.js';
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
@@ -368,37 +369,6 @@ import {
 
             useHistoryThumbnails({ history, setHistory, historyPerformanceMode });
 
-            // 全局 Delete 键删除节点
-            useEffect(() => {
-                const handleDeleteKey = (e) => {
-                    // 防止在输入框中触发
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-
-                    // 检查是否按下了 Delete 或 Del 键
-                    if (e.key === 'Delete' || e.key === 'Del') {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const currentSelectedId = selectedNodeIdRef.current;
-                        const currentSelectedIds = selectedNodeIdsRef.current;
-
-                        // 删除选中的节点
-                        if (currentSelectedId) {
-                            deleteNode(currentSelectedId);
-                            setSelectedNodeId(null);
-                        } else if (currentSelectedIds && currentSelectedIds.size > 0) {
-                            // 删除多选节点
-                            currentSelectedIds.forEach(id => deleteNode(id));
-                            setSelectedNodeIds(new Set());
-                        }
-                    }
-                };
-
-                window.addEventListener('keydown', handleDeleteKey);
-                return () => {
-                    window.removeEventListener('keydown', handleDeleteKey);
-                };
-            }, []);
             // 当视频 URL 改变时清除错误提示
             useEffect(() => {
                 setCreateCharacterVideoError(null);
@@ -4703,6 +4673,14 @@ import {
                 setConnections((prev) => prev.filter((c) => c.from !== id && c.to !== id));
                 if (selectedNodeId === id) setSelectedNodeId(null);
             }, [selectedNodeId]);
+
+            useDeleteKeyHandler({
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+                deleteNode,
+                setSelectedNodeId,
+                setSelectedNodeIds,
+            });
 
             // 获取连接的 gen-image 或 gen-video 节点（用于 storyboard-node 节点）
             const getConnectedGenNodes = useCallback((sourceNodeId) => {
