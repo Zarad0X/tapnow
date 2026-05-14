@@ -130,7 +130,10 @@ import {
   blobToDataURL,
   compressImage,
   getBase64FromUrl,
-  getBlobFromUrl
+  getBlobFromUrl,
+  getSora2CompliantSize,
+  normalizeImageBlobToSize,
+  resizeImageForVeo
 } from './utils/mediaProcessing.js';
 
         function TapnowApp() {
@@ -2303,165 +2306,6 @@ import {
                     console.error('拓展图片: 上传图片失败:', error);
                     return null;
                 }
-            };
-
-            // 缩放图片到合理尺寸（用于Veo接口，避免图片过大）
-            const resizeImageForVeo = async (imageUrl, maxWidth = 1920, maxHeight = 1920) => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    img.onload = () => {
-                        const originalWidth = img.width;
-                        const originalHeight = img.height;
-
-                        // 如果图片尺寸已经小于等于目标尺寸，直接返回原图
-                        if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
-                            console.log(`Veo: 图片尺寸 ${originalWidth}x${originalHeight} 无需缩放`);
-                            if (imageUrl.startsWith('data:')) {
-                                resolve(imageUrl);
-                            } else {
-                                // 如果是URL，转换为data URL
-                                getBase64FromUrl(imageUrl).then(base64 => {
-                                    resolve(`data:image/png;base64,${base64}`);
-                                }).catch(reject);
-                            }
-                            return;
-                        }
-
-                        // 计算缩放后的尺寸，保持宽高比
-                        let newWidth = originalWidth;
-                        let newHeight = originalHeight;
-
-                        if (originalWidth > maxWidth || originalHeight > maxHeight) {
-                            const scale = Math.min(maxWidth / originalWidth, maxHeight / originalHeight);
-                            newWidth = Math.round(originalWidth * scale);
-                            newHeight = Math.round(originalHeight * scale);
-
-                            // 确保尺寸是偶数（某些编码器要求）
-                            newWidth = newWidth % 2 === 0 ? newWidth : newWidth - 1;
-                            newHeight = newHeight % 2 === 0 ? newHeight : newHeight - 1;
-                        }
-
-                        console.log(`Veo: 缩放图片 ${originalWidth}x${originalHeight} -> ${newWidth}x${newHeight}`);
-
-                        // 使用canvas缩放图片
-                        const canvas = document.createElement('canvas');
-                        canvas.width = newWidth;
-                        canvas.height = newHeight;
-                        const ctx = canvas.getContext('2d');
-
-                        // 使用高质量缩放
-                        ctx.imageSmoothingEnabled = true;
-                        ctx.imageSmoothingQuality = 'high';
-                        ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-                        // 转换为data URL
-                        const dataUrl = canvas.toDataURL('image/png', 0.95);
-                        resolve(dataUrl);
-                    };
-
-                    img.onerror = (e) => {
-                        console.error('Veo: 图片加载失败', e);
-                        reject(new Error('图片加载失败'));
-                    };
-
-                    // 设置图片源
-                    if (imageUrl.startsWith('data:')) {
-                        img.src = imageUrl;
-                    } else if (imageUrl.startsWith('blob:')) {
-                        img.src = imageUrl;
-                    } else {
-                        // 对于其他URL，先转换为blob再加载（避免CORS问题）
-                        getBlobFromUrl(imageUrl).then(blob => {
-                            const blobUrl = URL.createObjectURL(blob);
-                            img.src = blobUrl;
-                        }).catch(reject);
-                    }
-                });
-            };
-
-            // --- Sora 2: 强制将输入图片转换为合规尺寸/格式 ---
-            // 背景：/v1/videos 对 sora-2 会校验 size 与输入图像尺寸；若用户上传的是任意尺寸/比例，容易触发 invalid_size。
-            const getSora2CompliantSize = (ratio, w, h, enableHD = false) => {
-                // Sora2 仅支持 16:9 / 9:16；其它比例按当前 w/h 取最接近方向
-                const toAspectValue = (r) => {
-                    if (!r || typeof r !== 'string') return null;
-                    const [a, b] = r.split(':').map(Number);
-                    if (!a || !b) return null;
-                    return a / b;
-                };
-                const aspect = (ratio === '16:9' || ratio === '9:16')
-                    ? ratio
-                    : (() => {
-                        const rv = toAspectValue(ratio);
-                        const fallback = (w && h) ? (w / h) : (rv || (16 / 9));
-                        const d169 = Math.abs(fallback - (16 / 9));
-                        const d916 = Math.abs(fallback - (9 / 16));
-                        return d916 < d169 ? '9:16' : '16:9';
-                    })();
-
-                const portrait = aspect === '9:16';
-
-                // 采用固定像素尺寸集合（避免后端 size 校验失败）
-                // - 非HD：1280x720 / 720x1280
-                // - HD：1920x1080 / 1080x1920
-                if (enableHD) {
-                    return portrait
-                        ? { sizeStr: '1080x1920', w: 1080, h: 1920, aspect }
-                        : { sizeStr: '1920x1080', w: 1920, h: 1080, aspect };
-                }
-                return portrait
-                    ? { sizeStr: '720x1280', w: 720, h: 1280, aspect }
-                    : { sizeStr: '1280x720', w: 1280, h: 720, aspect };
-            };
-
-            const normalizeImageBlobToSize = async (blob, targetW, targetH, mime = 'image/png') => {
-                if (!(blob instanceof Blob) || !targetW || !targetH) return blob;
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    const objUrl = URL.createObjectURL(blob);
-                    img.onload = () => {
-                        try {
-                            const srcW = img.naturalWidth || img.width || 1;
-                            const srcH = img.naturalHeight || img.height || 1;
-
-                            const canvas = document.createElement('canvas');
-                            canvas.width = targetW;
-                            canvas.height = targetH;
-                            const ctx = canvas.getContext('2d');
-                            if (!ctx) {
-                                URL.revokeObjectURL(objUrl);
-                                resolve(blob);
-                                return;
-                            }
-                            ctx.imageSmoothingEnabled = true;
-                            ctx.imageSmoothingQuality = 'high';
-
-                            // cover 裁剪：保持主体充满目标画布，居中裁剪
-                            const scale = Math.max(targetW / srcW, targetH / srcH);
-                            const drawW = srcW * scale;
-                            const drawH = srcH * scale;
-                            const dx = (targetW - drawW) / 2;
-                            const dy = (targetH - drawH) / 2;
-                            ctx.clearRect(0, 0, targetW, targetH);
-                            ctx.drawImage(img, dx, dy, drawW, drawH);
-
-                            canvas.toBlob((out) => {
-                                URL.revokeObjectURL(objUrl);
-                                resolve(out || blob);
-                            }, mime, 0.92);
-                        } catch (e) {
-                            URL.revokeObjectURL(objUrl);
-                            resolve(blob);
-                        }
-                    };
-                    img.onerror = () => {
-                        URL.revokeObjectURL(objUrl);
-                        resolve(blob);
-                    };
-                    img.src = objUrl;
-                });
             };
 
             const disconnectConnection = useCallback((connectionId) => {
