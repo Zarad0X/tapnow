@@ -84,6 +84,7 @@ import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
 import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
+import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
@@ -146,7 +147,6 @@ import {
   blobToDataURL,
   compressImage,
   convertImageToJpegDataUrl,
-  createImageThumbnailDataUrl,
   getBase64FromUrl,
   getBlobFromUrl,
   getSora2CompliantSize,
@@ -369,58 +369,7 @@ import {
                 });
             }, []);
 
-            // 性能模式变化时，为历史记录生成缩略图
-            useEffect(() => {
-                if (historyPerformanceMode === 'off') return;
-
-                const generateThumbnailsForHistory = async () => {
-                    const quality = historyPerformanceMode; // 'normal' 或 'ultra'
-                    const config = quality === 'ultra'
-                        ? { maxSize: 80, jpegQuality: 0.3 }
-                        : { maxSize: 150, jpegQuality: 0.6 };
-
-                    // 找出需要生成缩略图的项（已完成且有图片但没有缩略图的）
-                    const itemsNeedThumbnail = history.filter(item =>
-                        item.status === 'completed' &&
-                        item.type === 'image' &&
-                        (item.url || item.originalUrl) &&
-                        !item.thumbnailUrl
-                    );
-
-                    // 批量生成缩略图（每次最多处理5个，避免卡顿）
-                    const batchSize = 5;
-                    for (let i = 0; i < Math.min(itemsNeedThumbnail.length, batchSize); i++) {
-                        const item = itemsNeedThumbnail[i];
-                        try {
-                            const thumbnail = await createImageThumbnailDataUrl(item.url || item.originalUrl, config);
-
-                            // 如果有MJ多图，也生成缩略图
-                            let mjThumbnails = null;
-                            if (item.mjImages && item.mjImages.length > 0) {
-                                mjThumbnails = await Promise.all(
-                                    item.mjImages.map(url => createImageThumbnailDataUrl(url, config))
-                                );
-                            }
-
-                            if (thumbnail || mjThumbnails) {
-                                setHistory(prev => prev.map(h =>
-                                    h.id === item.id ? {
-                                        ...h,
-                                        thumbnailUrl: thumbnail || h.thumbnailUrl,
-                                        mjThumbnails: mjThumbnails || h.mjThumbnails
-                                    } : h
-                                ));
-                            }
-                        } catch (e) {
-                            console.warn('[缩略图] 生成失败:', e);
-                        }
-                    }
-                };
-
-                // 延迟执行，避免阻塞UI
-                const timer = setTimeout(generateThumbnailsForHistory, 100);
-                return () => clearTimeout(timer);
-            }, [historyPerformanceMode, history.length]);
+            useHistoryThumbnails({ history, setHistory, historyPerformanceMode });
 
             // 全局 Delete 键删除节点
             useEffect(() => {
