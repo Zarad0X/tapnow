@@ -1720,30 +1720,6 @@ import {
             const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('drag-over'); };
             const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('drag-over'); };
 
-            // 将HTML表格转换为Markdown表格格式
-            const convertTableToMarkdown = (table) => {
-                const rows = Array.from(table.querySelectorAll('tr'));
-                if (rows.length === 0) return '';
-
-                const markdownRows = rows.map((row, rowIndex) => {
-                    const cells = Array.from(row.querySelectorAll('td, th'));
-                    const cellTexts = cells.map(cell => {
-                        const text = cell.textContent.trim().replace(/\|/g, '\\|').replace(/\n/g, ' ');
-                        return text || ' ';
-                    });
-                    return '| ' + cellTexts.join(' | ') + ' |';
-                });
-
-                // 添加分隔行（第二行）
-                if (markdownRows.length > 0) {
-                    const firstRowCells = markdownRows[0].split('|').filter(c => c.trim()).length - 2;
-                    const separator = '| ' + Array(firstRowCells).fill('---').join(' | ') + ' |';
-                    markdownRows.splice(1, 0, separator);
-                }
-
-                return '\n' + markdownRows.join('\n') + '\n';
-            };
-
             // 优化后的复制粘贴逻辑
             useEffect(() => {
                 // 复制功能（Ctrl+C / Cmd+C）
