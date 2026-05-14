@@ -145,10 +145,13 @@ import {
   base64ToBlobUrl,
   blobToDataURL,
   compressImage,
+  convertImageToJpegDataUrl,
+  createImageThumbnailDataUrl,
   getBase64FromUrl,
   getBlobFromUrl,
   getSora2CompliantSize,
   normalizeImageBlobToSize,
+  processMaskForInpainting,
   resizeImageForVeo
 } from './utils/mediaProcessing.js';
 
@@ -376,29 +379,6 @@ import {
                         ? { maxSize: 80, jpegQuality: 0.3 }
                         : { maxSize: 150, jpegQuality: 0.6 };
 
-                    // 生成单张缩略图的辅助函数
-                    const genThumb = (url) => new Promise((resolve) => {
-                        const img = new Image();
-                        img.crossOrigin = 'anonymous';
-                        img.onload = () => {
-                            const canvas = document.createElement('canvas');
-                            let w = img.naturalWidth;
-                            let h = img.naturalHeight;
-                            if (w > h) {
-                                if (w > config.maxSize) { h = h * config.maxSize / w; w = config.maxSize; }
-                            } else {
-                                if (h > config.maxSize) { w = w * config.maxSize / h; h = config.maxSize; }
-                            }
-                            canvas.width = w;
-                            canvas.height = h;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, w, h);
-                            resolve(canvas.toDataURL('image/jpeg', config.jpegQuality));
-                        };
-                        img.onerror = () => resolve(null);
-                        img.src = url;
-                    });
-
                     // 找出需要生成缩略图的项（已完成且有图片但没有缩略图的）
                     const itemsNeedThumbnail = history.filter(item =>
                         item.status === 'completed' &&
@@ -412,13 +392,13 @@ import {
                     for (let i = 0; i < Math.min(itemsNeedThumbnail.length, batchSize); i++) {
                         const item = itemsNeedThumbnail[i];
                         try {
-                            const thumbnail = await genThumb(item.url || item.originalUrl);
+                            const thumbnail = await createImageThumbnailDataUrl(item.url || item.originalUrl, config);
 
                             // 如果有MJ多图，也生成缩略图
                             let mjThumbnails = null;
                             if (item.mjImages && item.mjImages.length > 0) {
                                 mjThumbnails = await Promise.all(
-                                    item.mjImages.map(url => genThumb(url))
+                                    item.mjImages.map(url => createImageThumbnailDataUrl(url, config))
                                 );
                             }
 
@@ -676,31 +656,6 @@ import {
                             const subfolder = node.settings?.subfolder || '';
                             const files = [];
 
-                            // PNG转高质量JPG的辅助函数
-                            const convertToJpg = async (imgUrl) => {
-                                return new Promise(async (resolve) => {
-                                    try {
-                                        const img = new Image();
-                                        img.crossOrigin = 'anonymous';
-                                        img.onload = () => {
-                                            const canvas = document.createElement('canvas');
-                                            canvas.width = img.naturalWidth;
-                                            canvas.height = img.naturalHeight;
-                                            const ctx = canvas.getContext('2d');
-                                            ctx.fillStyle = '#FFFFFF';
-                                            ctx.fillRect(0, 0, canvas.width, canvas.height);
-                                            ctx.drawImage(img, 0, 0);
-                                            const jpgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-                                            resolve(jpgDataUrl);
-                                        };
-                                        img.onerror = () => resolve(null);
-                                        img.src = imgUrl;
-                                    } catch (e) {
-                                        resolve(null);
-                                    }
-                                });
-                            };
-
                             for (let i = 0; i < newImages.length; i++) {
                                 const imgUrl = newImages[i];
                                 const isVideo = isVideoUrl(imgUrl);
@@ -720,7 +675,7 @@ import {
                                             });
                                         }
                                     } else {
-                                        const jpgContent = await convertToJpg(imgUrl);
+                                        const jpgContent = await convertImageToJpegDataUrl(imgUrl);
                                         if (jpgContent) {
                                             content = jpgContent;
                                         } else if (!imgUrl.startsWith('data:')) {
@@ -3664,50 +3619,6 @@ import {
                         setTimeout(() => pollMidjourneyJob(jobId, taskId, baseUrl, apiKey, mjMode, w, h, attempt + 1), delayMs);
                     }
                 });
-            };
-
-            // 处理蒙版用于 Inpainting：将"透明背景上的白色笔触"转换为"白色背景上的透明区域"
-            const processMaskForInpainting = async (maskContent) => {
-                if (!maskContent) return null;
-
-                try {
-                    // 加载蒙版图片
-                    const maskImg = new Image();
-                    maskImg.crossOrigin = 'anonymous';
-                    await new Promise((resolve, reject) => {
-                        maskImg.onload = resolve;
-                        maskImg.onerror = reject;
-                        maskImg.src = maskContent;
-                    });
-
-                    // 创建新 Canvas
-                    const canvas = document.createElement('canvas');
-                    canvas.width = maskImg.width;
-                    canvas.height = maskImg.height;
-                    const ctx = canvas.getContext('2d');
-
-                    // 填充黑色背景（代表保留区域，不透明 Alpha=1）
-                    ctx.fillStyle = '#000000';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    // 使用 destination-out 混合模式：绘制原蒙版，将用户涂抹的区域"挖空"变成透明（代表重绘区域，Alpha=0）
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.drawImage(maskImg, 0, 0);
-
-                    // 将 Canvas 转换为 Blob（PNG 格式保留透明度）
-                    return new Promise((resolve, reject) => {
-                        canvas.toBlob((blob) => {
-                            if (blob) {
-                                resolve(blob);
-                            } else {
-                                reject(new Error('蒙版转换失败'));
-                            }
-                        }, 'image/png');
-                    });
-                } catch (error) {
-                    console.error('[Inpainting] 蒙版处理失败:', error);
-                    return null;
-                }
             };
 
             const startGeneration = async (prompt, type, sourceImages, nodeId, options = {}) => {

@@ -254,3 +254,93 @@ export const normalizeImageBlobToSize = async (blob, targetW, targetH, mime = 'i
         image.src = objectUrl;
     });
 };
+
+const loadImageElement = (url) => {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.crossOrigin = 'anonymous';
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = url;
+    });
+};
+
+export const convertImageToJpegDataUrl = async (
+    imageUrl,
+    { quality = 0.95, background = '#FFFFFF' } = {},
+) => {
+    try {
+        const image = await loadImageElement(imageUrl);
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d');
+        context.fillStyle = background;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0);
+        return canvas.toDataURL('image/jpeg', quality);
+    } catch {
+        return null;
+    }
+};
+
+export const createImageThumbnailDataUrl = async (
+    imageUrl,
+    { maxSize = 150, jpegQuality = 0.6 } = {},
+) => {
+    try {
+        const image = await loadImageElement(imageUrl);
+        const canvas = document.createElement('canvas');
+        let width = image.naturalWidth;
+        let height = image.naturalHeight;
+
+        if (width > height) {
+            if (width > maxSize) {
+                height = height * maxSize / width;
+                width = maxSize;
+            }
+        } else if (height > maxSize) {
+            width = width * maxSize / height;
+            height = maxSize;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        context.drawImage(image, 0, 0, width, height);
+        return canvas.toDataURL('image/jpeg', jpegQuality);
+    } catch {
+        return null;
+    }
+};
+
+export const processMaskForInpainting = async (maskContent) => {
+    if (!maskContent) return null;
+
+    try {
+        const maskImage = await loadImageElement(maskContent);
+        const canvas = document.createElement('canvas');
+        canvas.width = maskImage.width;
+        canvas.height = maskImage.height;
+        const context = canvas.getContext('2d');
+
+        context.fillStyle = '#000000';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.globalCompositeOperation = 'destination-out';
+        context.drawImage(maskImage, 0, 0);
+
+        return new Promise((resolve, reject) => {
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    resolve(blob);
+                    return;
+                }
+
+                reject(new Error('蒙版转换失败'));
+            }, 'image/png');
+        });
+    } catch (error) {
+        console.error('[Inpainting] 蒙版处理失败:', error);
+        return null;
+    }
+};
