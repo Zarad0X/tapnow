@@ -87,7 +87,14 @@ import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
-import { uploadMidjourneyImages } from './services/midjourneyUploadService.js';
+import {
+  uploadImageToGetHttpUrl,
+  uploadMidjourneyImages
+} from './services/midjourneyUploadService.js';
+import {
+  createGridImageNodes,
+  splitGridImage
+} from './services/gridSplitService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import {
   findScrollableNodeArea,
@@ -2089,222 +2096,6 @@ import {
                     }));
                 } finally {
                     setIsChatSending(false);
-                }
-            };
-
-            // 上传单个图片到图床并获取HTTP URL（用于Midjourney的oref和sref指令，以及拓展图片）
-            const uploadImageToGetHttpUrl = async (imageUrl, baseUrl, apiKey) => {
-                try {
-                    // 如果是HTTP/HTTPS URL，直接返回
-                    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                        return imageUrl;
-                    }
-
-                    // 如果是 Blob URL，需要转换为 Base64 再上传
-                    if (imageUrl.startsWith('blob:')) {
-                        const base64Data = await getBase64FromUrl(imageUrl);
-                        // 继续使用 data URL 的处理逻辑
-                        imageUrl = `data:image/png;base64,${base64Data}`;
-                    }
-
-                    // 如果是data URL，需要上传
-                    if (imageUrl.startsWith('data:')) {
-                        // 提取base64数据（去掉 data:image/png;base64, 前缀）
-                        // 确保正确提取纯base64字符串
-                        let base64Data = imageUrl;
-                        if (base64Data.includes(',')) {
-                            base64Data = base64Data.split(',')[1];
-                        } else {
-                            // 如果没有逗号，尝试去掉 data: 前缀
-                            base64Data = base64Data.replace(/^data:[^;]*;base64,?/i, '');
-                        }
-                        // 先清理所有非base64字符（包括所有空白字符和不可见字符）
-                        // 这是最严格的方式：只保留有效的base64字符
-                        base64Data = base64Data.replace(/[^A-Za-z0-9+/=]/g, '');
-
-                        if (!base64Data || base64Data.length < 100) {
-                            console.error('拓展图片: base64数据无效或太短，长度:', base64Data?.length);
-                            return null;
-                        }
-
-                        // 验证base64格式：只包含 base64 字符（A-Z, a-z, 0-9, +, /, =）
-                        const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-                        if (!base64Regex.test(base64Data)) {
-                            console.error('拓展图片: base64数据格式验证失败，包含非法字符');
-                            // 再次清理（理论上不应该到这里）
-                            base64Data = base64Data.replace(/[^A-Za-z0-9+/=]/g, '');
-                            if (!base64Regex.test(base64Data)) {
-                                console.error('拓展图片: 清理后仍无效，放弃上传');
-                                return null;
-                            }
-                        }
-
-                        // 验证base64长度是否为4的倍数（base64编码要求）
-                        const padding = base64Data.length % 4;
-                        if (padding !== 0) {
-                            console.warn('拓展图片: base64长度不是4的倍数，添加填充:', padding);
-                            base64Data += '='.repeat(4 - padding);
-                        }
-
-                        // 最终验证
-                        if (!base64Regex.test(base64Data)) {
-                            console.error('拓展图片: 最终验证失败');
-                            return null;
-                        }
-
-                        console.log('拓展图片: 提取的base64数据长度:', base64Data.length, '前50字符:', base64Data.substring(0, 50), '后10字符:', base64Data.substring(base64Data.length - 10), '格式验证通过:', base64Regex.test(base64Data));
-
-                        // 优先使用 Midjourney 官方上传接口
-                        try {
-                            // 确保 baseUrl 格式正确（移除末尾斜杠）
-                            const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-                            const uploadEndpoint = `${cleanBaseUrl}/mj/submit/upload-discord-images`;
-                            const uploadPayload = {
-                                base64Array: [base64Data]
-                            };
-
-                            console.log('拓展图片: 使用 Midjourney 上传接口上传图片...', uploadEndpoint, 'base64长度:', base64Data.length);
-
-                            const uploadResp = await fetch(uploadEndpoint, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${apiKey}`
-                                },
-                                body: JSON.stringify(uploadPayload)
-                            });
-
-                            const responseText = await uploadResp.text();
-                            console.log('拓展图片: Midjourney 上传响应状态:', uploadResp.status, '响应长度:', responseText.length);
-
-                            if (uploadResp.ok) {
-                                let uploadData;
-                                try {
-                                    uploadData = JSON.parse(responseText);
-                                } catch (parseError) {
-                                    console.error('拓展图片: Midjourney 上传响应解析失败', parseError, '响应内容:', responseText.substring(0, 200));
-                                    throw new Error('响应不是有效的JSON格式');
-                                }
-
-                                console.log('拓展图片: Midjourney 上传响应数据:', uploadData);
-                                console.log('拓展图片: 响应详细信息:', {
-                                    code: uploadData.code,
-                                    description: uploadData.description,
-                                    result: uploadData.result,
-                                    resultType: typeof uploadData.result,
-                                    isArray: Array.isArray(uploadData.result),
-                                    hasData: !!uploadData.data,
-                                    hasUrl: !!uploadData.url
-                                });
-
-                                // 检查响应格式
-                                if (uploadData.code === 1) {
-                                    // 尝试多种可能的响应格式
-                                    let httpUrl = null;
-
-                                    // 格式1: result 是数组
-                                    if (uploadData.result && Array.isArray(uploadData.result) && uploadData.result.length > 0) {
-                                        httpUrl = uploadData.result[0];
-                                    }
-                                    // 格式2: result 是字符串
-                                    else if (uploadData.result && typeof uploadData.result === 'string') {
-                                        httpUrl = uploadData.result;
-                                    }
-                                    // 格式3: data 字段
-                                    else if (uploadData.data && Array.isArray(uploadData.data) && uploadData.data.length > 0) {
-                                        httpUrl = uploadData.data[0];
-                                    }
-                                    // 格式4: url 字段
-                                    else if (uploadData.url) {
-                                        httpUrl = uploadData.url;
-                                    }
-
-                                    if (httpUrl && (httpUrl.startsWith('http://') || httpUrl.startsWith('https://'))) {
-                                        console.log('拓展图片: Midjourney 上传成功，获取HTTP URL:', httpUrl);
-                                        return httpUrl;
-                                    } else {
-                                        console.warn('拓展图片: Midjourney 返回的URL格式不正确或为空', {
-                                            httpUrl,
-                                            code: uploadData.code,
-                                            description: uploadData.description,
-                                            result: uploadData.result,
-                                            data: uploadData.data,
-                                            url: uploadData.url
-                                        });
-                                    }
-                                } else {
-                                    console.warn('拓展图片: Midjourney 上传失败', {
-                                        code: uploadData.code,
-                                        description: uploadData.description,
-                                        fullResponse: uploadData
-                                    });
-                                }
-                            } else {
-                                console.warn('拓展图片: Midjourney 上传失败', uploadResp.status, '响应内容:', responseText.substring(0, 200));
-                            }
-                        } catch (e) {
-                            console.error('拓展图片: Midjourney 上传接口调用失败', e);
-                        }
-
-                        // 如果 Midjourney 上传失败，尝试使用图床服务作为备选
-                        const mimeMatch = imageUrl.match(/data:([^;]+);base64/);
-                        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-
-                        // 将base64转换为Blob
-                        const byteCharacters = atob(base64Data);
-                        const byteNumbers = new Array(byteCharacters.length);
-                        for (let i = 0; i < byteCharacters.length; i++) {
-                            byteNumbers[i] = byteCharacters.charCodeAt(i);
-                        }
-                        const byteArray = new Uint8Array(byteNumbers);
-                        const blob = new Blob([byteArray], { type: mimeType });
-
-                        const imageBedServices = [
-                            // sm.ms图床
-                            {
-                                name: 'sm.ms',
-                                url: 'https://sm.ms/api/v2/upload',
-                                fieldName: 'smfile',
-                                parseResponse: (data) => data.success && data.data?.url ? data.data.url : null
-                            }
-                        ];
-
-                        for (const service of imageBedServices) {
-                            if (service.skip) continue;
-
-                            try {
-                                const formData = new FormData();
-                                formData.append(service.fieldName, blob, 'image.png');
-
-                                const resp = await fetch(service.url, {
-                                    method: 'POST',
-                                    body: formData
-                                });
-
-                                if (resp.ok) {
-                                    const data = await resp.json();
-                                    const httpUrl = service.parseResponse(data);
-                                    if (httpUrl && (httpUrl.startsWith('http://') || httpUrl.startsWith('https://'))) {
-                                        console.log(`拓展图片: 使用${service.name}图床上传成功，获取HTTP URL:`, httpUrl);
-                                        return httpUrl;
-                                    }
-                                }
-                            } catch (e) {
-                                console.warn(`拓展图片: ${service.name}图床上传失败:`, e);
-                                continue;
-                            }
-                        }
-
-                        // 如果所有上传方式都失败，返回null
-                        console.warn('拓展图片: 所有上传方式都失败，无法获取HTTP URL');
-                        return null;
-                    }
-
-                    // 其他格式，直接返回
-                    return imageUrl;
-                } catch (error) {
-                    console.error('拓展图片: 上传图片失败:', error);
-                    return null;
                 }
             };
 
@@ -7209,92 +7000,6 @@ import {
                 alert('已生成高清放大提示词！');
             };
 
-            // 切割九宫格图片（3x3网格）
-            const splitGridImage = async (imageUrl) => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    const timeout = setTimeout(() => {
-                        reject(new Error('图片加载超时'));
-                    }, 30000);
-
-                    img.onload = () => {
-                        clearTimeout(timeout);
-                        try {
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-
-                            // 九宫格是3x3网格，每张图是原图的1/3
-                            const singleWidth = Math.floor(img.width / 3);
-                            const singleHeight = Math.floor(img.height / 3);
-
-                            const images = [];
-
-                            // 切割9张图：按从上到下、从左到右的顺序（1-9）
-                            const cropPromises = [];
-
-                            for (let row = 0; row < 3; row++) {
-                                for (let col = 0; col < 3; col++) {
-                                    const cropX = Math.max(0, Math.min(col * singleWidth, img.width - singleWidth));
-                                    const cropY = Math.max(0, Math.min(row * singleHeight, img.height - singleHeight));
-                                    const cropW = Math.min(singleWidth, img.width - cropX);
-                                    const cropH = Math.min(singleHeight, img.height - cropY);
-
-                                    const cropCanvas = document.createElement('canvas');
-                                    cropCanvas.width = cropW;
-                                    cropCanvas.height = cropH;
-                                    const cropCtx = cropCanvas.getContext('2d');
-
-                                    cropCtx.fillStyle = '#ffffff';
-                                    cropCtx.fillRect(0, 0, cropW, cropH);
-
-                                    cropCtx.drawImage(
-                                        img,
-                                        cropX, cropY, cropW, cropH,
-                                        0, 0, cropW, cropH
-                                    );
-
-                                    // 使用 toBlob 替代 toDataURL，生成 Blob URL
-                                    const cropPromise = new Promise((resolveCrop, rejectCrop) => {
-                                        cropCanvas.toBlob((blob) => {
-                                            if (blob) {
-                                                const blobUrl = URL.createObjectURL(blob);
-                                                resolveCrop({
-                                                    url: blobUrl,
-                                                    width: cropW,
-                                                    height: cropH
-                                                });
-                                            } else {
-                                                rejectCrop(new Error('Canvas toBlob 失败'));
-                                            }
-                                        }, 'image/png');
-                                    });
-
-                                    cropPromises.push(cropPromise);
-                                }
-                            }
-
-                            // 等待所有切割完成
-                            Promise.all(cropPromises).then((results) => {
-                                resolve(results);
-                            }).catch((error) => {
-                                reject(error);
-                            });
-                        } catch (error) {
-                            reject(error);
-                        }
-                    };
-
-                    img.onerror = () => {
-                        clearTimeout(timeout);
-                        reject(new Error('图片加载失败'));
-                    };
-
-                    img.src = imageUrl;
-                });
-            };
-
             // 裁切九宫格图片并创建节点
             const handleSplitGridImage = async () => {
                 const currentSelectedId = selectedNodeIdRef.current;
@@ -7328,37 +7033,11 @@ import {
                     const sourceX = targetNode.x;
                     const sourceY = targetNode.y;
                     const sourceWidth = targetNode.width || 260;
-                    const nodeWidth = 260;
-                    const nodeHeight = 260;
-                    const spacing = 20;
-
-                    const cols = 3;
-                    const rows = 3;
-
                     // 计算起始位置：位于原图的右侧开始排列
-                    const startX = sourceX + sourceWidth + spacing;
+                    const startX = sourceX + sourceWidth + 20;
                     const startY = sourceY;
 
-                    // 创建9个新节点
-                    const newNodes = [];
-                    for (let i = 0; i < croppedImages.length; i++) {
-                        const row = Math.floor(i / cols);
-                        const col = i % cols;
-                        const x = startX + col * (nodeWidth + spacing);
-                        const y = startY + row * (nodeHeight + spacing);
-
-                        const newNode = {
-                            id: `node-${Date.now()}-${i}`,
-                            type: 'input-image',
-                            x: x,
-                            y: y,
-                            width: nodeWidth,
-                            height: nodeHeight,
-                            content: croppedImages[i].url,
-                            dimensions: { w: croppedImages[i].width, h: croppedImages[i].height }
-                        };
-                        newNodes.push(newNode);
-                    }
+                    const newNodes = createGridImageNodes(croppedImages, { startX, startY });
 
                     setNodes(prev => [...prev, ...newNodes]);
                     // 静默创建，不显示成功提示
@@ -7414,23 +7093,14 @@ import {
                     const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
                     const startX = originX !== undefined ? originX : world.x;
                     const startY = originY !== undefined ? originY : world.y;
-                    const newNodes = [];
-                    for (let i = 0; i < croppedImages.length; i++) {
-                        const row = Math.floor(i / cols);
-                        const col = i % cols;
-                        const x = startX + col * (nodeWidth + spacing);
-                        const y = startY + row * (nodeHeight + spacing);
-                        newNodes.push({
-                            id: `node-${Date.now()}-${i}`,
-                            type: 'input-image',
-                            x,
-                            y,
-                            width: nodeWidth,
-                            height: nodeHeight,
-                            content: croppedImages[i].url,
-                            dimensions: { w: croppedImages[i].width, h: croppedImages[i].height }
-                        });
-                    }
+                    const newNodes = createGridImageNodes(croppedImages, {
+                        startX,
+                        startY,
+                        cols,
+                        spacing,
+                        nodeWidth,
+                        nodeHeight,
+                    });
                     setNodes(prev => [...prev, ...newNodes]);
                     // 静默创建，不显示成功提示
                 } catch (e) {
