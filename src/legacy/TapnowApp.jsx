@@ -87,6 +87,7 @@ import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
+import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
@@ -563,66 +564,7 @@ import {
                 isVideoUrl,
             });
 
-            // 检查并重新切割需要切割的Midjourney图片（使用useRef避免重复切割）
-            const splittingRef = useRef(new Set());
-            useEffect(() => {
-                history.forEach(item => {
-                    if (item.mjNeedsSplit && item.mjOriginalUrl && item.apiConfig?.modelId?.includes('mj') && item.status === 'completed') {
-                        // 避免重复切割
-                        if (splittingRef.current.has(item.id)) {
-                            return;
-                        }
-                        splittingRef.current.add(item.id);
-
-                        // 延迟切割，避免阻塞UI
-                        setTimeout(() => {
-                            // 获取比例信息
-                            let ratio = item.mjRatio || '1:1';
-                            if (item.prompt && item.prompt.includes('--ar ')) {
-                                const arMatch = item.prompt.match(/--ar\s+([\d:]+)/);
-                                if (arMatch && arMatch[1]) {
-                                    ratio = arMatch[1];
-                                }
-                            }
-
-                            console.log(`Midjourney: 开始重新切割图片，任务ID: ${item.id}, 比例: ${ratio}`);
-
-                            // 重新切割图片
-                            splitMidjourneyImage(item.mjOriginalUrl, ratio).then((splitImages) => {
-                                const imageUrls = splitImages.map(img => typeof img === 'string' ? img : img.url);
-                                const firstImage = splitImages[0];
-                                const firstUrl = typeof firstImage === 'string' ? firstImage : firstImage.url;
-
-                                setHistory((prev) => prev.map((hItem) =>
-                                    hItem.id === item.id
-                                        ? {
-                                            ...hItem,
-                                            mjImages: imageUrls,
-                                            url: firstUrl,
-                                            selectedMjImageIndex: 0,
-                                            mjRatio: ratio,
-                                            mjNeedsSplit: false, // 标记已切割
-                                            mjImageInfo: splitImages.map(img => typeof img === 'string' ? null : { width: img.width, height: img.height, ratio: img.ratio })
-                                        }
-                                        : hItem
-                                ));
-
-                                splittingRef.current.delete(item.id);
-                                console.log(`Midjourney: 重新切割完成，任务ID: ${item.id}`);
-                            }).catch((err) => {
-                                console.error('Midjourney: 重新切割图片失败:', err);
-                                splittingRef.current.delete(item.id);
-                                // 保持原图显示，标记需要重新切割
-                                setHistory((prev) => prev.map((hItem) =>
-                                    hItem.id === item.id
-                                        ? { ...hItem, mjNeedsSplit: true }
-                                        : hItem
-                                ));
-                            });
-                        }, 500); // 延迟500ms，确保UI已完全渲染
-                    }
-                });
-            }, [history]);
+            useMidjourneyAutoSplit({ history, setHistory });
 
             const handleChatResizeStart = (e) => { e.preventDefault(); setIsResizingChat(true); };
             const [isResizingChat, setIsResizingChat] = useState(false);
