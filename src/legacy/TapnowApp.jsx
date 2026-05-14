@@ -58,8 +58,6 @@ import {
   RATIOS,
   GROK_VIDEO_RATIOS,
   VIDEO_RES_OPTIONS,
-  GRID_PROMPT_TEXT,
-  UPSCALE_PROMPT_TEXT,
   DELETED_MODEL_IDS,
   getRatiosForModel,
   RESOLUTIONS,
@@ -6289,105 +6287,6 @@ import {
             const applyLibraryPrompt = (nodeId, promptText) => {
                 if (!nodeId || !promptText) return;
                 updateNodeSettings(nodeId, { prompt: promptText });
-            };
-
-            // 生成九宫格分镜脚本提示词
-            const generateGridPrompt = () => {
-                const currentSelectedId = selectedNodeIdRef.current;
-                if (!currentSelectedId) {
-                    alert('请先选中一个AI绘图节点');
-                    return;
-                }
-
-                const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                if (!targetNode || targetNode.type !== 'gen-image') {
-                    alert('请选中一个AI绘图节点（gen-image）');
-                    return;
-                }
-
-                // 获取连接的参考图
-                const connectedImages = getConnectedInputImages(targetNode.id, 'default');
-                const hasReferenceImage = connectedImages.length > 0;
-
-                // 生成提示词
-                const gridPrompt = hasReferenceImage
-                    ? GRID_PROMPT_TEXT
-                    : `生成一张九宫格（3x3 grid）布局的分镜脚本。在9个格子中展示同一个角色不同的动作、表情和拍摄角度（如正面、侧面、背面、特写等）。要求风格高度统一，形成一张完整的角色动态表（Character Sheet）。`;
-
-                // 更新节点的提示词，保持模型、分辨率、比例不变
-                updateNodeSettings(targetNode.id, { prompt: gridPrompt });
-
-                // 提示用户
-                alert('已生成九宫格分镜脚本提示词！');
-            };
-
-            // 智能拆分放大：直接生成提示词
-            const handleUpscale = () => {
-                const currentSelectedId = selectedNodeIdRef.current;
-                if (!currentSelectedId) {
-                    alert('请选择图片生成节点进行放大。');
-                    return;
-                }
-
-                const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                if (!targetNode || targetNode.type !== 'gen-image') {
-                    alert('请选择图片生成节点进行放大。');
-                    return;
-                }
-
-                const upscalePrompt = UPSCALE_PROMPT_TEXT;
-
-                // 更新节点的提示词
-                updateNodeSettings(targetNode.id, { prompt: upscalePrompt });
-
-                // 提示用户
-                alert('已生成高清放大提示词！');
-            };
-
-            // 裁切九宫格图片并创建节点
-            const handleSplitGridImage = async () => {
-                const currentSelectedId = selectedNodeIdRef.current;
-                if (!currentSelectedId) {
-                    alert('请先选中一个图片节点');
-                    return;
-                }
-
-                const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                if (!targetNode) {
-                    alert('未找到选中的节点');
-                    return;
-                }
-
-                const imageUrl = targetNode.content;
-                if (!imageUrl) {
-                    alert('选中的节点没有图片内容');
-                    return;
-                }
-
-                try {
-                    // 切割图片
-                    const croppedImages = await splitGridImage(imageUrl);
-
-                    if (croppedImages.length !== 9) {
-                        alert('切割失败：未能生成9张图片');
-                        return;
-                    }
-
-                    // 获取原节点的位置和尺寸
-                    const sourceX = targetNode.x;
-                    const sourceY = targetNode.y;
-                    const sourceWidth = targetNode.width || 260;
-                    // 计算起始位置：位于原图的右侧开始排列
-                    const startX = sourceX + sourceWidth + 20;
-                    const startY = sourceY;
-
-                    const newNodes = createGridImageNodes(croppedImages, { startX, startY });
-
-                    setNodes(prev => [...prev, ...newNodes]);
-                    // 静默创建，不显示成功提示
-                } catch (error) {
-                    alert('切割失败: ' + error.message);
-                }
             };
 
             const handleSplitGridFromUrl = async (imageUrl, options = {}) => {
