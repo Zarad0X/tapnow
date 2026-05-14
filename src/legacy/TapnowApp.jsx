@@ -95,6 +95,14 @@ import {
   createGridImageNodes,
   splitGridImage
 } from './services/gridSplitService.js';
+import {
+  createEmptyStoryboardShot,
+  createShotsFromAnalysisResults,
+  getDefaultDurationForModel,
+  getDefaultDurationsForModel,
+  renumberStoryboardShots,
+  updateStoryboardShot
+} from './services/storyboardService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import {
   findScrollableNodeArea,
@@ -5682,45 +5690,16 @@ import {
                 }
             }, [nodesMap, generateCharacterPrompt, generateScenePrompt]);
 
-            const getDefaultDurationForModel = (modelId) => {
-                if (!modelId) return '5s';
-                if (modelId === 'sora-2-pro') return '15s';
-                if (modelId.includes('sora-2') || modelId === 'sora-2') return '15s';
-                if (modelId.includes('veo') || modelId === 'google-veo3') return '8s';
-                if (modelId.includes('grok') || modelId === 'grok-3') return '8s';
-                return '5s';
-            };
-
-            // 获取模型可用的时长选项
-            const getDefaultDurationsForModel = (modelId) => {
-                if (!modelId) return ['5s', '10s', '8s'];
-                if (modelId === 'sora-2-pro') return ['15s', '25s'];
-                if (modelId.includes('sora-2') || modelId === 'sora-2') return ['5s', '10s', '15s'];
-                if (modelId.includes('veo') || modelId === 'google-veo3') return ['8s'];
-                if (modelId.includes('grok') || modelId === 'grok-3') return ['8s', '5s'];
-                return ['5s', '10s', '8s'];
-            };
-
             // 分镜表节点功能函数
             const addEmptyShot = (nodeId) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'storyboard-node') return;
                 // 获取默认视频模型（优先使用 sora-2，否则使用第一个视频模型）
                 const defaultModel = apiConfigs.find(c => c.type === 'Video' && c.id === 'sora-2')?.id || apiConfigs.find(c => c.type === 'Video')?.id || '';
-                const newShot = {
-                    id: `shot-${Date.now()}`,
-                    scene_index: (node.settings?.shots?.length || 0) + 1,
-                    time_range: '',
-                    image_url: '',
-                    description: '',
-                    prompt: '',
-                    camera: '',
-                    tags: [],
-                    status: 'draft',
-                    model: defaultModel,
-                    ratio: '16:9',
-                    duration: getDefaultDurationForModel(defaultModel)
-                };
+                const newShot = createEmptyStoryboardShot({
+                    shotCount: node.settings?.shots?.length || 0,
+                    defaultModel,
+                });
                 updateNodeSettings(nodeId, {
                     shots: [...(node.settings?.shots || []), newShot]
                 });
@@ -5729,20 +5708,14 @@ import {
             const deleteShot = (nodeId, shotId) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = (node.settings?.shots || []).filter(s => s.id !== shotId);
-                // 重新编号
-                updatedShots.forEach((shot, idx) => {
-                    shot.scene_index = idx + 1;
-                });
+                const updatedShots = renumberStoryboardShots((node.settings?.shots || []).filter(s => s.id !== shotId));
                 updateNodeSettings(nodeId, { shots: updatedShots });
             };
 
             const updateShot = (nodeId, shotId, updates) => {
                 const node = nodesMap.get(nodeId);
                 if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = (node.settings?.shots || []).map(shot =>
-                    shot.id === shotId ? { ...shot, ...updates } : shot
-                );
+                const updatedShots = updateStoryboardShot(node.settings?.shots || [], shotId, updates);
                 updateNodeSettings(nodeId, { shots: updatedShots });
             };
 
@@ -5764,38 +5737,7 @@ import {
                     return;
                 }
 
-                // 转换为 shots 格式
-                const newShots = analysisResults.map((result, idx) => {
-                    const keyframe = result.keyframes?.find(k => k.type === 'current') || result.keyframes?.[0];
-                    const mjPrompt = keyframe?.mj_prompt || '';
-                    const jimengPrompt = keyframe?.jimeng_prompt || '';
-                    const description = keyframe?.description || result.keyframes?.[0]?.description || '';
-
-                    // 提取标签
-                    const tags = [];
-                    if (result.global_tags?.style?.[0]) tags.push(result.global_tags.style[0]);
-                    if (keyframe?.description) {
-                        // 简单提取运镜信息
-                        const cameraKeywords = ['推', '拉', '摇', '移', '跟', '升', '降', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
-                        cameraKeywords.forEach(keyword => {
-                            if (description.includes(keyword)) {
-                                tags.push(keyword);
-                            }
-                        });
-                    }
-
-                    return {
-                        id: `shot-${Date.now()}-${idx}`,
-                        scene_index: idx + 1,
-                        time_range: result.time_range || '',
-                        image_url: '',
-                        description: description,
-                        prompt: mjPrompt || jimengPrompt,
-                        camera: tags.find(t => ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'].some(k => t.includes(k))) || '',
-                        tags: tags,
-                        status: 'draft'
-                    };
-                });
+                const newShots = createShotsFromAnalysisResults(analysisResults);
 
                 updateNodeSettings(nodeId, { shots: newShots });
             };
@@ -5809,42 +5751,8 @@ import {
                 }
 
                 // 1. 数据转换 (复用现有逻辑)
-                const newShots = analysisResults.map((result, idx) => {
-                    const keyframe = result.keyframes?.find(k => k.type === 'current') || result.keyframes?.[0];
-                    const mjPrompt = keyframe?.mj_prompt || '';
-                    const jimengPrompt = keyframe?.jimeng_prompt || '';
-                    const description = keyframe?.description || result.keyframes?.[0]?.description || '';
-
-                    // 提取标签
-                    const tags = [];
-                    if (result.global_tags?.style?.[0]) tags.push(result.global_tags.style[0]);
-                    if (result.global_tags?.camera?.[0]) tags.push(result.global_tags.camera[0]);
-                    if (keyframe?.description) {
-                        // 简单提取运镜信息
-                        const cameraKeywords = ['推', '拉', '摇', '移', '跟', '升', '降', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
-                        cameraKeywords.forEach(keyword => {
-                            if (description.includes(keyword)) {
-                                tags.push(keyword);
-                            }
-                        });
-                    }
-
-                    // 提取运镜信息
-                    const camera = result.global_tags?.camera?.[0] ||
-                                   tags.find(t => ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'].some(k => t.includes(k))) ||
-                                   '';
-
-                    return {
-                        id: `shot-${Date.now()}-${idx}`,
-                        scene_index: idx + 1,
-                        time_range: result.time_range || '',
-                        image_url: '',
-                        description: description,
-                        prompt: mjPrompt || jimengPrompt,
-                        camera: camera,
-                        tags: tags,
-                        status: 'draft'
-                    };
+                const newShots = createShotsFromAnalysisResults(analysisResults, {
+                    includeGlobalCamera: true,
                 });
 
                 // 2. 计算新节点位置（放在源节点右侧）
