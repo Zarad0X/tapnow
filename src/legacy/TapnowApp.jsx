@@ -86,6 +86,7 @@ import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
+import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
 import {
@@ -311,8 +312,7 @@ import {
             const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
             const [activeTool, setActiveTool] = useState('select');
             const [activeDropdown, setActiveDropdown] = useState(null);
-            // 实时计时器状态：nodeId -> elapsedSeconds
-            const [nodeTimers, setNodeTimers] = useState({});
+            const nodeTimers = useNodeTimers(history);
 
             // 历史保存文件夹记忆
             const [savedFolderHistory, setSavedFolderHistory] = useLocalStorage('tapnow_saved_folder_history', []);
@@ -554,28 +554,6 @@ import {
                 });
                 return byNode;
             }, [connections]);
-
-            // 实时更新节点计时器
-            useEffect(() => {
-                const interval = setInterval(() => {
-                    const now = Date.now();
-                    const activeTasks = history.filter(h =>
-                        h.sourceNodeId &&
-                        h.status === 'generating' &&
-                        h.startTime
-                    );
-
-                    const newTimers = {};
-                    activeTasks.forEach(task => {
-                        const elapsed = Math.floor((now - task.startTime) / 100);
-                        newTimers[task.sourceNodeId] = elapsed / 10; // 转换为秒，保留1位小数
-                    });
-
-                    setNodeTimers(newTimers);
-                }, 100); // 每100ms更新一次
-
-                return () => clearInterval(interval);
-            }, [history]);
 
             // 自动保存功能：监听local-save节点的连接变化
             const autoSaveProcessingRef = useRef(new Set());
