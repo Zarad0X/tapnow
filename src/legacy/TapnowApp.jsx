@@ -71,7 +71,6 @@ import {
   extractKeyFrames,
   ImageCompareView,
   Button,
-  debounce,
   Lightbox
 } from './support.jsx';
 import { useLocalStorage } from './hooks/useLocalStorage.js';
@@ -87,6 +86,7 @@ import { usePromptLibrary } from './hooks/usePromptLibrary.js';
 import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
 import { useDeleteKeyHandler } from './hooks/useDeleteKeyHandler.js';
+import { useGlobalApiKeyPersistence } from './hooks/useGlobalApiKeyPersistence.js';
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
@@ -374,11 +374,7 @@ import {
                 setCreateCharacterVideoError(null);
             }, [createCharacterVideoUrl, createCharacterSelectedTaskId, createCharacterVideoSourceType]);
 
-            const debouncedSaveGlobalKey = useMemo(() => debounce((key) => {
-                localStorage.setItem('tapnow_global_key', key);
-            }, 1000), []);
-
-            useEffect(() => { debouncedSaveGlobalKey(globalApiKey); }, [globalApiKey, debouncedSaveGlobalKey]);
+            useGlobalApiKeyPersistence(globalApiKey);
 
             useEffect(() => {
                 nodesRef.current = nodes;
