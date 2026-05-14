@@ -93,6 +93,7 @@ import {
 } from './services/midjourneyUploadService.js';
 import {
   createGridImageNodes,
+  splitMidjourneyImage,
   splitGridImage
 } from './services/gridSplitService.js';
 import {
@@ -2906,86 +2907,6 @@ import {
                             storyboardTaskMapRef.current.delete(taskId);
                         }
                     }
-                });
-            };
-
-            // 切割Midjourney返回的4张图（2x2网格）
-            const splitMidjourneyImage = async (imageUrl, ratio = '1:1') => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    // 设置超时，防止图片加载卡死
-                    const timeout = setTimeout(() => {
-                        reject(new Error('图片加载超时'));
-                    }, 30000); // 30秒超时
-
-                    img.onload = () => {
-                        clearTimeout(timeout);
-                        try {
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-
-                            // Midjourney返回的是2x2网格，每张图是原图的1/4
-                            // 计算每张图的尺寸（使用Math.floor确保整数像素）
-                            const singleWidth = Math.floor(img.width / 2);
-                            const singleHeight = Math.floor(img.height / 2);
-
-                            // 计算实际每张图的比例
-                            const actualRatio = singleWidth / singleHeight;
-
-                            const images = [];
-
-                            // 切割4张图：左上、右上、左下、右下
-                            for (let row = 0; row < 2; row++) {
-                                for (let col = 0; col < 2; col++) {
-                                    // 计算裁剪区域（确保不超出边界）
-                                    const cropX = Math.max(0, Math.min(col * singleWidth, img.width - singleWidth));
-                                    const cropY = Math.max(0, Math.min(row * singleHeight, img.height - singleHeight));
-                                    const cropW = Math.min(singleWidth, img.width - cropX);
-                                    const cropH = Math.min(singleHeight, img.height - cropY);
-
-                                    // 设置canvas尺寸
-                                    canvas.width = cropW;
-                                    canvas.height = cropH;
-
-                                    // 清空canvas并设置白色背景（防止透明区域）
-                                    ctx.fillStyle = '#ffffff';
-                                    ctx.fillRect(0, 0, cropW, cropH);
-
-                                    // 提取图片区域
-                                    ctx.drawImage(
-                                        img,
-                                        cropX, cropY, cropW, cropH,
-                                        0, 0, cropW, cropH
-                                    );
-
-                                    // 使用PNG格式，保持图片质量
-                                    const dataUrl = canvas.toDataURL('image/png');
-                                    images.push({
-                                        url: dataUrl,
-                                        width: cropW,
-                                        height: cropH,
-                                        ratio: actualRatio
-                                    });
-                                }
-                            }
-
-                            console.log(`Midjourney: 切割图片完成，原图尺寸 ${img.width}x${img.height}，每张图尺寸 ${singleWidth}x${singleHeight}，比例 ${actualRatio.toFixed(2)}`);
-                            resolve(images);
-                        } catch (error) {
-                            console.error('Midjourney: 切割图片时出错:', error);
-                            reject(error);
-                        }
-                    };
-
-                    img.onerror = (e) => {
-                        clearTimeout(timeout);
-                        console.error('Midjourney: Failed to load image for splitting:', e);
-                        reject(new Error('图片加载失败'));
-                    };
-
-                    img.src = imageUrl;
                 });
             };
 
