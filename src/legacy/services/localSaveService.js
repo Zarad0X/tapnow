@@ -1,39 +1,12 @@
-export const blobToDataUrl = (blob) => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-};
+import {
+    blobToDataURL,
+    convertImageToJpegDataUrl,
+} from '../utils/mediaProcessing.js';
 
 export const fetchAsDataUrl = async (url) => {
     const response = await fetch(url);
     const blob = await response.blob();
-    return blobToDataUrl(blob);
-};
-
-export const convertImageToJpgDataUrl = async (imageUrl) => {
-    return new Promise((resolve) => {
-        try {
-            const image = new Image();
-            image.crossOrigin = 'anonymous';
-            image.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = image.naturalWidth;
-                canvas.height = image.naturalHeight;
-                const context = canvas.getContext('2d');
-                context.fillStyle = '#FFFFFF';
-                context.fillRect(0, 0, canvas.width, canvas.height);
-                context.drawImage(image, 0, 0);
-                resolve(canvas.toDataURL('image/jpeg', 0.95));
-            };
-            image.onerror = () => resolve(null);
-            image.src = imageUrl;
-        } catch (error) {
-            resolve(null);
-        }
-    });
+    return blobToDataURL(blob);
 };
 
 export const buildLocalSaveFiles = async (urls, { isVideoUrl }) => {
@@ -53,7 +26,7 @@ export const buildLocalSaveFiles = async (urls, { isVideoUrl }) => {
                     content = await fetchAsDataUrl(url);
                 }
             } else {
-                const jpgContent = await convertImageToJpgDataUrl(url);
+                const jpgContent = await convertImageToJpegDataUrl(url);
                 if (jpgContent) {
                     content = jpgContent;
                 } else if (!url.startsWith('data:')) {

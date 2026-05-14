@@ -79,6 +79,7 @@ import {
 import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
+import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
@@ -147,7 +148,6 @@ import {
   base64ToBlobUrl,
   blobToDataURL,
   compressImage,
-  convertImageToJpegDataUrl,
   getBase64FromUrl,
   getBlobFromUrl,
   getSora2CompliantSize,
@@ -555,101 +555,13 @@ import {
                 return byNode;
             }, [connections]);
 
-            // 自动保存功能：监听local-save节点的连接变化
-            const autoSaveProcessingRef = useRef(new Set());
-            useEffect(() => {
-                const localSaveNodes = nodes.filter(n => n.type === 'local-save' && n.settings?.autoSave && n.settings?.serverStatus === 'connected');
-                if (localSaveNodes.length === 0) return;
-
-                localSaveNodes.forEach(async (node) => {
-                    const connectedImgs = getConnectedInputImages(node.id);
-                    if (connectedImgs.length === 0) return;
-
-                    // 检查是否有新的图片（与上次保存的不同）
-                    const lastSavedUrls = node.settings?.lastSavedUrls || [];
-                    const newImages = connectedImgs.filter(img => !lastSavedUrls.includes(img));
-
-                    if (newImages.length === 0) return;
-
-                    // 防止重复处理
-                    const processKey = `${node.id}-${newImages.join(',')}`;
-                    if (autoSaveProcessingRef.current.has(processKey)) return;
-                    autoSaveProcessingRef.current.add(processKey);
-
-                    // 延迟执行，避免频繁触发
-                    setTimeout(async () => {
-                        try {
-                            const serverUrl = node.settings?.serverUrl || 'http://127.0.0.1:9527';
-                            const subfolder = node.settings?.subfolder || '';
-                            const files = [];
-
-                            for (let i = 0; i < newImages.length; i++) {
-                                const imgUrl = newImages[i];
-                                const isVideo = isVideoUrl(imgUrl);
-                                try {
-                                    let content = imgUrl;
-                                    let ext = '.jpg';
-
-                                    if (isVideo) {
-                                        ext = '.mp4';
-                                        if (!imgUrl.startsWith('data:')) {
-                                            const response = await fetch(imgUrl);
-                                            const blob = await response.blob();
-                                            content = await new Promise((resolve) => {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => resolve(reader.result);
-                                                reader.readAsDataURL(blob);
-                                            });
-                                        }
-                                    } else {
-                                        const jpgContent = await convertImageToJpegDataUrl(imgUrl);
-                                        if (jpgContent) {
-                                            content = jpgContent;
-                                        } else if (!imgUrl.startsWith('data:')) {
-                                            const response = await fetch(imgUrl);
-                                            const blob = await response.blob();
-                                            content = await new Promise((resolve) => {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => resolve(reader.result);
-                                                reader.readAsDataURL(blob);
-                                            });
-                                            ext = '.png';
-                                        }
-                                    }
-                                    const timestamp = Date.now();
-                                    files.push({
-                                        filename: `tapnow_${timestamp}_${i}${ext}`,
-                                        content: content
-                                    });
-                                } catch (e) {
-                                    console.error('自动保存处理文件失败:', e);
-                                }
-                            }
-
-                            if (files.length > 0) {
-                                const response = await fetch(`${serverUrl}/save-batch`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ files, subfolder })
-                                });
-                                const result = await response.json();
-                                if (result.success) {
-                                    updateNodeSettings(node.id, {
-                                        lastSaved: new Date().toISOString(),
-                                        savedFiles: result.results || [],
-                                        lastSavedUrls: [...connectedImgs]
-                                    });
-                                    console.log(`自动保存成功: ${files.length} 个文件`);
-                                }
-                            }
-                        } catch (e) {
-                            console.error('自动保存失败:', e);
-                        } finally {
-                            autoSaveProcessingRef.current.delete(processKey);
-                        }
-                    }, 1000); // 延迟1秒执行
-                });
-            }, [nodes, connections, getConnectedInputImages]);
+            useAutoLocalSave({
+                nodes,
+                connections,
+                getConnectedInputImages,
+                updateNodeSettings,
+                isVideoUrl,
+            });
 
             // 检查并重新切割需要切割的Midjourney图片（使用useRef避免重复切割）
             const splittingRef = useRef(new Set());
