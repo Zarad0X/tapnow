@@ -80,6 +80,7 @@ import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
 import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
+import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
 import { useChatResize } from './hooks/useChatResize.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
@@ -111,13 +112,9 @@ import {
 } from './services/storyboardService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import {
-  findScrollableNodeArea,
   getCanvasDetailLevel,
   getVisibleNodes,
-  preventCancelableEvent,
-  screenToWorldPoint,
-  scrollElementByWheel,
-  zoomViewAtPoint
+  screenToWorldPoint
 } from './canvas/viewport.js';
 import {
   createDefaultNodeSettings,
@@ -568,106 +565,7 @@ import {
             useMidjourneyAutoSplit({ history, setHistory });
 
             const { handleChatResizeStart } = useChatResize({ setChatWidth });
-
-            // 屏蔽滚轮事件相关的控制台错误（passive 事件监听器错误）- 双重保护
-            useEffect(() => {
-                const originalError = console.error;
-                const originalWarn = console.warn;
-
-                const shouldFilter = (args) => {
-                    const msg = args.map(arg => {
-                        if (typeof arg === 'string') return arg;
-                        if (arg && arg.toString) return arg.toString();
-                        return '';
-                    }).join(' ');
-                    return msg.includes('Unable to preventDefault') ||
-                           msg.includes('passive event listener') ||
-                           (msg.includes('preventDefault') && msg.includes('passive'));
-                };
-
-                console.error = function(...args) {
-                    if (shouldFilter(args)) return;
-                    originalError.apply(console, args);
-                };
-
-                console.warn = function(...args) {
-                    if (shouldFilter(args)) return;
-                    originalWarn.apply(console, args);
-                };
-
-                return () => {
-                    console.error = originalError;
-                    console.warn = originalWarn;
-                };
-            }, []);
-
-            // 全局禁止 Ctrl+滚轮 缩放（捕获阶段，阻止浏览器缩放）；使用 try-catch 避免控制台报错
-            useEffect(() => {
-                const preventCtrlZoom = (e) => {
-                    if (!e.ctrlKey) return;
-                    try {
-                        if (e.cancelable) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }
-                    } catch (err) {
-                        // 静默处理 passive 事件监听器的错误
-                    }
-                };
-
-                const opts = { passive: false, capture: true };
-                window.addEventListener('wheel', preventCtrlZoom, opts);
-                document.addEventListener('wheel', preventCtrlZoom, opts);
-                window.addEventListener('mousewheel', preventCtrlZoom, opts);
-                document.addEventListener('mousewheel', preventCtrlZoom, opts);
-
-                return () => {
-                    window.removeEventListener('wheel', preventCtrlZoom, opts);
-                    document.removeEventListener('wheel', preventCtrlZoom, opts);
-                    window.removeEventListener('mousewheel', preventCtrlZoom, opts);
-                    document.removeEventListener('mousewheel', preventCtrlZoom, opts);
-                };
-            }, []);
-
-            // 使用原生事件监听器绑定 handleWheel，避免 React 合成事件的 passive 问题
-            useEffect(() => {
-                const canvasElement = canvasRef.current;
-                if (!canvasElement) return;
-
-                const wheelHandler = (e) => {
-                    // 如果按下了 Ctrl 键，直接阻止默认行为并不执行任何操作；使用 try-catch 避免控制台报错
-                    if (e.ctrlKey) {
-                        preventCancelableEvent(e, { stopPropagation: true });
-                        return;
-                    }
-
-                    const scrollableElement = findScrollableNodeArea({
-                        target: e.target,
-                        boundaryElement: canvasElement,
-                    });
-
-                    // 如果在节点内且找到可滚动元素，则滚动该元素而不是缩放画布
-                    if (scrollableElement) {
-                        preventCancelableEvent(e, { stopPropagation: true });
-                        scrollElementByWheel(scrollableElement, e.deltaY);
-                        return;
-                    }
-
-                    // 否则正常缩放画布
-                    preventCancelableEvent(e);
-                    const rect = canvasElement.getBoundingClientRect();
-                    const mouseX = e.clientX - rect.left;
-                    const mouseY = e.clientY - rect.top;
-                    setView((prev) => zoomViewAtPoint({ previousView: prev, mouseX, mouseY, deltaY: e.deltaY }));
-                };
-
-                // 使用 { passive: false } 确保可以调用 preventDefault
-                canvasElement.addEventListener('wheel', wheelHandler, { passive: false });
-
-                return () => {
-                    canvasElement.removeEventListener('wheel', wheelHandler);
-                };
-            }, []);
+            useCanvasWheelGuards({ canvasRef, setView });
 
             const screenToWorld = useCallback((sx, sy) => {
                 return screenToWorldPoint({
@@ -677,33 +575,6 @@ import {
                     view,
                 });
             }, [view]);
-
-            const handleWheel = (e) => {
-                // 如果按下了 Ctrl 键，直接阻止默认行为并不执行任何操作；使用 try-catch 避免控制台报错
-                if (e.ctrlKey) {
-                    preventCancelableEvent(e, { stopPropagation: true });
-                    return;
-                }
-
-                const scrollableElement = findScrollableNodeArea({
-                    target: e.target,
-                    boundaryElement: e.currentTarget,
-                });
-
-                // 如果在节点内且找到可滚动元素，则滚动该元素而不是缩放画布
-                if (scrollableElement) {
-                    preventCancelableEvent(e, { stopPropagation: true });
-                    scrollElementByWheel(scrollableElement, e.deltaY);
-                    return;
-                }
-
-                // 否则正常缩放画布
-                preventCancelableEvent(e);
-                const rect = e.currentTarget.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                setView((prev) => zoomViewAtPoint({ previousView: prev, mouseX, mouseY, deltaY: e.deltaY }));
-            };
 
             const handleMouseDown = (e) => {
                 if (e.button === 0 || e.button === 1) {
