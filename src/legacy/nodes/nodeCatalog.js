@@ -48,6 +48,20 @@ export const getDefaultNodeSize = (type) => NODE_DEFAULT_SIZES[type] || FALLBACK
 
 export const isStandardGenerationNodeType = (type) => type === 'gen-image' || type === 'gen-video';
 
+export const isImageInputNodeType = (type) => type === 'input-image';
+
+export const isVideoInputNodeType = (type) => type === 'video-input';
+
+export const isPreviewNodeType = (type) => type === 'preview';
+
+export const isInputMediaNodeType = (type) => {
+    return isImageInputNodeType(type) || isVideoInputNodeType(type);
+};
+
+export const isDownloadableMediaNodeType = (type) => {
+    return isInputMediaNodeType(type) || isPreviewNodeType(type);
+};
+
 export const isCharacterSceneVideoNodeType = (type) => {
     return type === 'generate-character-video' || type === 'generate-scene-video';
 };

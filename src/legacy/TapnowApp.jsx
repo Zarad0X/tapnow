@@ -123,6 +123,11 @@ import {
   getNodeLabel,
   isCharacterSceneImageNodeType,
   isCharacterSceneVideoNodeType,
+  isDownloadableMediaNodeType,
+  isImageInputNodeType,
+  isInputMediaNodeType,
+  isPreviewNodeType,
+  isVideoInputNodeType,
   isStandardGenerationNodeType
 } from './nodes/nodeCatalog.js';
 import {
@@ -1153,7 +1158,7 @@ import {
                     const sourceNode = nodesMap.get(conn.from);
                     if (sourceNode) {
                         let images = [];
-                        if (sourceNode.type === 'video-input') {
+                        if (isVideoInputNodeType(sourceNode.type)) {
                             const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
                                 ? sourceNode.selectedKeyframes.map(f => f.url)
                                 : [];
@@ -1162,9 +1167,9 @@ import {
                             } else if (sourceNode.frames && sourceNode.frames.length > 0) {
                                 images = [sourceNode.frames[0].url];
                             }
-                        } else if (sourceNode.type === 'input-image' && sourceNode.content) {
+                        } else if (isImageInputNodeType(sourceNode.type) && sourceNode.content) {
                             images = [sourceNode.content];
-                        } else if (sourceNode.type === 'preview') {
+                        } else if (isPreviewNodeType(sourceNode.type)) {
                             // 从预览窗口获取选中的图片
                             if (sourceNode.selectedPreviewImage) {
                                 images = [sourceNode.selectedPreviewImage];
@@ -1208,7 +1213,7 @@ import {
                 connections.forEach(conn => {
                     if (!cache.has(conn.to)) {
                         const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'video-input') {
+                        if (sourceNode && isVideoInputNodeType(sourceNode.type)) {
                             cache.set(conn.to, sourceNode);
                         }
                     }
@@ -1259,7 +1264,7 @@ import {
                         const sourceNode = nodesMap.get(conn.from);
                         if (sourceNode) {
                             let imageUrl = null;
-                            if (sourceNode.type === 'video-input') {
+                            if (isVideoInputNodeType(sourceNode.type)) {
                                 const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
                                     ? sourceNode.selectedKeyframes[0].url
                                     : null;
@@ -1268,7 +1273,7 @@ import {
                                 } else if (sourceNode.frames && sourceNode.frames[0]) {
                                     imageUrl = sourceNode.frames[0].url;
                                 }
-                            } else if (sourceNode.type === 'input-image' && sourceNode.content) {
+                            } else if (isImageInputNodeType(sourceNode.type) && sourceNode.content) {
                                 imageUrl = sourceNode.content;
                             }
                             if (imageUrl) {
@@ -3978,7 +3983,7 @@ import {
 
                 const selectedNodes = currentNodes.filter(node =>
                     (currentSelectedId === node.id || (currentSelectedIds && currentSelectedIds.has(node.id))) &&
-                    (node.type === 'input-image' || node.type === 'video-input' || node.type === 'preview') &&
+                    isDownloadableMediaNodeType(node.type) &&
                     node.content
                 );
 
@@ -4006,7 +4011,7 @@ import {
 
                         // 判断文件扩展名：对于预览窗口，根据previewType判断；对于其他节点，根据URL或节点类型判断
                         let extension = '.png';
-                        if (node.type === 'preview') {
+                        if (isPreviewNodeType(node.type)) {
                             // 预览窗口：根据previewType判断
                             if (node.previewType === 'video') {
                                 extension = '.mp4';
@@ -6496,7 +6501,7 @@ import {
                         onMouseUp={(e) => handleNodeMouseUp(node.id, e)}
                         onDoubleClick={(e) => {
                             // 功能6：双击图片或视频节点显示预览弹窗
-                            if ((node.type === 'input-image' || node.type === 'video-input') && node.content) {
+                            if (isInputMediaNodeType(node.type) && node.content) {
                                 e.stopPropagation();
                                 setLightboxItem({ url: node.content, type: isVideoUrl(node.content) ? 'video' : 'image' });
                             }
@@ -6515,7 +6520,7 @@ import {
                         </button>
                         <div className="absolute bottom-1 right-1 w-4 h-4 z-[100] resize-handle flex items-end justify-end p-0.5" onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setResizingNodeId(node.id); }}><svg width="6" height="6" viewBox="0 0 8 8" fill="none" className="text-zinc-600"><path d="M8 0L8 8L0 8" stroke="currentColor" strokeWidth="2" /></svg></div>
 
-                        {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && (
+                        {!isInputMediaNodeType(node.type) && node.type !== 'video-analyze' && (
                             node.type === 'image-compare' ? (
                                 <>
                                     <div
@@ -10460,7 +10465,7 @@ import {
                                 </div>
                             )}
 
-                            {node.type === 'preview' && (() => {
+                            {isPreviewNodeType(node.type) && (() => {
                                 // 获取预览内容：优先使用连接的图片，其次使用node.content
                                 const previewConnectedImages = connectedImages.length > 0 ? connectedImages : [];
                                 const hasContent = node.content || (node.previewMjImages && node.previewMjImages.length > 0) || previewConnectedImages.length > 0;
