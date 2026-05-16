@@ -80,6 +80,7 @@ import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
 import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
 import { useChatResize } from './hooks/useChatResize.js';
 import { useClipboardNodes } from './hooks/useClipboardNodes.js';
+import { useCreateCharacterVideoErrorReset } from './hooks/useCreateCharacterVideoErrorReset.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
@@ -91,6 +92,8 @@ import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
+import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
+import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
 import {
@@ -367,20 +370,25 @@ import {
 
             useHistoryThumbnails({ history, setHistory, historyPerformanceMode });
 
-            // 当视频 URL 改变时清除错误提示
-            useEffect(() => {
-                setCreateCharacterVideoError(null);
-            }, [createCharacterVideoUrl, createCharacterSelectedTaskId, createCharacterVideoSourceType]);
-
+            useCreateCharacterVideoErrorReset({
+                createCharacterVideoUrl,
+                createCharacterSelectedTaskId,
+                createCharacterVideoSourceType,
+                setCreateCharacterVideoError,
+            });
             useGlobalApiKeyPersistence(globalApiKey);
-
-            useEffect(() => {
-                nodesRef.current = nodes;
-                selectedNodeIdRef.current = selectedNodeId;
-                selectedNodeIdsRef.current = selectedNodeIds; // 同步更新多选节点ref
-                connectionsRef.current = connections;
-                isSelectingRef.current = isSelecting; // 同步更新框选状态ref
-            }, [nodes, selectedNodeId, selectedNodeIds, connections, isSelecting]);
+            useSyncedInteractionRefs({
+                nodesRef,
+                nodes,
+                selectedNodeIdRef,
+                selectedNodeId,
+                selectedNodeIdsRef,
+                selectedNodeIds,
+                connectionsRef,
+                connections,
+                isSelectingRef,
+                isSelecting,
+            });
 
             // 使用 useMemo 创建 nodes Map，优化节点查找性能（O(1) 查找）
             const nodesMap = useMemo(() => {
@@ -433,10 +441,7 @@ import {
                 });
             }, [nodes, view.x, view.y, view.zoom]);
 
-            // 同步 viewRef 和 view state
-            useEffect(() => {
-                viewRef.current = view;
-            }, [view]);
+            useSyncedViewRef(viewRef, view);
 
             // 媒体降载：当节点完全离开视口时，隐藏其内部 img/video（保留骨架 DOM，不影响 React 状态）
             // 注意：节点本身仍由 visibleNodes 控制渲染范围（含 padding），这里只处理“仍在 padding 内但已离开可视区”的媒体开销
