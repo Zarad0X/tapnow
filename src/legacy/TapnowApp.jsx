@@ -89,6 +89,7 @@ import { useDeleteKeyHandler } from './hooks/useDeleteKeyHandler.js';
 import { useGlobalApiKeyPersistence } from './hooks/useGlobalApiKeyPersistence.js';
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
+import { useConnectedMedia } from './hooks/useConnectedMedia.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
@@ -126,13 +127,8 @@ import {
   isDownloadableMediaNodeType,
   isInputMediaNodeType,
   isPreviewNodeType,
-  isVideoInputNodeType,
   isStandardGenerationNodeType
 } from './nodes/nodeCatalog.js';
-import {
-  getConnectableImageUrlsFromNode,
-  getPrimaryInputImageUrlFromNode
-} from './nodes/nodeMedia.js';
 import {
   buildAsyncImageTaskPollUrl,
   denormalizePromptForSoraRequest,
@@ -542,6 +538,12 @@ import {
                 });
                 return byNode;
             }, [connections]);
+
+            const {
+                getConnectedImageForInput,
+                getConnectedInputImages,
+                getConnectedVideoInputNode,
+            } = useConnectedMedia({ connections, nodes, nodesMap, history });
 
             useAutoLocalSave({
                 nodes,
@@ -1146,54 +1148,6 @@ import {
                 }
             };
 
-            // 使用 useMemo 缓存连接图片的计算结果，避免重复计算
-            const connectedImagesCache = useMemo(() => {
-                const cache = new Map(); // nodeId -> { inputType -> images[] }
-                connections.forEach(conn => {
-                    const inputType = conn.inputType || 'default';
-                    if (!cache.has(conn.to)) {
-                        cache.set(conn.to, new Map());
-                    }
-                    const nodeConnections = cache.get(conn.to);
-                    if (!nodeConnections.has(inputType)) {
-                        nodeConnections.set(inputType, []);
-                    }
-                    const sourceNode = nodesMap.get(conn.from);
-                    if (sourceNode) {
-                        const images = getConnectableImageUrlsFromNode(sourceNode, { history });
-                        if (images.length > 0) {
-                            nodeConnections.get(inputType).push(...images);
-                        }
-                    }
-                });
-                return cache;
-            }, [connections, nodesMap, nodes.length, history, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.length || 0}:${n.frames?.length || 0}:${n.selectedPreviewImage || ''}:${n.previewMjImages?.length || 0}`).join('|')]);
-
-            function getConnectedInputImages(targetNodeId, inputType = 'default') {
-                const nodeCache = connectedImagesCache.get(targetNodeId);
-                if (!nodeCache) return [];
-                return nodeCache.get(inputType) || [];
-            }
-
-            // 使用 useMemo 缓存 video-input 节点查找结果
-            const connectedVideoInputCache = useMemo(() => {
-                const cache = new Map(); // nodeId -> videoInputNode
-                connections.forEach(conn => {
-                    if (!cache.has(conn.to)) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && isVideoInputNodeType(sourceNode.type)) {
-                            cache.set(conn.to, sourceNode);
-                        }
-                    }
-                });
-                return cache;
-            }, [connections, nodesMap]);
-
-            // 获取连接的 video-input 节点（用于 video-analyze 节点）
-            const getConnectedVideoInputNode = useCallback((targetNodeId) => {
-                return connectedVideoInputCache.get(targetNodeId) || null;
-            }, [connectedVideoInputCache]);
-
             // 获取连接的 video-analyze 节点（用于 storyboard-node 节点）
             const getConnectedVideoAnalyzeNode = useCallback((targetNodeId) => {
                 for (const conn of connections) {
@@ -1221,32 +1175,6 @@ import {
                 });
                 return texts;
             }, [connections, nodesMap]);
-
-            // 使用 useMemo 缓存特定输入点的图片URL
-            const connectedImageForInputCache = useMemo(() => {
-                const cache = new Map(); // `${nodeId}:${inputType}` -> imageUrl
-                connections.forEach(conn => {
-                    const inputType = conn.inputType || 'default';
-                    const key = `${conn.to}:${inputType}`;
-                    if (!cache.has(key)) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode) {
-                            const imageUrl = getPrimaryInputImageUrlFromNode(sourceNode);
-                            if (imageUrl) {
-                                cache.set(key, imageUrl);
-                            }
-                        }
-                    }
-                });
-                return cache;
-            }, [connections, nodesMap, nodes.length, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.[0]?.url || ''}:${n.frames?.[0]?.url || ''}`).join('|')]);
-
-            // 获取连接到特定输入点的图片URL
-            const getConnectedImageForInput = useCallback((targetNodeId, inputType) => {
-                const key = `${targetNodeId}:${inputType || 'default'}`;
-                return connectedImageForInputCache.get(key) || null;
-            }, [connectedImageForInputCache]);
-
 
             // 将生成结果同步到连接的预览节点
             const updatePreviewFromTask = (taskId, url, contentType = 'image', sourceNodeIdOverride = null, mjImages = null) => {
