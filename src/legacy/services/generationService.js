@@ -146,12 +146,22 @@ export const extractAsyncTaskId = (data) => {
     return null;
 };
 
+export const extractImageUrlFromItem = (item) => {
+    if (typeof item === 'string') return item;
+    return item?.url || item?.image_url || item?.imageUrl || '';
+};
+
+export const extractImageUrlsFromItems = (items) => {
+    if (!Array.isArray(items)) return [];
+    return items.map(extractImageUrlFromItem).filter(Boolean);
+};
+
 export const extractImageUrls = (data) => {
     if (data?.data && Array.isArray(data.data)) {
-        return data.data.map((item) => item.url || item.image_url || item).filter((url) => typeof url === 'string');
+        return extractImageUrlsFromItems(data.data);
     }
     if (data?.data?.data && Array.isArray(data.data.data)) {
-        return data.data.data.map((item) => item.url).filter(Boolean);
+        return extractImageUrlsFromItems(data.data.data);
     }
     return [];
 };

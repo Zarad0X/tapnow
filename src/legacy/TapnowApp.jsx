@@ -127,6 +127,7 @@ import {
   extractAsyncImageItems,
   extractAsyncTaskId,
   extractImageUrls,
+  extractImageUrlsFromItems,
   findFirstHttpUrlDeep,
   getImageModelFeatures,
   getJimengModelName,
@@ -2252,10 +2253,7 @@ import {
                                     // 任务完成
                                     if (images && images.length > 0) {
                                         // 提取图片URL，支持多种字段名和格式
-                                        const imageUrls = images.map(img => {
-                                            if (typeof img === 'string') return img;
-                                            return img?.url || img?.image_url || img?.imageUrl || '';
-                                        }).filter(Boolean);
+                                        const imageUrls = extractImageUrlsFromItems(images);
 
                                         console.log('[Async Image] 提取到的图片URLs:', imageUrls);
 
