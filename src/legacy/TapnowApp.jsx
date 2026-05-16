@@ -120,7 +120,10 @@ import {
 import {
   createDefaultNodeSettings,
   getDefaultNodeSize,
-  getNodeLabel
+  getNodeLabel,
+  isCharacterSceneImageNodeType,
+  isCharacterSceneVideoNodeType,
+  isStandardGenerationNodeType
 } from './nodes/nodeCatalog.js';
 import {
   buildAsyncImageTaskPollUrl,
@@ -1170,7 +1173,7 @@ import {
                             } else if (sourceNode.previewMjImages && sourceNode.previewMjImages.length > 0) {
                                 images = [sourceNode.previewMjImages[0]];
                             }
-                        } else if (sourceNode.type === 'gen-image' || sourceNode.type === 'gen-video') {
+                        } else if (isStandardGenerationNodeType(sourceNode.type)) {
                             // 从历史记录中获取该节点最新生成的图片/视频
                             const nodeHistory = history.filter(h => h.sourceNodeId === sourceNode.id && h.status === 'completed');
                             if (nodeHistory.length > 0) {
@@ -1302,7 +1305,7 @@ import {
                 // 使用 setTimeout 确保在下一个事件循环中执行，此时 nodes 和 connections 已更新
                 setTimeout(() => {
                     const sourceNode = nodesMap.get(sourceNodeId);
-                    if (sourceNode && (sourceNode.type === 'gen-image' || sourceNode.type === 'gen-video')) {
+                    if (sourceNode && isStandardGenerationNodeType(sourceNode.type)) {
                         // 查找连接到该生成节点的分镜表节点
                         const storyboardConnections = connections.filter(c => c.to === sourceNodeId);
                         for (const conn of storyboardConnections) {
@@ -1835,7 +1838,7 @@ import {
                                                 // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                                 setNodes(prevNodes => prevNodes.map(n => {
                                                     if (n.id !== sourceNodeId) return n;
-                                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                                    if (isCharacterSceneVideoNodeType(n.type)) {
                                                         return {
                                                             ...n,
                                                             content: videoUrl,
@@ -1898,7 +1901,7 @@ import {
                                             // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                             setNodes(prevNodes => prevNodes.map(n => {
                                                 if (n.id !== sourceNodeId) return n;
-                                                if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                                if (isCharacterSceneVideoNodeType(n.type)) {
                                                     return {
                                                         ...n,
                                                         content: videoUrl,
@@ -2061,7 +2064,7 @@ import {
                                     // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                     setNodes(prevNodes => prevNodes.map(n => {
                                         if (n.id !== updatedItem.sourceNodeId) return n;
-                                        if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                        if (isCharacterSceneVideoNodeType(n.type)) {
                                             return {
                                                 ...n,
                                                 content: videoUrl,
@@ -2103,7 +2106,7 @@ import {
                             requestAnimationFrame(() => {
                                 setNodes(prevNodes => prevNodes.map(n => {
                                     if (n.id !== sourceNodeIdForNode) return n;
-                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                    if (isCharacterSceneVideoNodeType(n.type)) {
                                         return {
                                             ...n,
                                             settings: {
@@ -2131,7 +2134,7 @@ import {
                             requestAnimationFrame(() => {
                                 setNodes(prevNodes => prevNodes.map(n => {
                                     if (n.id !== sourceNodeIdForNode) return n;
-                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                    if (isCharacterSceneVideoNodeType(n.type)) {
                                         return {
                                             ...n,
                                             settings: {
@@ -2298,7 +2301,7 @@ import {
                                                 if (nodeIdToUse) {
                                                     setNodes(prevNodes => prevNodes.map(n => {
                                                         if (n.id !== nodeIdToUse) return n;
-                                                        if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                                        if (isCharacterSceneImageNodeType(n.type)) {
                                                             return {
                                                                 ...n,
                                                                 content: primaryUrl,
@@ -2368,7 +2371,7 @@ import {
                                                 if (nodeIdToUse) {
                                                     setNodes(prevNodes => prevNodes.map(n => {
                                                         if (n.id !== nodeIdToUse) return n;
-                                                        if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                                        if (isCharacterSceneImageNodeType(n.type)) {
                                                             return {
                                                                 ...n,
                                                                 content: foundUrl,
@@ -2450,7 +2453,7 @@ import {
                         requestAnimationFrame(() => {
                             setNodes(prevNodes => prevNodes.map(n => {
                                 if (n.id !== sourceNodeId) return n;
-                                if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                if (isCharacterSceneImageNodeType(n.type)) {
                                     return {
                                         ...n,
                                         settings: {
@@ -3416,7 +3419,7 @@ import {
                                             // 同时更新“生成角色/场景图片”节点本身（同步返回也要回填，避免节点区域不显示）
                                             setNodes(prevNodes => {
                                                 const node = prevNodes.find(n => n.id === updatedItem.sourceNodeId);
-                                                if (node && (node.type === 'generate-character-image' || node.type === 'generate-scene-image')) {
+                                                if (node && isCharacterSceneImageNodeType(node.type)) {
                                                     return prevNodes.map(n =>
                                                         n.id === updatedItem.sourceNodeId
                                                             ? {
@@ -4234,7 +4237,7 @@ import {
                 for (const conn of connections) {
                     if (conn.from === sourceNodeId) {
                         const targetNode = nodesMap.get(conn.to);
-                        if (targetNode && (targetNode.type === 'gen-image' || targetNode.type === 'gen-video')) {
+                        if (targetNode && isStandardGenerationNodeType(targetNode.type)) {
                             genNodes.push(targetNode);
                         }
                     }
@@ -8678,7 +8681,7 @@ import {
                                 </div>
                             )}
 
-                            {(node.type === 'generate-character-video' || node.type === 'generate-scene-video') && (
+                            {isCharacterSceneVideoNodeType(node.type) && (
                                 <div
                                     className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
                                         theme === 'dark'
@@ -9015,7 +9018,7 @@ import {
                                 </div>
                             )}
 
-                            {(node.type === 'generate-character-image' || node.type === 'generate-scene-image') && (
+                            {isCharacterSceneImageNodeType(node.type) && (
                                 <div
                                     className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
                                         theme === 'dark'
@@ -10804,7 +10807,7 @@ import {
                                 />
                             )}
 
-                            {(node.type === 'gen-image' || node.type === 'gen-video') && (() => {
+                            {isStandardGenerationNodeType(node.type) && (() => {
                                 // 查找当前节点对应的正在生成的历史记录
                                 const activeTask = history.find(h =>
                                     h.sourceNodeId === node.id &&
