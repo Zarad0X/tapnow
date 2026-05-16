@@ -156,6 +156,41 @@ export const extractImageUrls = (data) => {
     return [];
 };
 
+const extractMarkdownImageUrl = (text) => {
+    if (typeof text !== 'string') return null;
+    const match = text.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+    return match?.[1] ?? null;
+};
+
+export const extractAsyncImageItems = (data) => {
+    if (Array.isArray(data?.data?.data) && data.data.data.length > 0) {
+        return { images: data.data.data, source: 'data.data.data' };
+    }
+
+    if (Array.isArray(data?.data?.images) && data.data.images.length > 0) {
+        return { images: data.data.images, source: 'data.data.images' };
+    }
+
+    if (Array.isArray(data?.images) && data.images.length > 0) {
+        return { images: data.images, source: 'data.images' };
+    }
+
+    if (Array.isArray(data?.data) && data.data.length > 0) {
+        return { images: data.data, source: 'data.data' };
+    }
+
+    const revisedPromptUrl = extractMarkdownImageUrl(data?.data?.revised_prompt);
+    if (revisedPromptUrl) {
+        return {
+            images: [{ url: revisedPromptUrl }],
+            source: 'data.data.revised_prompt',
+            url: revisedPromptUrl,
+        };
+    }
+
+    return { images: [], source: null };
+};
+
 export const getBackendDurationValue = (data) => {
     return data?.data?.duration ||
         data?.data?.cost_time ||
