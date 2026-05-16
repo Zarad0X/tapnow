@@ -77,6 +77,7 @@ import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
 import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
 import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
+import { useChatFiles } from './hooks/useChatFiles.js';
 import { useChatResize } from './hooks/useChatResize.js';
 import { useClipboardNodes } from './hooks/useClipboardNodes.js';
 import { useConnectionQueries } from './hooks/useConnectionQueries.js';
@@ -274,6 +275,10 @@ import {
             } = useChatSessions();
 
             const [lightboxItem, setLightboxItem] = useState(null);
+            const {
+                handleChatFileUpload,
+                removeChatFile,
+            } = useChatFiles({ setChatFiles });
 
             const {
                 promptLibrary,
@@ -1242,59 +1247,6 @@ import {
             useEffect(() => {
                 scrollToBottom();
             }, [currentSession?.messages, isChatOpen]);
-
-            const handleChatFileUpload = (e) => {
-                const files = Array.from(e.target.files);
-                files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        const content = ev.target.result;
-                        const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-
-                        // 判断文件类型
-                        const isImage = file.type.startsWith('image/');
-                        const isVideo = file.type.startsWith('video/');
-                        const isAudio = file.type.startsWith('audio/');
-                        const isPDF = file.type === 'application/pdf' || fileExt === 'pdf';
-                        const isDoc = ['doc', 'docx'].includes(fileExt) || file.type.includes('word');
-                        const isExcel = ['xls', 'xlsx'].includes(fileExt) || file.type.includes('excel') || file.type.includes('spreadsheet');
-                        const isCode = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'cpp', 'c', 'html', 'css', 'json', 'xml', 'yaml', 'yml', 'md', 'txt', 'sh', 'bash'].includes(fileExt);
-
-                        setChatFiles(prev => [...prev, {
-                            name: file.name,
-                            type: file.type,
-                            content: content,
-                            isImage,
-                            isVideo,
-                            isAudio,
-                            isPDF,
-                            isDoc,
-                            isExcel,
-                            isCode,
-                            fileExt
-                        }]);
-                    };
-
-                    // 根据文件类型选择读取方式
-                    if (file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')) {
-                        reader.readAsDataURL(file);
-                    } else if (file.type === 'application/pdf') {
-                        // PDF 也转换为 data URL
-                        reader.readAsDataURL(file);
-                    } else if (file.name.match(/\.(txt|md|js|jsx|ts|tsx|py|html|css|json|csv|xml|yaml|yml|sh|bash|java|cpp|c)$/i)) {
-                        // 代码和文本文件读取为文本
-                        reader.readAsText(file);
-                    } else {
-                        // 其他文件（如 Word、Excel）也尝试读取为 data URL
-                        reader.readAsDataURL(file);
-                    }
-                });
-                e.target.value = '';
-            };
-
-            const removeChatFile = (index) => {
-                setChatFiles(prev => prev.filter((_, i) => i !== index));
-            };
 
             const sendChatMessage = async () => {
                 if ((!chatInput.trim() && chatFiles.length === 0) || isChatSending) return;
