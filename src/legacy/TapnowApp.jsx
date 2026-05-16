@@ -141,6 +141,7 @@ import {
   normalizeBananaResolution,
   normalizePromptForSora,
   parseDurationSeconds,
+  resolveAsyncImagePollDelayMs,
   resolveAsyncImageRunningProgress,
   resolveAsyncImageUnknownProgress,
   resolveGenerationDurationMs,
@@ -2485,16 +2486,12 @@ import {
                             const latestItem = prev.find(h => h.id === taskId);
                             const progress = latestItem?.progress || 10;
 
-                            let adjustedDelay = baseDelayMs;
-                            if (progress >= 90) {
-                                adjustedDelay = 1000; // 1秒：任务接近完成，快速检测
-                            } else if (progress >= 70) {
-                                adjustedDelay = 2000; // 2秒：任务进行中后期，加快检测
-                            } else if (progress >= 50) {
-                                adjustedDelay = 3000; // 3秒：任务进行中，中等速度
-                            } else if (attempt > 50 && !isBananaModel) {
-                                adjustedDelay = 10000; // 10秒：长时间运行，节省资源
-                            }
+                            const adjustedDelay = resolveAsyncImagePollDelayMs({
+                                progress,
+                                attempt,
+                                isBananaModel,
+                                baseDelayMs,
+                            });
 
                             // 在回调外执行setTimeout，避免闭包问题
                             setTimeout(() => {

@@ -297,6 +297,14 @@ export const resolveAsyncImageUnknownProgress = ({ attempt }) => {
     return Math.min(90, 10 + (attempt * 1.5));
 };
 
+export const resolveAsyncImagePollDelayMs = ({ progress, attempt, isBananaModel, baseDelayMs = 5000 }) => {
+    if (progress >= 90) return 1000;
+    if (progress >= 70) return 2000;
+    if (progress >= 50) return 3000;
+    if (attempt > 50 && !isBananaModel) return 10000;
+    return baseDelayMs;
+};
+
 export const findFirstHttpUrlDeep = (value, { maxDepth = 5 } = {}) => {
     const visited = new WeakSet();
     const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
