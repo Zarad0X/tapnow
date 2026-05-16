@@ -87,6 +87,7 @@ import { useCreateCharacterVideoErrorReset } from './hooks/useCreateCharacterVid
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
+import { useProjectWorkflowActions } from './hooks/useProjectWorkflowActions.js';
 import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
 import { useDeleteKeyHandler } from './hooks/useDeleteKeyHandler.js';
@@ -98,8 +99,7 @@ import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
 import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
-import { saveProject, loadProjectFromFile } from './services/projectService.js';
-import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
+import { loadProjectFromFile } from './services/projectService.js';
 import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
@@ -3574,50 +3574,27 @@ import {
                 selectedNodeIdsRef,
             });
 
-            // 功能5：保存项目到JSON文件（流式写入，支持超大文件）
-            const handleSaveProject = async () => {
-                try {
-                    const saved = await saveProject({
-                        projectName,
-                        nodes,
-                        connections,
-                        view,
-                        history,
-                        chatSessions,
-                        characterLibrary
-                    });
-                    if (saved) alert('项目保存成功！');
-                } catch (error) {
-                    console.error('保存项目失败:', error);
-                    if (error.name === 'AbortError') return;
-                    alert('保存失败: ' + (error.message || '未知错误'));
-                }
-            };
-
-            // 保存选中的工作流（框选节点后右键保存）
-            const handleSaveSelectedWorkflow = async () => {
-                try {
-                    setSelectionContextMenu({ visible: false, x: 0, y: 0 });
-
-                    const selectedIds = selectedNodeIds.size > 0 ? selectedNodeIds : (selectedNodeId ? new Set([selectedNodeId]) : new Set());
-                    if (selectedIds.size === 0) {
-                        alert('请先选择要保存的节点');
-                        return;
-                    }
-
-                    const selectedNodes = nodes.filter(n => selectedIds.has(n.id));
-                    const selectedConnections = connections.filter(
-                        conn => selectedIds.has(conn.from) && selectedIds.has(conn.to)
-                    );
-
-                    const saved = await saveSelectedWorkflow({ selectedNodes, selectedConnections });
-                    if (saved) alert('工作流保存成功！');
-                } catch (error) {
-                    console.error('保存工作流失败:', error);
-                    if (error.name === 'AbortError') return;
-                    alert('保存失败: ' + (error.message || '未知错误'));
-                }
-            };
+            const {
+                handleImportWorkflow,
+                handleSaveProject,
+                handleSaveSelectedWorkflow,
+            } = useProjectWorkflowActions({
+                canvasRef,
+                characterLibrary,
+                chatSessions,
+                connections,
+                history,
+                nodes,
+                projectName,
+                screenToWorld,
+                selectedNodeId,
+                selectedNodeIds,
+                setConnections,
+                setNodes,
+                setSelectedNodeIds,
+                setSelectionContextMenu,
+                view,
+            });
 
             // 处理画布右键菜单（框选节点后）
             const handleCanvasContextMenu = (e) => {
@@ -3633,39 +3610,6 @@ import {
                         y: e.clientY
                     });
                 }
-            };
-
-            // 导入工作流（将工作流节点添加到当前画布）
-            const handleImportWorkflow = async () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    try {
-                        const canvasElement = canvasRef.current;
-                        let importPosition = { x: 100, y: 100 };
-                        if (canvasElement) {
-                            const rect = canvasElement.getBoundingClientRect();
-                            const centerX = rect.width / 2;
-                            const centerY = rect.height / 2;
-                            importPosition = screenToWorld(centerX + rect.left, centerY + rect.top);
-                        }
-
-                        const { newNodes, newConnections } = await importWorkflowFromFile({ file, importPosition });
-                        setNodes(prev => [...prev, ...newNodes]);
-                        setConnections(prev => [...prev, ...newConnections]);
-                        setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
-
-                        alert(`工作流导入成功！\n\n导入了 ${newNodes.length} 个节点和 ${newConnections.length} 个连接。`);
-                    } catch (error) {
-                        console.error('导入工作流失败:', error);
-                        alert('导入失败: ' + (error.message || '无效的JSON文件'));
-                    }
-                };
-                input.click();
             };
 
             // 功能5：从JSON文件加载项目（流式读取，支持超大文件，修复多行JSON解析问题，解决内存泄露）
