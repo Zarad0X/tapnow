@@ -83,6 +83,7 @@ import { useChatResize } from './hooks/useChatResize.js';
 import { useClipboardNodes } from './hooks/useClipboardNodes.js';
 import { useConnectionQueries } from './hooks/useConnectionQueries.js';
 import { useCreateCharacterVideoErrorReset } from './hooks/useCreateCharacterVideoErrorReset.js';
+import { useGridSplitActions } from './hooks/useGridSplitActions.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useImageNodeDrop } from './hooks/useImageNodeDrop.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
@@ -107,9 +108,7 @@ import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
 import {
-  createGridImageNodes,
   splitMidjourneyImage,
-  splitGridImage
 } from './services/gridSplitService.js';
 import {
   getDefaultDurationForModel,
@@ -1269,6 +1268,7 @@ import {
                 handleDragLeave,
                 handleDragOver,
                 handleDrop,
+                handleFileUpload,
             } = useImageNodeDrop({ getImageDimensions, setNodes });
 
             const pollVeoJob = async (jobId, taskId, baseUrl, apiKey, w, h, attempt = 0) => {
@@ -4275,20 +4275,6 @@ import {
                 startGeneration(finalPrompt, 'video', sourceImages, virtualNodeId, overrideOptions);
             };
 
-            const handleFileUpload = (nodeId, e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = async (ev) => {
-                         const content = ev.target.result;
-                         let dimensions = { w: 0, h: 0 };
-                         try { dimensions = await getImageDimensions(content); } catch (e) {}
-                         setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, content: content, dimensions } : n));
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-
             // 按时间段分组关键帧
             const groupKeyframesByTime = (keyframes, segmentDuration) => {
                 if (!keyframes || keyframes.length === 0) return [];
@@ -4911,67 +4897,11 @@ import {
                 }
             };
 
-            const handleSplitGridFromUrl = async (imageUrl, options = {}) => {
-                if (!imageUrl) return;
-                const {
-                    originX,
-                    originY,
-                    cols = 3,
-                    spacing = 20,
-                    nodeWidth = 260,
-                    nodeHeight = 260,
-                    replaceSelected = false, // 是否替换已选中的节点
-                } = options;
-
-                try {
-                    const croppedImages = await splitGridImage(imageUrl);
-                    if (croppedImages.length !== 9) {
-                        alert('切割失败：未能生成9张图片');
-                        return;
-                    }
-
-                    // 检查是否有框选的节点需要替换
-                    const currentSelectedIds = selectedNodeIdsRef.current;
-                    if (replaceSelected && currentSelectedIds && currentSelectedIds.size === 9) {
-                        // 替换模式：更新已选中的9个节点
-                        const selectedIdsArray = Array.from(currentSelectedIds);
-                        setNodes(prev => prev.map(node => {
-                            const index = selectedIdsArray.indexOf(node.id);
-                            if (index !== -1 && index < croppedImages.length) {
-                                // 替换节点内容，保持位置和大小
-                                return {
-                                    ...node,
-                                    content: croppedImages[index].url,
-                                    dimensions: {
-                                        w: croppedImages[index].width,
-                                        h: croppedImages[index].height
-                                    }
-                                };
-                            }
-                            return node;
-                        }));
-                        // 静默替换，不显示提示
-                        return;
-                    }
-
-                    // 创建新节点模式（原有逻辑）
-                    const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-                    const startX = originX !== undefined ? originX : world.x;
-                    const startY = originY !== undefined ? originY : world.y;
-                    const newNodes = createGridImageNodes(croppedImages, {
-                        startX,
-                        startY,
-                        cols,
-                        spacing,
-                        nodeWidth,
-                        nodeHeight,
-                    });
-                    setNodes(prev => [...prev, ...newNodes]);
-                    // 静默创建，不显示成功提示
-                } catch (e) {
-                    alert('切割失败: ' + e.message);
-                }
-            };
+            const { handleSplitGridFromUrl } = useGridSplitActions({
+                screenToWorld,
+                selectedNodeIdsRef,
+                setNodes,
+            });
 
             // 智能整理节点：DAG 层级布局 + 交叉最小化 (Barycenter Heuristic)
             const autoArrangeNodes = () => {
