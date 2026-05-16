@@ -123,12 +123,15 @@ import {
   getNodeLabel
 } from './nodes/nodeCatalog.js';
 import {
+  buildAsyncImageTaskPollUrl,
   denormalizePromptForSoraRequest,
   extractAsyncImageItems,
   extractAsyncTaskId,
   extractImageUrls,
   extractImageUrlsFromItems,
   findFirstHttpUrlDeep,
+  getAsyncImagePollMaxAttempts,
+  getAsyncImageTimeoutSeconds,
   getImageModelFeatures,
   getJimengModelName,
   getModelDisplayName,
@@ -2168,11 +2171,11 @@ import {
             // 异步图像生成任务轮询函数
             const pollImageTask = (taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt = 0, isBananaModel = false) => {
                 // banana模型使用800秒超时（160次 * 5秒），其他模型使用25分钟（300次 * 5秒）
-                const maxAttempts = isBananaModel ? 160 : 300;
+                const maxAttempts = getAsyncImagePollMaxAttempts(isBananaModel);
                 const baseDelayMs = 5000; // 基础轮询间隔5秒
 
                 if (attempt > maxAttempts) {
-                    const timeoutSeconds = isBananaModel ? 800 : 1500;
+                    const timeoutSeconds = getAsyncImageTimeoutSeconds(isBananaModel);
                     setHistory((prev) => prev.map((hItem) =>
                         hItem.id === taskId
                             ? { ...hItem, status: 'failed', errorMsg: `图像生成轮询超时（已等待${timeoutSeconds}秒）` }
@@ -2181,8 +2184,7 @@ import {
                     return;
                 }
 
-                const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-                const pollUrl = `${cleanBaseUrl}/v1/images/tasks/${taskIdForPoll}`;
+                const pollUrl = buildAsyncImageTaskPollUrl({ baseUrl, taskIdForPoll });
 
                 fetch(pollUrl, {
                     method: 'GET',

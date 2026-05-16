@@ -305,6 +305,19 @@ export const resolveAsyncImagePollDelayMs = ({ progress, attempt, isBananaModel,
     return baseDelayMs;
 };
 
+export const getAsyncImagePollMaxAttempts = (isBananaModel) => {
+    return isBananaModel ? 160 : 300;
+};
+
+export const getAsyncImageTimeoutSeconds = (isBananaModel) => {
+    return isBananaModel ? 800 : 1500;
+};
+
+export const buildAsyncImageTaskPollUrl = ({ baseUrl, taskIdForPoll }) => {
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+    return `${cleanBaseUrl}/v1/images/tasks/${taskIdForPoll}`;
+};
+
 export const findFirstHttpUrlDeep = (value, { maxDepth = 5 } = {}) => {
     const visited = new WeakSet();
     const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
