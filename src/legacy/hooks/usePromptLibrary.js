@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     PROMPT_LIBRARY_KEY,
     GRID_PROMPT_TEXT,
@@ -32,7 +32,7 @@ const loadPromptLibrary = () => {
     }
 };
 
-export const usePromptLibrary = () => {
+export const usePromptLibrary = ({ updateNodeSettings } = {}) => {
     const [promptLibrary, setPromptLibrary] = useState(loadPromptLibrary);
     const [promptLibraryForm, setPromptLibraryForm] = useState({ name: '', prompt: '' });
     const [promptLibraryCollapsed, setPromptLibraryCollapsed] = useState(false);
@@ -44,6 +44,30 @@ export const usePromptLibrary = () => {
         } catch (error) {}
     }, [promptLibrary]);
 
+    const addPromptLibraryItem = useCallback(() => {
+        const name = promptLibraryForm.name.trim();
+        const prompt = promptLibraryForm.prompt.trim();
+        if (!name || !prompt) {
+            alert('请输入名称和提示词内容');
+            return;
+        }
+
+        setPromptLibrary((prev) => [
+            { id: `custom-${Date.now()}`, name, prompt },
+            ...prev,
+        ]);
+        setPromptLibraryForm({ name: '', prompt: '' });
+    }, [promptLibraryForm]);
+
+    const removePromptLibraryItem = useCallback((id) => {
+        setPromptLibrary((prev) => prev.filter((prompt) => prompt.id !== id));
+    }, []);
+
+    const applyLibraryPrompt = useCallback((nodeId, promptText) => {
+        if (!nodeId || !promptText || !updateNodeSettings) return;
+        updateNodeSettings(nodeId, { prompt: promptText });
+    }, [updateNodeSettings]);
+
     return {
         promptLibrary,
         setPromptLibrary,
@@ -53,5 +77,8 @@ export const usePromptLibrary = () => {
         setPromptLibraryCollapsed,
         promptLibraryEditorOpen,
         setPromptLibraryEditorOpen,
+        addPromptLibraryItem,
+        removePromptLibraryItem,
+        applyLibraryPrompt,
     };
 };

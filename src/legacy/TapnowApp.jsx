@@ -290,7 +290,10 @@ import {
                 setPromptLibraryCollapsed,
                 promptLibraryEditorOpen,
                 setPromptLibraryEditorOpen,
-            } = usePromptLibrary();
+                addPromptLibraryItem,
+                removePromptLibraryItem,
+                applyLibraryPrompt,
+            } = usePromptLibrary({ updateNodeSettings });
 
             // State management
             const [isPanning, setIsPanning] = useState(false);
@@ -5105,27 +5108,6 @@ import {
                     // 不显示 alert，错误信息已经在节点上显示
                     // alert(`AI视频分析失败: ${errorMsg}`);
                 }
-            };
-
-            const addPromptLibraryItem = () => {
-                const name = promptLibraryForm.name.trim();
-                const prompt = promptLibraryForm.prompt.trim();
-                if (!name || !prompt) {
-                    alert('请输入名称和提示词内容');
-                    return;
-                }
-                setPromptLibrary((prev) => [
-                    { id: `custom-${Date.now()}`, name, prompt },
-                    ...prev
-                ]);
-                setPromptLibraryForm({ name: '', prompt: '' });
-            };
-            const removePromptLibraryItem = (id) => {
-                setPromptLibrary((prev) => prev.filter((p) => p.id !== id));
-            };
-            const applyLibraryPrompt = (nodeId, promptText) => {
-                if (!nodeId || !promptText) return;
-                updateNodeSettings(nodeId, { prompt: promptText });
             };
 
             const handleSplitGridFromUrl = async (imageUrl, options = {}) => {
