@@ -99,6 +99,15 @@ import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
 import {
+  addAssistantMessageToSessions,
+  addUserMessageToSessions,
+  buildChatApiMessages,
+  createAssistantChatMessage,
+  createUserChatMessage,
+  extractChatResponseContent,
+  resolveChatSessionForSend
+} from './services/chatService.js';
+import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
 import {
@@ -1261,102 +1270,25 @@ import {
                     return;
                 }
 
-                // 确保使用当前激活的会话（避免新建对话后第一条消息被写入旧会话）
-                const chatIdToUse = currentChatId || chatSessions[0]?.id;
-                const sessionToUse = chatSessions.find(s => s.id === chatIdToUse) || chatSessions[0];
-                const currentSessionMessages = sessionToUse?.messages || [];
+                const { chatIdToUse, currentSessionMessages, sessionToUse } = resolveChatSessionForSend({
+                    chatSessions,
+                    currentChatId,
+                });
                 if (sessionToUse && sessionToUse.id !== currentChatId) setCurrentChatId(sessionToUse.id);
 
                 setIsChatSending(true);
 
-                const newUserMsg = {
-                    id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    role: 'user',
+                const newUserMsg = createUserChatMessage({
                     content: chatInput,
-                    files: [...chatFiles],
-                    timestamp: Date.now(),
-                    modelId: chatModel // 保存发送消息时使用的模型ID
-                };
+                    files: chatFiles,
+                    modelId: chatModel,
+                });
 
-                setChatSessions(prev => prev.map(s => {
-                    if (s.id === chatIdToUse) {
-                        return { ...s, messages: [...s.messages, newUserMsg], title: s.messages.length === 0 ? chatInput.slice(0, 20) : s.title };
-                    }
-                    return s;
-                }));
+                setChatSessions(prev => addUserMessageToSessions({ sessions: prev, chatId: chatIdToUse, message: newUserMsg }));
                 setChatInput('');
                 setChatFiles([]);
 
-                // 构建带上下文的对话历史，帮助模型回顾上下文
-                // 使用当前会话的消息加上新消息
-                const allMessages = [...currentSessionMessages, newUserMsg];
-                const MAX_HISTORY_MESSAGES = 20;
-                const recentMessages = allMessages.length > MAX_HISTORY_MESSAGES
-                    ? allMessages.slice(-MAX_HISTORY_MESSAGES)
-                    : allMessages;
-
-                let apiMessages = [
-                    {
-                        role: 'system',
-                        content: '你是一名多模态AI助手，需要结合整个对话的上下文进行连续回答。'
-                    },
-                    ...recentMessages.map(m => ({
-                        role: m.role,
-                        content: m.content
-                    }))
-                ];
-
-                const currentContent = [];
-                if (newUserMsg.content) currentContent.push({ type: "text", text: newUserMsg.content });
-
-                newUserMsg.files.forEach(f => {
-                    const isGeminiLike = (config?.modelName ?? '').toLowerCase().includes('gemini');
-
-                    if (f.isImage) {
-                        currentContent.push({
-                            type: "image_url",
-                            image_url: { url: f.content }
-                        });
-                    } else if (f.isVideo) {
-                        if (isGeminiLike) {
-                            // Gemini 视频分析：按官方规范也走 image_url，url 直接指向 mp4
-                            currentContent.push({
-                                type: "image_url",
-                                image_url: { url: f.content }
-                            });
-                        } else {
-                            currentContent.push({
-                                type: "text",
-                                text: `\n[User attached video: ${f.name}]\n`
-                            });
-                        }
-                    } else if (f.isAudio) {
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[User attached audio: ${f.name}]\n`
-                        });
-                    } else if (f.isPDF || f.isDoc || f.isExcel) {
-                        // PDF、Word、Excel 等文档文件，发送文件名和类型信息
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[User attached document: ${f.name} (${f.isPDF ? 'PDF' : f.isDoc ? 'Word' : 'Excel'})]\n`
-                        });
-                    } else if (f.isCode || (f.content && typeof f.content === 'string' && f.content.length < 50000)) {
-                        // 代码文件或文本文件，直接发送内容
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[File: ${f.name}]\n\`\`\`${f.fileExt || 'text'}\n${f.content}\n\`\`\`\n`
-                        });
-                    } else {
-                        // 其他文件或二进制文件
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[User attached file: ${f.name}]\n`
-                        });
-                    }
-                });
-
-                apiMessages.push({ role: 'user', content: currentContent });
+                const apiMessages = buildChatApiMessages({ currentSessionMessages, newUserMessage: newUserMsg, config });
 
                 try {
                     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
@@ -1378,76 +1310,20 @@ import {
                     }
 
                     const data = await response.json();
-                    // 支持多种响应格式
-                    let aiContent = null;
-                    if (data.choices && data.choices.length > 0) {
-                        // OpenAI 格式: data.choices[0].message.content
-                        aiContent = data.choices[0]?.message?.content;
-                    } else if (data.content) {
-                        // 直接 content 字段
-                        aiContent = data.content;
-                    } else if (data.text) {
-                        // text 字段
-                        aiContent = data.text;
-                    } else if (data.message) {
-                        // message 字段
-                        aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                    } else if (data.result) {
-                        // result 字段
-                        aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                    } else if (data.data?.choices?.[0]?.message?.content) {
-                        // 嵌套 data.choices 格式
-                        aiContent = data.data.choices[0].message.content;
-                    } else if (data.data?.content) {
-                        // 嵌套 data.content 格式
-                        aiContent = data.data.content;
-                    } else if (data.data?.text) {
-                        // 嵌套 data.text 格式
-                        aiContent = data.data.text;
-                    } else if (data.data?.message) {
-                        // 嵌套 data.message 格式
-                        aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                    } else if (data.data?.result) {
-                        // 嵌套 data.result 格式
-                        aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                    }
+                    let aiContent = extractChatResponseContent(data);
 
                     if (!aiContent || aiContent.trim() === '') {
                         console.error('[聊天] API 响应内容为空:', data);
                         aiContent = "No response";
                     }
 
-                    const newAssistantMsg = {
-                        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        role: 'assistant',
-                        content: aiContent,
-                        timestamp: Date.now(),
-                        modelId: chatModel // 保存回复消息时使用的模型ID
-                    };
-
-                    setChatSessions(prev => prev.map(s => {
-                        if (s.id === currentChatId) {
-                            return { ...s, messages: [...s.messages, newAssistantMsg] };
-                        }
-                        return s;
-                    }));
+                    const newAssistantMsg = createAssistantChatMessage({ content: aiContent, modelId: chatModel });
+                    setChatSessions(prev => addAssistantMessageToSessions({ sessions: prev, chatId: chatIdToUse, message: newAssistantMsg }));
 
                 } catch (error) {
                     console.error("Chat Error", error);
-                    const errorMsg = {
-                        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        role: 'assistant',
-                        content: `Error: ${error.message}`,
-                        isError: true,
-                        timestamp: Date.now()
-                    };
-
-                    setChatSessions(prev => prev.map(s => {
-                        if (s.id === currentChatId) {
-                            return { ...s, messages: [...s.messages, errorMsg] };
-                        }
-                        return s;
-                    }));
+                    const errorMsg = createAssistantChatMessage({ content: `Error: ${error.message}`, isError: true });
+                    setChatSessions(prev => addAssistantMessageToSessions({ sessions: prev, chatId: chatIdToUse, message: errorMsg }));
                 } finally {
                     setIsChatSending(false);
                 }
