@@ -1,5 +1,8 @@
 import { useCallback } from 'react';
-import { saveProject } from '../services/projectService.js';
+import {
+    loadProjectFromFile,
+    saveProject,
+} from '../services/projectService.js';
 import {
     importWorkflowFromFile,
     saveSelectedWorkflow,
@@ -22,9 +25,15 @@ export const useProjectWorkflowActions = ({
     selectedNodeId,
     selectedNodeIds,
     setConnections,
+    setCharacterLibrary,
+    setChatSessions,
+    setHistory,
     setNodes,
+    setProgressState,
+    setProjectName,
     setSelectedNodeIds,
     setSelectionContextMenu,
+    setView,
     view,
 }) => {
     const handleSaveProject = useCallback(async () => {
@@ -102,8 +111,59 @@ export const useProjectWorkflowActions = ({
         input.click();
     }, [canvasRef, screenToWorld, setConnections, setNodes, setSelectedNodeIds]);
 
+    const handleLoadProject = useCallback(() => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            setProgressState({ visible: true, progress: 0, status: 'INITIALIZING...', type: 'import' });
+
+            try {
+                const tempState = await loadProjectFromFile({
+                    file,
+                    onProgress: ({ progress, status }) => {
+                        setProgressState((prev) => ({ ...prev, progress, status }));
+                    },
+                });
+
+                setProgressState((prev) => ({ ...prev, progress: 100, status: 'FINALIZING...' }));
+
+                setTimeout(() => {
+                    if (tempState.projectName) setProjectName(tempState.projectName);
+                    if (tempState.view) setView(tempState.view);
+                    if (tempState.connections.length > 0) setConnections(tempState.connections);
+                    if (tempState.chatSessions.length > 0) setChatSessions(tempState.chatSessions);
+                    if (tempState.characterLibrary.length > 0) setCharacterLibrary(tempState.characterLibrary);
+                    if (tempState.nodes.length > 0) setNodes(tempState.nodes);
+                    if (tempState.history.length > 0) setHistory(tempState.history);
+
+                    setProgressState((prev) => ({ ...prev, visible: false }));
+                    alert(`加载成功！\n${tempState.nodes.length} 个节点`);
+                }, 200);
+            } catch (error) {
+                console.error('加载失败:', error);
+                setProgressState((prev) => ({ ...prev, visible: false }));
+                alert(`加载失败: ${error.message}`);
+            }
+        };
+        input.click();
+    }, [
+        setCharacterLibrary,
+        setChatSessions,
+        setConnections,
+        setHistory,
+        setNodes,
+        setProgressState,
+        setProjectName,
+        setView,
+    ]);
+
     return {
         handleImportWorkflow,
+        handleLoadProject,
         handleSaveProject,
         handleSaveSelectedWorkflow,
     };

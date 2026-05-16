@@ -99,7 +99,6 @@ import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
 import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
-import { loadProjectFromFile } from './services/projectService.js';
 import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
@@ -3576,6 +3575,7 @@ import {
 
             const {
                 handleImportWorkflow,
+                handleLoadProject,
                 handleSaveProject,
                 handleSaveSelectedWorkflow,
             } = useProjectWorkflowActions({
@@ -3590,9 +3590,15 @@ import {
                 selectedNodeId,
                 selectedNodeIds,
                 setConnections,
+                setCharacterLibrary,
+                setChatSessions,
+                setHistory,
                 setNodes,
+                setProgressState,
+                setProjectName,
                 setSelectedNodeIds,
                 setSelectionContextMenu,
+                setView,
                 view,
             });
 
@@ -3610,48 +3616,6 @@ import {
                         y: e.clientY
                     });
                 }
-            };
-
-            // 功能5：从JSON文件加载项目（流式读取，支持超大文件，修复多行JSON解析问题，解决内存泄露）
-            const handleLoadProject = () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    setProgressState({ visible: true, progress: 0, status: 'INITIALIZING...', type: 'import' });
-
-                    try {
-                        const tempState = await loadProjectFromFile({
-                            file,
-                            onProgress: ({ progress, status }) => {
-                                setProgressState(prev => ({ ...prev, progress, status }));
-                            }
-                        });
-
-                        setProgressState(prev => ({ ...prev, progress: 100, status: 'FINALIZING...' }));
-
-                        setTimeout(() => {
-                            if (tempState.projectName) setProjectName(tempState.projectName);
-                            if (tempState.view) setView(tempState.view);
-                            if (tempState.connections.length > 0) setConnections(tempState.connections);
-                            if (tempState.chatSessions.length > 0) setChatSessions(tempState.chatSessions);
-                            if (tempState.characterLibrary.length > 0) setCharacterLibrary(tempState.characterLibrary);
-                            if (tempState.nodes.length > 0) setNodes(tempState.nodes);
-                            if (tempState.history.length > 0) setHistory(tempState.history);
-
-                            setProgressState(prev => ({ ...prev, visible: false }));
-                            alert(`加载成功！\n${tempState.nodes.length} 个节点`);
-                        }, 200);
-                    } catch (error) {
-                        console.error('加载失败:', error);
-                        setProgressState(prev => ({ ...prev, visible: false }));
-                        alert(`加载失败: ${error.message}`);
-                    }
-                };
-                input.click();
             };
 
             // --- 节点操作 ---
