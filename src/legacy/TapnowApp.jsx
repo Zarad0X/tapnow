@@ -126,6 +126,7 @@ import {
   denormalizePromptForSoraRequest,
   extractAsyncTaskId,
   extractImageUrls,
+  findFirstHttpUrlDeep,
   getImageModelFeatures,
   getJimengModelName,
   getModelDisplayName,
@@ -2265,41 +2266,7 @@ import {
                         // 如果任务状态是SUCCESS但还没找到图片，立即执行深度搜索（不等待后续处理）
                         if (images.length === 0 && (status === 'COMPLETED' || status === 'SUCCESS' || status === 'FINISHED' || status === 'DONE')) {
                             console.log('[Async Image] 任务状态为成功但图片数量为0，立即执行深度搜索');
-                            // 优化后的深度搜索函数：优先检查常见路径，减少递归深度
-                            const deepSearchForUrl = (obj, depth = 0, visited = new WeakSet()) => {
-                                if (depth > 5) return null; // 防止无限递归
-                                if (!obj || typeof obj !== 'object') return null;
-
-                                // 防止循环引用
-                                if (visited.has(obj)) return null;
-                                visited.add(obj);
-
-                                // 优先检查当前对象的常见字段（避免不必要的递归）
-                                const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
-                                for (const field of urlFields) {
-                                    if (obj[field] && typeof obj[field] === 'string' && obj[field].startsWith('http')) {
-                                        return obj[field];
-                                    }
-                                }
-
-                                // 如果是数组，优先检查第一个元素
-                                if (Array.isArray(obj) && obj.length > 0) {
-                                    const result = deepSearchForUrl(obj[0], depth + 1, visited);
-                                    if (result) return result;
-                                }
-
-                                // 递归搜索所有属性（但跳过已检查的常见字段）
-                                for (const key in obj) {
-                                    if (obj.hasOwnProperty(key) && !urlFields.includes(key)) {
-                                        const result = deepSearchForUrl(obj[key], depth + 1, visited);
-                                        if (result) return result;
-                                    }
-                                }
-
-                                return null;
-                            };
-
-                            const foundUrl = deepSearchForUrl(data);
+                            const foundUrl = findFirstHttpUrlDeep(data);
                             if (foundUrl) {
                                 images = [{ url: foundUrl }];
                                 console.log('[Async Image] 通过立即深度搜索找到图片URL:', foundUrl);
@@ -2412,33 +2379,7 @@ import {
                                         });
 
                                         // 最后备用方案：深度搜索整个响应对象，查找任何包含url的字段
-                                        const deepSearchForUrl = (obj, depth = 0) => {
-                                            if (depth > 5) return null; // 防止无限递归
-                                            if (!obj || typeof obj !== 'object') return null;
-
-                                            // 检查当前对象是否有url字段
-                                            if (obj.url && typeof obj.url === 'string' && obj.url.startsWith('http')) {
-                                                return obj.url;
-                                            }
-                                            if (obj.image_url && typeof obj.image_url === 'string' && obj.image_url.startsWith('http')) {
-                                                return obj.image_url;
-                                            }
-                                            if (obj.imageUrl && typeof obj.imageUrl === 'string' && obj.imageUrl.startsWith('http')) {
-                                                return obj.imageUrl;
-                                            }
-
-                                            // 递归搜索所有属性
-                                            for (const key in obj) {
-                                                if (obj.hasOwnProperty(key)) {
-                                                    const result = deepSearchForUrl(obj[key], depth + 1);
-                                                    if (result) return result;
-                                                }
-                                            }
-
-                                            return null;
-                                        };
-
-                                        const foundUrl = deepSearchForUrl(data);
+                                        const foundUrl = findFirstHttpUrlDeep(data);
                                         if (foundUrl) {
                                             console.log('[Async Image] 通过深度搜索找到图片URL:', foundUrl);
 

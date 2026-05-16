@@ -202,3 +202,38 @@ export const resolveGenerationDurationMs = ({ data, startTime, now = Date.now() 
         durationMs: backendDurationMs ?? (now - (startTime || now)),
     };
 };
+
+export const findFirstHttpUrlDeep = (value, { maxDepth = 5 } = {}) => {
+    const visited = new WeakSet();
+    const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
+
+    const search = (current, depth = 0) => {
+        if (depth > maxDepth) return null;
+        if (!current || typeof current !== 'object') return null;
+
+        if (visited.has(current)) return null;
+        visited.add(current);
+
+        for (const field of urlFields) {
+            if (typeof current[field] === 'string' && current[field].startsWith('http')) {
+                return current[field];
+            }
+        }
+
+        if (Array.isArray(current) && current.length > 0) {
+            const firstResult = search(current[0], depth + 1);
+            if (firstResult) return firstResult;
+        }
+
+        for (const key in current) {
+            if (Object.prototype.hasOwnProperty.call(current, key) && !urlFields.includes(key)) {
+                const result = search(current[key], depth + 1);
+                if (result) return result;
+            }
+        }
+
+        return null;
+    };
+
+    return search(value);
+};
