@@ -109,6 +109,11 @@ import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
 import {
+  extractRequiredAnalysisContent,
+  groupKeyframesByTime,
+  parseAnalysisJson
+} from './services/videoAnalysisService.js';
+import {
   splitMidjourneyImage,
 } from './services/gridSplitService.js';
 import {
@@ -4276,31 +4281,6 @@ import {
                 startGeneration(finalPrompt, 'video', sourceImages, virtualNodeId, overrideOptions);
             };
 
-            // 按时间段分组关键帧
-            const groupKeyframesByTime = (keyframes, segmentDuration) => {
-                if (!keyframes || keyframes.length === 0) return [];
-                const sorted = [...keyframes].sort((a, b) => a.time - b.time);
-                const groups = [];
-                let currentGroup = [];
-                let currentGroupStart = sorted[0].time;
-
-                sorted.forEach((frame, idx) => {
-                    if (frame.time - currentGroupStart >= segmentDuration && currentGroup.length > 0) {
-                        groups.push([...currentGroup]);
-                        currentGroup = [frame];
-                        currentGroupStart = frame.time;
-                    } else {
-                        currentGroup.push(frame);
-                    }
-                });
-
-                if (currentGroup.length > 0) {
-                    groups.push(currentGroup);
-                }
-
-                return groups;
-            };
-
             // 为选中关键帧生成提示词
             const handleGeneratePrompts = async (nodeId) => {
                 const node = nodesMap.get(nodeId);
@@ -4470,86 +4450,25 @@ import {
                             model: config?.modelName || config?.id
                         });
 
-                        // 支持多种响应格式
-                        let aiContent = null;
-                        if (data.choices && data.choices.length > 0) {
-                            // OpenAI 格式: data.choices[0].message.content
-                            aiContent = data.choices[0]?.message?.content;
-                        } else if (data.data?.choices && data.data.choices.length > 0) {
-                            // 嵌套 data.choices 格式
-                            aiContent = data.data.choices[0]?.message?.content;
-                        } else if (data.content) {
-                            // 直接 content 字段
-                            aiContent = data.content;
-                        } else if (data.data?.content) {
-                            // 嵌套 data.content 格式
-                            aiContent = data.data.content;
-                        } else if (data.text) {
-                            // text 字段
-                            aiContent = data.text;
-                        } else if (data.data?.text) {
-                            // 嵌套 data.text 格式
-                            aiContent = data.data.text;
-                        } else if (data.message) {
-                            // message 字段
-                            aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                        } else if (data.data?.message) {
-                            // 嵌套 data.message 格式
-                            aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                        } else if (data.result) {
-                            // result 字段
-                            aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                        } else if (data.data?.result) {
-                            // 嵌套 data.result 格式
-                            aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                        }
-
-                        if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
-                            console.error('[视频拆解] API 响应内容为空:', data);
-                            throw new Error(`API 返回内容为空。响应数据: ${JSON.stringify(data).substring(0, 200)}`);
-                        }
-
-                        console.log('[视频拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
-
-                        // 尝试解析 JSON（可能包含 markdown 代码块）
-                        let jsonStr = aiContent.trim();
-                        if (jsonStr.startsWith('```')) {
-                            jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                        }
-
-                        let result;
-                        try {
-                            result = JSON.parse(jsonStr);
-                            console.log('[视频拆解] JSON 解析成功，场景索引:', result.scene_index || sceneIndex + 1);
-                        } catch (e) {
-                            console.error('[视频拆解] 解析 JSON 失败:', e, '内容前500字符:', jsonStr.substring(0, 500));
-                            // 尝试修复常见的JSON格式问题
-                            try {
-                                // 移除可能的注释
-                                jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                                // 尝试修复尾随逗号
-                                jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                                result = JSON.parse(jsonStr);
-                                console.log('[视频拆解] JSON 修复后解析成功');
-                            } catch (e2) {
-                                console.error('[视频拆解] JSON修复后仍解析失败:', e2, '原始内容:', jsonStr);
-                                // 如果还是失败，创建一个默认结构
-                                result = {
-                                    video_id: videoFileName,
-                                    scene_index: sceneIndex + 1,
-                                    time_range: timeRange,
-                                    keyframes: group.map((frame, fIdx) => ({
-                                        type: fIdx === 0 ? 'prev' : fIdx === 1 ? 'current' : 'next',
-                                        time: frame.time,
-                                        description: `视频帧 ${frame.time.toFixed(1)}s`,
-                                        mj_prompt: 'A detailed scene from the video',
-                                        jimeng_prompt: '视频场景描述'
-                                    })),
-                                    global_tags: { style: [], camera: [], color: [] }
-                                };
-                                console.warn('[视频拆解] 使用默认结构，原始内容:', jsonStr.substring(0, 200));
-                            }
-                        }
+                        const aiContent = extractRequiredAnalysisContent({ data, label: '视频拆解' });
+                        const result = parseAnalysisJson({
+                            aiContent,
+                            label: '视频拆解',
+                            successMessage: (parsed) => `[视频拆解] JSON 解析成功，场景索引: ${parsed.scene_index || sceneIndex + 1}`,
+                            fallbackFactory: () => ({
+                                video_id: videoFileName,
+                                scene_index: sceneIndex + 1,
+                                time_range: timeRange,
+                                keyframes: group.map((frame, fIdx) => ({
+                                    type: fIdx === 0 ? 'prev' : fIdx === 1 ? 'current' : 'next',
+                                    time: frame.time,
+                                    description: `视频帧 ${frame.time.toFixed(1)}s`,
+                                    mj_prompt: 'A detailed scene from the video',
+                                    jimeng_prompt: '视频场景描述'
+                                })),
+                                global_tags: { style: [], camera: [], color: [] }
+                            }),
+                        });
 
                         allResults.push(result);
                         console.log('[视频拆解] 场景处理完成，当前结果数:', allResults.length);
@@ -4770,70 +4689,12 @@ import {
                         model: config?.modelName || config?.id
                     });
 
-                    // 支持多种响应格式
-                    let aiContent = null;
-                    if (data.choices && data.choices.length > 0) {
-                        // OpenAI 格式: data.choices[0].message.content
-                        aiContent = data.choices[0]?.message?.content;
-                    } else if (data.data?.choices && data.data.choices.length > 0) {
-                        // 嵌套 data.choices 格式
-                        aiContent = data.data.choices[0]?.message?.content;
-                    } else if (data.content) {
-                        // 直接 content 字段
-                        aiContent = data.content;
-                    } else if (data.data?.content) {
-                        // 嵌套 data.content 格式
-                        aiContent = data.data.content;
-                    } else if (data.text) {
-                        // text 字段
-                        aiContent = data.text;
-                    } else if (data.data?.text) {
-                        // 嵌套 data.text 格式
-                        aiContent = data.data.text;
-                    } else if (data.message) {
-                        // message 字段
-                        aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                    } else if (data.data?.message) {
-                        // 嵌套 data.message 格式
-                        aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                    } else if (data.result) {
-                        // result 字段
-                        aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                    } else if (data.data?.result) {
-                        // 嵌套 data.result 格式
-                        aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                    }
-
-                    if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
-                        console.error('[AI导演拆解] API 响应内容为空:', data);
-                        throw new Error(`API 返回内容为空。响应数据: ${JSON.stringify(data).substring(0, 200)}`);
-                    }
-
-                    console.log('[AI导演拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
-
-                    // 解析 JSON
-                    let jsonStr = aiContent.trim();
-                    if (jsonStr.startsWith('```')) {
-                        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                    }
-
-                    let result;
-                    try {
-                        result = JSON.parse(jsonStr);
-                        console.log('[AI导演拆解] JSON 解析成功，场景数:', result.scenes?.length || 0);
-                    } catch (e) {
-                        console.error('[AI导演拆解] 解析 JSON 失败:', e, '内容前500字符:', jsonStr.substring(0, 500));
-                        // 尝试修复
-                        try {
-                            jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                            jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                            result = JSON.parse(jsonStr);
-                            console.log('[AI导演拆解] JSON 修复后解析成功');
-                        } catch (e2) {
-                            console.error('[AI导演拆解] JSON修复后仍解析失败:', e2, '原始内容:', jsonStr.substring(0, 500));
-                            throw new Error(`模型返回的不是有效的 JSON 格式。原始内容: ${jsonStr.substring(0, 200)}`);
-                        }
-                    }
+                    const aiContent = extractRequiredAnalysisContent({ data, label: 'AI导演拆解' });
+                    const result = parseAnalysisJson({
+                        aiContent,
+                        label: 'AI导演拆解',
+                        successMessage: (parsed) => `[AI导演拆解] JSON 解析成功，场景数: ${parsed.scenes?.length || 0}`,
+                    });
 
                     // 处理 voiceover_script，转换为 voiceoverResults 格式
                     const voiceoverResults = (result.voiceover_script || []).map((v, idx) => ({
