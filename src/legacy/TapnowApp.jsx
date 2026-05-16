@@ -96,12 +96,12 @@ import { useGlobalApiKeyPersistence } from './hooks/useGlobalApiKeyPersistence.j
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { useFrameActions } from './hooks/useFrameActions.js';
+import { useMediaContextActions } from './hooks/useMediaContextActions.js';
 import { useConnectedMedia } from './hooks/useConnectedMedia.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
 import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
-import { createMediaChatFile } from './services/chatService.js';
 import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
@@ -5489,132 +5489,34 @@ import {
                 setHistoryContextMenu({ visible: true, x: e.clientX, y: e.clientY, worldX: world.x, worldY: world.y, item: menuItem });
             };
 
-            const applyHistoryToSelectedNode = () => {
-                const item = historyContextMenu.item;
-                const targetId = selectedNodeId;
-                const targetNode = nodesMap.get(targetId);
-
-                if (targetNode && targetNode.type === 'input-image' && (item.url || item.originalUrl)) {
-                    setNodes(prev => prev.map(n => n.id === targetId ? { ...n, content: item.url || item.originalUrl } : n));
-                } else {
-                    alert('请先选择一个"图片输入"节点');
-                }
-                setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-            };
-
-            const sendHistoryToCanvas = async () => {
-                const item = historyContextMenu.item;
-                if (!item?.url && !item?.originalUrl) return;
-                const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-
-                // Fix: Mark video content so input-image node knows to display it properly
-                let content = item.url || item.originalUrl;
-                if (item.type === 'video' && !isVideoUrl(content)) {
-                     // Append helper param so isVideoUrl returns true
-                     content += (content.includes('?') ? '&' : '?') + 'force_video_display=true';
-                }
-
-                let dims;
-                if (item.type === 'image') {
-                    try {
-                        const real = await getImageDimensions(content);
-                        if (real?.w && real?.h) {
-                            dims = { w: real.w, h: real.h };
-                        }
-                    } catch (e) {
-                        console.error('SendHistoryToCanvas getImageDimensions error', e);
-                    }
-                }
-
-                addNode('input-image', world.x + 50, world.y + 50, null, content, dims);
-                setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-            };
-
-            const sendHistoryToChat = () => {
-                const item = historyContextMenu.item;
-                if (!item || !item.url) return;
-
-                // 确保正确识别图片和视频类型
-                const isImage = item.type === 'image';
-                const isVideo = item.type === 'video';
-                const newFile = createMediaChatFile({
-                    baseName: 'Generated',
-                    id: item.id,
-                    content: item.url,
-                    isImage,
-                    isVideo,
-                    fromHistory: true,
-                });
-
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-            };
-
-            const handlePreviewRightClick = (e, item) => {
-                if (!item?.url) return;
-                e.preventDefault();
-                e.stopPropagation();
-                setPreviewContextMenu({ visible: true, x: e.clientX, y: e.clientY, item });
-            };
-            const closePreviewContextMenu = () => setPreviewContextMenu({ visible: false, x: 0, y: 0, item: null });
-
-            const sendPreviewToChat = () => {
-                const item = previewContextMenu.item;
-                if (!item?.url) return;
-                const isImage = item.type !== 'video';
-                const isVideo = item.type === 'video';
-                const newFile = createMediaChatFile({
-                    baseName: 'Preview',
-                    content: item.url,
-                    isImage,
-                    isVideo,
-                });
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                closePreviewContextMenu();
-            };
-
-            const sendPreviewToCanvas = async () => {
-                const item = previewContextMenu.item;
-                if (!item?.url) return;
-                const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-                let dims = { w: 512, h: 512 };
-                try { dims = await getImageDimensions(item.url); } catch (e) { console.warn('Preview dims fail', e); }
-                addNode('input-image', world.x + 50, world.y + 50, null, item.url, dims);
-                closePreviewContextMenu();
-            };
-
-            // 图片输入节点右键菜单处理
-            const handleInputImageRightClick = (e, nodeId) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const node = nodesMap.get(nodeId);
-                if (!node || !node.content) return;
-                setInputImageContextMenu({ visible: true, x: e.clientX, y: e.clientY, nodeId });
-            };
-
-            const closeInputImageContextMenu = () => {
-                setInputImageContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
-            };
-
-            const sendInputImageToChat = () => {
-                const nodeId = inputImageContextMenu.nodeId;
-                const node = nodesMap.get(nodeId);
-                if (!node || !node.content) return;
-
-                const isImage = !isVideoUrl(node.content);
-                const isVideo = isVideoUrl(node.content);
-                const newFile = createMediaChatFile({
-                    baseName: 'InputImage',
-                    content: node.content,
-                    isImage,
-                    isVideo,
-                });
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                closeInputImageContextMenu();
-            };
+            const {
+                applyHistoryToSelectedNode,
+                closeInputImageContextMenu,
+                closePreviewContextMenu,
+                handleInputImageRightClick,
+                handlePreviewRightClick,
+                sendHistoryToCanvas,
+                sendHistoryToChat,
+                sendInputImageToChat,
+                sendPreviewToCanvas,
+                sendPreviewToChat,
+            } = useMediaContextActions({
+                addNode,
+                getImageDimensions,
+                historyContextMenu,
+                inputImageContextMenu,
+                isVideoUrl,
+                nodesMap,
+                previewContextMenu,
+                screenToWorld,
+                selectedNodeId,
+                setChatFiles,
+                setHistoryContextMenu,
+                setInputImageContextMenu,
+                setIsChatOpen,
+                setNodes,
+                setPreviewContextMenu,
+            });
 
             // NodeItem 组件：提取节点渲染逻辑，使用 React.memo 优化
             // 注意：由于 renderNode 的 JSX 内容非常长（约 2700 行），完整提取需要大量工作
