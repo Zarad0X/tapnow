@@ -97,6 +97,7 @@ import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { useFrameActions } from './hooks/useFrameActions.js';
 import { useMediaContextActions } from './hooks/useMediaContextActions.js';
+import { useStoryboardActions } from './hooks/useStoryboardActions.js';
 import { useConnectedMedia } from './hooks/useConnectedMedia.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
@@ -111,12 +112,8 @@ import {
   splitGridImage
 } from './services/gridSplitService.js';
 import {
-  createEmptyStoryboardShot,
-  createShotsFromAnalysisResults,
   getDefaultDurationForModel,
-  getDefaultDurationsForModel,
-  renumberStoryboardShots,
-  updateStoryboardShot
+  getDefaultDurationsForModel
 } from './services/storyboardService.js';
 import {
   findGeneratingStoryboardShotForSource,
@@ -4061,100 +4058,20 @@ import {
                 }
             }, [nodesMap, generateCharacterPrompt, generateScenePrompt]);
 
-            // 分镜表节点功能函数
-            const addEmptyShot = (nodeId) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || node.type !== 'storyboard-node') return;
-                // 获取默认视频模型（优先使用 sora-2，否则使用第一个视频模型）
-                const defaultModel = apiConfigs.find(c => c.type === 'Video' && c.id === 'sora-2')?.id || apiConfigs.find(c => c.type === 'Video')?.id || '';
-                const newShot = createEmptyStoryboardShot({
-                    shotCount: node.settings?.shots?.length || 0,
-                    defaultModel,
-                });
-                updateNodeSettings(nodeId, {
-                    shots: [...(node.settings?.shots || []), newShot]
-                });
-            };
-
-            const deleteShot = (nodeId, shotId) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = renumberStoryboardShots((node.settings?.shots || []).filter(s => s.id !== shotId));
-                updateNodeSettings(nodeId, { shots: updatedShots });
-            };
-
-            const updateShot = (nodeId, shotId, updates) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = updateStoryboardShot(node.settings?.shots || [], shotId, updates);
-                updateNodeSettings(nodeId, { shots: updatedShots });
-            };
-
-            // 从 video-analyze 节点导入分析结果
-            const importShotsFromAnalysis = (nodeId) => {
-                const storyboardNode = nodesMap.get(nodeId);
-                if (!storyboardNode || storyboardNode.type !== 'storyboard-node') return;
-
-                const analyzeNode = getConnectedVideoAnalyzeNode(nodeId);
-                if (!analyzeNode) {
-                    alert('请先连接一个视频拆解节点');
-                    return;
-                }
-
-                // 获取分析结果（优先使用 settings.analysisResults，其次使用 analysisResults）
-                const analysisResults = analyzeNode.settings?.analysisResults || analyzeNode.analysisResults || [];
-                if (analysisResults.length === 0) {
-                    alert('视频拆解节点没有分析结果，请先执行分析');
-                    return;
-                }
-
-                const newShots = createShotsFromAnalysisResults(analysisResults);
-
-                updateNodeSettings(nodeId, { shots: newShots });
-            };
-
-            // 自动从分析结果创建分镜表节点
-            const createStoryboardFromAnalysisResult = (analyzeNodeId, analysisResults) => {
-                const analyzeNode = nodesMap.get(analyzeNodeId);
-                if (!analyzeNode || !analysisResults || analysisResults.length === 0) {
-                    console.warn('[自动生成分镜表] 分析节点不存在或分析结果为空');
-                    return;
-                }
-
-                // 1. 数据转换 (复用现有逻辑)
-                const newShots = createShotsFromAnalysisResults(analysisResults, {
-                    includeGlobalCamera: true,
-                });
-
-                // 2. 计算新节点位置（放在源节点右侧）
-                const newX = analyzeNode.x + analyzeNode.width + 100;
-                const newY = analyzeNode.y;
-                const storyboardId = `node-storyboard-${Date.now()}`;
-
-                // 3. 创建节点
-                const newNode = {
-                    id: storyboardId,
-                    type: 'storyboard-node',
-                    x: newX,
-                    y: newY,
-                    width: 600,
-                    height: 500,
-                    settings: {
-                        projectTitle: 'AI 拆解结果',
-                        shots: newShots
-                    }
-                };
-
-                // 4. 更新状态
-                setNodes(prev => [...prev, newNode]);
-                setConnections(prev => [...prev, {
-                    id: `conn-${Date.now()}`,
-                    from: analyzeNodeId,
-                    to: storyboardId
-                }]);
-
-                console.log('[自动生成分镜表] 已创建分镜表节点，包含', newShots.length, '个镜头');
-            };
+            const {
+                addEmptyShot,
+                createStoryboardFromAnalysisResult,
+                deleteShot,
+                importShotsFromAnalysis,
+                updateShot,
+            } = useStoryboardActions({
+                apiConfigs,
+                getConnectedVideoAnalyzeNode,
+                nodesMap,
+                setConnections,
+                setNodes,
+                updateNodeSettings,
+            });
 
             // 分镜表任务映射：用于追踪从分镜表触发的生成任务
             const storyboardTaskMapRef = useRef(new Map()); // taskId -> { storyboardNodeId, shotId }
