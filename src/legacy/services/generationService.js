@@ -266,6 +266,37 @@ export const isAsyncImageRunningStatus = (status) => {
     return ASYNC_IMAGE_RUNNING_STATUSES.has(normalizeGenerationStatus(status));
 };
 
+export const parseGenerationProgressValue = (progress, fallback) => {
+    if (!progress) return fallback;
+
+    if (typeof progress === 'number') {
+        return progress;
+    }
+
+    const progressText = String(progress);
+    if (progressText.includes('%')) {
+        return parseInt(progressText.replace('%', ''), 10) || fallback;
+    }
+
+    return fallback;
+};
+
+export const resolveAsyncImageRunningProgress = ({ data, attempt }) => {
+    let progress = 10 + (attempt * 2);
+
+    if (data?.data?.progress) {
+        progress = parseGenerationProgressValue(data.data.progress, progress);
+    } else if (data?.progress) {
+        progress = parseGenerationProgressValue(data.progress, progress);
+    }
+
+    return Math.min(95, Math.max(10, progress));
+};
+
+export const resolveAsyncImageUnknownProgress = ({ attempt }) => {
+    return Math.min(90, 10 + (attempt * 1.5));
+};
+
 export const findFirstHttpUrlDeep = (value, { maxDepth = 5 } = {}) => {
     const visited = new WeakSet();
     const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];

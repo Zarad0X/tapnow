@@ -141,6 +141,8 @@ import {
   normalizeBananaResolution,
   normalizePromptForSora,
   parseDurationSeconds,
+  resolveAsyncImageRunningProgress,
+  resolveAsyncImageUnknownProgress,
   resolveGenerationDurationMs,
   submitGenerationRequest
 } from './services/generationService.js';
@@ -2412,26 +2414,7 @@ import {
                                 };
                             } else if (isAsyncImageRunningStatus(status)) {
                                 // 任务进行中，根据轮询次数和进度信息计算进度
-                                let progress = 10 + (attempt * 2); // 基础进度
-
-                                // 如果有进度百分比，使用实际进度
-                                if (data?.data?.progress) {
-                                    const progressStr = String(data.data.progress);
-                                    if (progressStr.includes('%')) {
-                                        progress = parseInt(progressStr.replace('%', ''), 10) || progress;
-                                    } else if (typeof data.data.progress === 'number') {
-                                        progress = data.data.progress;
-                                    }
-                                } else if (data?.progress) {
-                                    const progressStr = String(data.progress);
-                                    if (progressStr.includes('%')) {
-                                        progress = parseInt(progressStr.replace('%', ''), 10) || progress;
-                                    } else if (typeof data.progress === 'number') {
-                                        progress = data.progress;
-                                    }
-                                }
-
-                                progress = Math.min(95, Math.max(10, progress)); // 限制在10-95%之间
+                                const progress = resolveAsyncImageRunningProgress({ data, attempt });
 
                                 return {
                                     ...hItem,
@@ -2441,7 +2424,7 @@ import {
                                 };
                             } else {
                                 // 未知状态，继续轮询，但进度缓慢增加
-                                const progress = Math.min(90, 10 + (attempt * 1.5));
+                                const progress = resolveAsyncImageUnknownProgress({ attempt });
                                 return {
                                     ...hItem,
                                     status: 'generating',
