@@ -76,6 +76,7 @@ import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
 import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
+import { useBatchDownload } from './hooks/useBatchDownload.js';
 import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
 import { useChatFiles } from './hooks/useChatFiles.js';
 import { useChatMessaging } from './hooks/useChatMessaging.js';
@@ -134,7 +135,6 @@ import {
   getNodeLabel,
   isCharacterSceneImageNodeType,
   isCharacterSceneVideoNodeType,
-  isDownloadableMediaNodeType,
   isInputMediaNodeType,
   isPreviewNodeType,
   isStandardGenerationNodeType
@@ -3564,70 +3564,12 @@ import {
                 setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
             };
 
-            // 功能1：批量下载选中的图片/视频节点
-            const handleBatchDownload = async () => {
-                // 使用ref获取最新的状态，避免闭包问题
-                const currentNodes = nodesRef.current;
-                const currentSelectedId = selectedNodeIdRef.current;
-                const currentSelectedIds = selectedNodeIdsRef.current;
-
-                const selectedNodes = currentNodes.filter(node =>
-                    (currentSelectedId === node.id || (currentSelectedIds && currentSelectedIds.has(node.id))) &&
-                    isDownloadableMediaNodeType(node.type) &&
-                    node.content
-                );
-
-                if (selectedNodes.length === 0) {
-                    alert('请先选择要下载的图片或视频节点');
-                    return;
-                }
-
-                for (const node of selectedNodes) {
-                    try {
-                        const url = node.content;
-                        // 检查URL是否有效
-                        if (!url || (typeof url !== 'string' && !url.startsWith('data:'))) {
-                            console.warn(`节点 ${node.id} 的内容URL无效:`, url);
-                            continue;
-                        }
-                        const response = await fetch(url);
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        const blob = await response.blob();
-                        const blobUrl = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = blobUrl;
-
-                        // 判断文件扩展名：对于预览窗口，根据previewType判断；对于其他节点，根据URL或节点类型判断
-                        let extension = '.png';
-                        if (isPreviewNodeType(node.type)) {
-                            // 预览窗口：根据previewType判断
-                            if (node.previewType === 'video') {
-                                extension = '.mp4';
-                            } else {
-                                extension = isVideoUrl(url) ? '.mp4' : '.png';
-                            }
-                        } else if (node.type === 'video-input') {
-                            extension = '.mp4';
-                        } else {
-                            extension = isVideoUrl(url) ? '.mp4' : '.png';
-                        }
-
-                        const filename = `${node.id}${extension}`;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(blobUrl);
-                        // 添加小延迟避免浏览器阻止多个下载
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    } catch (error) {
-                        console.error(`下载节点 ${node.id} 失败:`, error);
-                        // 不中断其他节点的下载，继续处理下一个
-                    }
-                }
-            };
+            const handleBatchDownload = useBatchDownload({
+                isVideoUrl,
+                nodesRef,
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+            });
 
             // 功能5：保存项目到JSON文件（流式写入，支持超大文件）
             const handleSaveProject = async () => {
