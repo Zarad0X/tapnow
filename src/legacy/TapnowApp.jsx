@@ -83,6 +83,7 @@ import { useChatMessaging } from './hooks/useChatMessaging.js';
 import { useChatResize } from './hooks/useChatResize.js';
 import { useClipboardNodes } from './hooks/useClipboardNodes.js';
 import { useConnectionQueries } from './hooks/useConnectionQueries.js';
+import { useCreateCharacterAction } from './hooks/useCreateCharacterAction.js';
 import { useCreateCharacterVideoErrorReset } from './hooks/useCreateCharacterVideoErrorReset.js';
 import { useGridSplitActions } from './hooks/useGridSplitActions.js';
 import { useHistory } from './hooks/useHistory.js';
@@ -4087,136 +4088,15 @@ import {
             // 跟踪当前聚焦的提示词文本框
             const focusedPromptTextareaRef = useRef(null);
 
-            // 生成单个镜头
-            // 重构后的生成单个镜头函数：原地生成，不依赖外部节点
-            // 创建角色
-            const createCharacter = async (videoUrl, startSecond, endSecond, fromTaskId = null, customEndpoint = null) => {
-                try {
-                    // 1. 获取配置
-                    const soraConfig = apiConfigs.find(c => c.type === 'Video' && (c.id === 'sora-2' || c.id === 'sora-2-pro'));
-                    if (!soraConfig) {
-                        alert('未找到 Sora 2 模型配置，请先在设置中配置 Sora 2 或 Sora 2 Pro');
-                        setCreateCharacterSubmitting(false);
-                        return;
-                    }
-
-                    const apiKey = soraConfig.key || globalApiKey;
-
-                    if (!apiKey) {
-                        alert('请先配置 API Key');
-                        setCreateCharacterSubmitting(false);
-                        return;
-                    }
-
-                    // 验证时间范围
-                    if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
-                        alert('时间范围必须在 1-3 秒之间');
-                        setCreateCharacterSubmitting(false);
-                        return;
-                    }
-
-                    // 2. 使用用户提供的 endpoint 或自动构造
-                    const timestamps = `${startSecond},${endSecond}`;
-                    let endpoint;
-                    if (customEndpoint && customEndpoint.trim()) {
-                        endpoint = customEndpoint.trim();
-                    } else {
-                        // 如果没有提供，使用默认路径
-                        const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                        endpoint = `${baseUrl}/sora/v1/characters`;
-                    }
-
-                    // 3. 构造 Body
-                    const payload = fromTaskId
-                        ? { from_task: fromTaskId, timestamps }
-                        : { url: videoUrl, timestamps };
-
-                    // 4. 详细调试日志
-                    console.log('[Create Character] Request Details:', {
-                        endpoint,
-                        apiKey: apiKey ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}` : 'EMPTY',
-                        payload,
-                        fromTaskId,
-                        videoUrl: fromTaskId ? 'N/A (using from_task)' : videoUrl,
-                        customEndpoint: customEndpoint || 'N/A (using default)'
-                    });
-
-                    // 5. 发送请求
-                    const resp = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    // 6. 错误处理
-                    if (!resp.ok) {
-                        const errText = await resp.text();
-                        console.error('[Create Character] API Error:', {
-                            status: resp.status,
-                            statusText: resp.statusText,
-                            errorText: errText,
-                            endpoint
-                        });
-
-                        // 尝试解析错误响应
-                        let errorData = null;
-                        try {
-                            errorData = JSON.parse(errText);
-                        } catch (e) {
-                            // 如果不是 JSON，使用原始文本
-                        }
-
-                        // 特殊处理 500 错误和 get_origin_task_failed
-                        if (resp.status === 500 || (errorData && (errorData.code === 'get_origin_task_failed' || errorData.message?.includes('get_origin_task_failed')))) {
-                            throw new Error('TASK_NOT_FOUND');
-                        }
-
-                        throw new Error(`API错误 (${resp.status}): ${errText || resp.statusText}`);
-                    }
-
-                    const data = await resp.json();
-                    console.log('[Create Character] Success:', data);
-
-                    // 7. 保存到角色库
-                    if (data.id && data.username) {
-                        const newCharacter = {
-                            id: data.id,
-                            username: data.username,
-                            profile_picture_url: data.profile_picture_url || '',
-                            permalink: data.permalink || ''
-                        };
-
-                        const updated = [...characterLibrary, newCharacter];
-                        setCharacterLibrary(updated);
-                        alert(`角色 "${data.username}" 创建成功！`);
-                        setCreateCharacterOpen(false);
-                        resetCreateCharacterForm();
-                    } else {
-                        throw new Error('返回数据缺少 id 或 username');
-                    }
-                } catch (err) {
-                    console.error('[Create Character] Failed:', err);
-                    let msg = err.message;
-
-                    // 特殊处理：原任务已过期或无法访问
-                    if (msg === 'TASK_NOT_FOUND') {
-                        alert('创建失败：原任务已过期或无法访问。\n\n请尝试获取该视频的下载链接，使用"输入视频 URL"方式重新创建。');
-                        return;
-                    }
-
-                    // 处理网络错误
-                    if (msg.includes('Failed to fetch') || err.name === 'TypeError' || err.message.includes('NetworkError')) {
-                        msg = '连接失败。可能原因：\n\n1. API 地址填写错误\n   - 请检查 API 接口地址是否多余了 "/sora" 前缀\n   - 有些服务商的路径可能不同，请询问服务商 Sora 角色创建接口的准确路径\n\n2. 跨域限制 (CORS)\n   - 请尝试安装 Allow CORS 浏览器插件\n\n3. 网络问题\n   - 请检查网络连接';
-                    }
-
-                    alert(`创建角色失败: ${msg}`);
-                } finally {
-                    setCreateCharacterSubmitting(false);
-                }
-            };
+            const { createCharacter } = useCreateCharacterAction({
+                apiConfigs,
+                characterLibrary,
+                globalApiKey,
+                resetCreateCharacterForm,
+                setCharacterLibrary,
+                setCreateCharacterOpen,
+                setCreateCharacterSubmitting,
+            });
 
             const generateSingleShot = (nodeId, shot) => {
                 // 1. 构建更加丰富的 Prompt
