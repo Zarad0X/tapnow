@@ -124,12 +124,15 @@ import {
   isCharacterSceneImageNodeType,
   isCharacterSceneVideoNodeType,
   isDownloadableMediaNodeType,
-  isImageInputNodeType,
   isInputMediaNodeType,
   isPreviewNodeType,
   isVideoInputNodeType,
   isStandardGenerationNodeType
 } from './nodes/nodeCatalog.js';
+import {
+  getConnectableImageUrlsFromNode,
+  getPrimaryInputImageUrlFromNode
+} from './nodes/nodeMedia.js';
 import {
   buildAsyncImageTaskPollUrl,
   denormalizePromptForSoraRequest,
@@ -1157,42 +1160,7 @@ import {
                     }
                     const sourceNode = nodesMap.get(conn.from);
                     if (sourceNode) {
-                        let images = [];
-                        if (isVideoInputNodeType(sourceNode.type)) {
-                            const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
-                                ? sourceNode.selectedKeyframes.map(f => f.url)
-                                : [];
-                            if (selected.length > 0) {
-                                images = selected;
-                            } else if (sourceNode.frames && sourceNode.frames.length > 0) {
-                                images = [sourceNode.frames[0].url];
-                            }
-                        } else if (isImageInputNodeType(sourceNode.type) && sourceNode.content) {
-                            images = [sourceNode.content];
-                        } else if (isPreviewNodeType(sourceNode.type)) {
-                            // 从预览窗口获取选中的图片
-                            if (sourceNode.selectedPreviewImage) {
-                                images = [sourceNode.selectedPreviewImage];
-                            } else if (sourceNode.content) {
-                                images = [sourceNode.content];
-                            } else if (sourceNode.previewMjImages && sourceNode.previewMjImages.length > 0) {
-                                images = [sourceNode.previewMjImages[0]];
-                            }
-                        } else if (isStandardGenerationNodeType(sourceNode.type)) {
-                            // 从历史记录中获取该节点最新生成的图片/视频
-                            const nodeHistory = history.filter(h => h.sourceNodeId === sourceNode.id && h.status === 'completed');
-                            if (nodeHistory.length > 0) {
-                                const latestResult = nodeHistory[nodeHistory.length - 1];
-                                // 优先获取 MJ/jimeng 的4张切割图
-                                if (latestResult.mjImages && latestResult.mjImages.length > 0) {
-                                    images = [...latestResult.mjImages];
-                                } else if (latestResult.resultUrl) {
-                                    images = [latestResult.resultUrl];
-                                } else if (latestResult.resultUrls && latestResult.resultUrls.length > 0) {
-                                    images = latestResult.resultUrls;
-                                }
-                            }
-                        }
+                        const images = getConnectableImageUrlsFromNode(sourceNode, { history });
                         if (images.length > 0) {
                             nodeConnections.get(inputType).push(...images);
                         }
@@ -1263,19 +1231,7 @@ import {
                     if (!cache.has(key)) {
                         const sourceNode = nodesMap.get(conn.from);
                         if (sourceNode) {
-                            let imageUrl = null;
-                            if (isVideoInputNodeType(sourceNode.type)) {
-                                const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
-                                    ? sourceNode.selectedKeyframes[0].url
-                                    : null;
-                                if (selected) {
-                                    imageUrl = selected;
-                                } else if (sourceNode.frames && sourceNode.frames[0]) {
-                                    imageUrl = sourceNode.frames[0].url;
-                                }
-                            } else if (isImageInputNodeType(sourceNode.type) && sourceNode.content) {
-                                imageUrl = sourceNode.content;
-                            }
+                            const imageUrl = getPrimaryInputImageUrlFromNode(sourceNode);
                             if (imageUrl) {
                                 cache.set(key, imageUrl);
                             }
