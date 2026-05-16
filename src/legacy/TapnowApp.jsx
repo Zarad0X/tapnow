@@ -109,8 +109,10 @@ import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
 import {
+  createDefaultFrameAnalysisResult,
   extractRequiredAnalysisContent,
   groupKeyframesByTime,
+  normalizeAutoDirectorResult,
   parseAnalysisJson
 } from './services/videoAnalysisService.js';
 import {
@@ -4455,18 +4457,11 @@ import {
                             aiContent,
                             label: '视频拆解',
                             successMessage: (parsed) => `[视频拆解] JSON 解析成功，场景索引: ${parsed.scene_index || sceneIndex + 1}`,
-                            fallbackFactory: () => ({
-                                video_id: videoFileName,
-                                scene_index: sceneIndex + 1,
-                                time_range: timeRange,
-                                keyframes: group.map((frame, fIdx) => ({
-                                    type: fIdx === 0 ? 'prev' : fIdx === 1 ? 'current' : 'next',
-                                    time: frame.time,
-                                    description: `视频帧 ${frame.time.toFixed(1)}s`,
-                                    mj_prompt: 'A detailed scene from the video',
-                                    jimeng_prompt: '视频场景描述'
-                                })),
-                                global_tags: { style: [], camera: [], color: [] }
+                            fallbackFactory: () => createDefaultFrameAnalysisResult({
+                                group,
+                                sceneIndex,
+                                timeRange,
+                                videoFileName,
                             }),
                         });
 
@@ -4696,30 +4691,8 @@ import {
                         successMessage: (parsed) => `[AI导演拆解] JSON 解析成功，场景数: ${parsed.scenes?.length || 0}`,
                     });
 
-                    // 处理 voiceover_script，转换为 voiceoverResults 格式
-                    const voiceoverResults = (result.voiceover_script || []).map((v, idx) => ({
-                        time: idx,
-                        text: v.text || ''
-                    }));
+                    const { analysisResults, voiceoverResults } = normalizeAutoDirectorResult(result);
                     console.log('[AI导演拆解] 口播文案数:', voiceoverResults.length);
-
-                    // 处理 scenes，转换为 analysisResults 格式
-                    const analysisResults = (result.scenes || []).map((scene, idx) => ({
-                        scene_index: scene.scene_id || idx + 1,
-                        time_range: scene.time_range || '',
-                        keyframes: [{
-                            type: 'current',
-                            time: 0,
-                            description: `${scene.visual_analysis?.camera_movement || ''} ${scene.visual_analysis?.subject_dynamics || ''}`.trim(),
-                            mj_prompt: scene.prompts?.mj_prompt || '',
-                            jimeng_prompt: scene.prompts?.jimeng_prompt || ''
-                        }],
-                        global_tags: {
-                            style: scene.visual_analysis?.atmosphere ? [scene.visual_analysis.atmosphere] : [],
-                            camera: scene.visual_analysis?.camera_movement ? [scene.visual_analysis.camera_movement] : [],
-                            color: []
-                        }
-                    }));
                     console.log('[AI导演拆解] 场景数:', analysisResults.length);
 
                     // 更新节点状态

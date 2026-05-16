@@ -92,3 +92,51 @@ export const parseAnalysisJson = ({
         throw new Error(`模型返回的不是有效的 JSON 格式。原始内容: ${jsonString.substring(0, 200)}`);
     }
 };
+
+export const createDefaultFrameAnalysisResult = ({
+    group,
+    sceneIndex,
+    timeRange,
+    videoFileName,
+}) => ({
+    video_id: videoFileName,
+    scene_index: sceneIndex + 1,
+    time_range: timeRange,
+    keyframes: group.map((frame, frameIndex) => ({
+        type: frameIndex === 0 ? 'prev' : frameIndex === 1 ? 'current' : 'next',
+        time: frame.time,
+        description: `视频帧 ${frame.time.toFixed(1)}s`,
+        mj_prompt: 'A detailed scene from the video',
+        jimeng_prompt: '视频场景描述',
+    })),
+    global_tags: { style: [], camera: [], color: [] },
+});
+
+export const normalizeAutoDirectorResult = (result) => {
+    const voiceoverResults = (result.voiceover_script || []).map((voiceover, index) => ({
+        time: index,
+        text: voiceover.text || '',
+    }));
+
+    const analysisResults = (result.scenes || []).map((scene, index) => ({
+        scene_index: scene.scene_id || index + 1,
+        time_range: scene.time_range || '',
+        keyframes: [{
+            type: 'current',
+            time: 0,
+            description: `${scene.visual_analysis?.camera_movement || ''} ${scene.visual_analysis?.subject_dynamics || ''}`.trim(),
+            mj_prompt: scene.prompts?.mj_prompt || '',
+            jimeng_prompt: scene.prompts?.jimeng_prompt || '',
+        }],
+        global_tags: {
+            style: scene.visual_analysis?.atmosphere ? [scene.visual_analysis.atmosphere] : [],
+            camera: scene.visual_analysis?.camera_movement ? [scene.visual_analysis.camera_movement] : [],
+            color: [],
+        },
+    }));
+
+    return {
+        analysisResults,
+        voiceoverResults,
+    };
+};
