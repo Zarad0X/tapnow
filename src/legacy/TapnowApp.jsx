@@ -95,6 +95,7 @@ import { useDeleteKeyHandler } from './hooks/useDeleteKeyHandler.js';
 import { useGlobalApiKeyPersistence } from './hooks/useGlobalApiKeyPersistence.js';
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
+import { useFrameActions } from './hooks/useFrameActions.js';
 import { useConnectedMedia } from './hooks/useConnectedMedia.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
@@ -5444,123 +5445,29 @@ import {
                 }
             };
 
-            const handleToggleKeyframe = (nodeId, frame, index = 0, event = null) => {
-                const shiftKey = !!event?.shiftKey;
-                setNodes(prev => prev.map(n => {
-                    if (n.id !== nodeId) return n;
-                    const frames = n.frames || [];
-                    const keyOf = (f) => `${f.time}-${f.url}`;
-                    const frameMap = new Map(frames.map(f => [keyOf(f), f]));
-                    const currentSelected = n.selectedKeyframes || [];
-                    let nextSelected = [...currentSelected];
-
-                    if (shiftKey && frameSelectionRef.current[nodeId] !== undefined && frameSelectionRef.current[nodeId] !== null && frames.length > 0) {
-                        const lastIndex = frameSelectionRef.current[nodeId];
-                        const start = Math.min(lastIndex, index);
-                        const end = Math.max(lastIndex, index);
-                        const rangeFrames = frames.slice(start, end + 1);
-                        const selectedKeys = new Set(nextSelected.map(keyOf));
-                        rangeFrames.forEach(f => selectedKeys.add(keyOf(f)));
-                        nextSelected = Array.from(selectedKeys).map(k => frameMap.get(k)).filter(Boolean);
-                    } else {
-                        const exists = nextSelected.some(f => keyOf(f) === keyOf(frame));
-                        nextSelected = exists
-                            ? nextSelected.filter(f => keyOf(f) !== keyOf(frame))
-                            : [...nextSelected, frame];
-                    }
-
-                    frameSelectionRef.current[nodeId] = index;
-                    return { ...n, selectedKeyframes: nextSelected };
-                }));
-            };
-
-            const openFrameContextMenu = (e, nodeId, frame) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setFrameContextMenu({ visible: true, x: e.clientX, y: e.clientY, nodeId, frame });
-            };
-
-            const closeFrameContextMenu = () => {
-                setFrameContextMenu({ visible: false, x: 0, y: 0, nodeId: null, frame: null });
-            };
-
-            const sendFrameToChat = () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                const newFile = {
-                    name: `Frame-${(frame.time ?? 0).toFixed(2)}s.png`,
-                    type: 'image/png',
-                    content: frame.url,
-                    isImage: true,
-                    isVideo: false,
-                    isAudio: false,
-                    fromHistory: true,
-                    fileExt: 'png'
-                };
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                closeFrameContextMenu();
-            };
-
-            const sendFrameToCanvas = async () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-                let dims;
-                try {
-                    const real = await getImageDimensions(frame.url);
-                    if (real?.w && real?.h) dims = { w: real.w, h: real.h };
-                } catch (e) {}
-                addNode('input-image', world.x + 50, world.y + 50, null, frame.url, dims);
-                closeFrameContextMenu();
-            };
-
-            const sendFrameToPreview = () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                setNodes(prev => {
-                    // 优先使用当前选中的预览节点
-                    const selectedId = selectedNodeIdRef.current;
-                    const selectedIds = selectedNodeIdsRef.current;
-                    const previews = prev.filter(n => n.type === 'preview');
-                    if (!previews.length) return prev;
-
-                    // 先查找选中的预览节点
-                    let targetId = null;
-                    if (selectedId) {
-                        const selectedPreview = previews.find(p => p.id === selectedId);
-                        if (selectedPreview) targetId = selectedPreview.id;
-                    }
-                    if (!targetId && selectedIds && selectedIds.size > 0) {
-                        const selectedPreview = previews.find(p => selectedIds.has(p.id));
-                        if (selectedPreview) targetId = selectedPreview.id;
-                    }
-                    // 如果没有选中预览节点，则默认使用最后一个预览窗口
-                    if (!targetId) {
-                        targetId = previews[previews.length - 1].id;
-                    }
-
-                    return prev.map(n =>
-                        n.id === targetId
-                            ? { ...n, content: frame.url, previewType: 'image' }
-                            : n
-                    );
-                });
-                closeFrameContextMenu();
-            };
-
-            const applyFrameToSelectedNode = () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                const targetId = selectedNodeId;
-                const targetNode = nodesMap.get(targetId);
-                if (targetNode && targetNode.type === 'input-image') {
-                    setNodes(prev => prev.map(n => n.id === targetId ? { ...n, content: frame.url } : n));
-                } else {
-                    alert('请先选择一个"图片输入"节点');
-                }
-                closeFrameContextMenu();
-            };
+            const {
+                applyFrameToSelectedNode,
+                closeFrameContextMenu,
+                handleToggleKeyframe,
+                openFrameContextMenu,
+                sendFrameToCanvas,
+                sendFrameToChat,
+                sendFrameToPreview,
+            } = useFrameActions({
+                addNode,
+                frameContextMenu,
+                frameSelectionRef,
+                getImageDimensions,
+                nodesMap,
+                screenToWorld,
+                selectedNodeId,
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+                setChatFiles,
+                setFrameContextMenu,
+                setIsChatOpen,
+                setNodes,
+            });
 
             const handleHistoryRightClick = (e, item, imageUrl = null, imageIndex = null) => {
                 e.preventDefault();
