@@ -78,6 +78,7 @@ import { useApiConfigActions } from './hooks/useApiConfigActions.js';
 import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
 import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
 import { useChatFiles } from './hooks/useChatFiles.js';
+import { useChatMessaging } from './hooks/useChatMessaging.js';
 import { useChatResize } from './hooks/useChatResize.js';
 import { useClipboardNodes } from './hooks/useClipboardNodes.js';
 import { useConnectionQueries } from './hooks/useConnectionQueries.js';
@@ -98,15 +99,6 @@ import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
 import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
 import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
-import {
-  addAssistantMessageToSessions,
-  addUserMessageToSessions,
-  buildChatApiMessages,
-  createAssistantChatMessage,
-  createUserChatMessage,
-  extractChatResponseContent,
-  resolveChatSessionForSend
-} from './services/chatService.js';
 import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
@@ -569,6 +561,24 @@ import {
                 getConnectedInputImages,
                 updateNodeSettings,
                 isVideoUrl,
+            });
+
+            const { sendChatMessage } = useChatMessaging({
+                apiConfigsMap,
+                chatFiles,
+                chatInput,
+                chatModel,
+                chatSessions,
+                currentChatId,
+                defaultBaseUrl: DEFAULT_BASE_URL,
+                globalApiKey,
+                isChatSending,
+                setChatFiles,
+                setChatInput,
+                setChatSessions,
+                setCurrentChatId,
+                setIsChatSending,
+                setSettingsOpen,
             });
 
             useMidjourneyAutoSplit({ history, setHistory });
@@ -1256,78 +1266,6 @@ import {
             useEffect(() => {
                 scrollToBottom();
             }, [currentSession?.messages, isChatOpen]);
-
-            const sendChatMessage = async () => {
-                if ((!chatInput.trim() && chatFiles.length === 0) || isChatSending) return;
-
-                const config = apiConfigsMap.get(chatModel);
-                const apiKey = config?.key || globalApiKey;
-                const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-
-                if (!apiKey) {
-                    alert('请先在 API 设置中配置 Key');
-                    setSettingsOpen(true);
-                    return;
-                }
-
-                const { chatIdToUse, currentSessionMessages, sessionToUse } = resolveChatSessionForSend({
-                    chatSessions,
-                    currentChatId,
-                });
-                if (sessionToUse && sessionToUse.id !== currentChatId) setCurrentChatId(sessionToUse.id);
-
-                setIsChatSending(true);
-
-                const newUserMsg = createUserChatMessage({
-                    content: chatInput,
-                    files: chatFiles,
-                    modelId: chatModel,
-                });
-
-                setChatSessions(prev => addUserMessageToSessions({ sessions: prev, chatId: chatIdToUse, message: newUserMsg }));
-                setChatInput('');
-                setChatFiles([]);
-
-                const apiMessages = buildChatApiMessages({ currentSessionMessages, newUserMessage: newUserMsg, config });
-
-                try {
-                    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: config?.modelName || 'gemini-3-pro-preview',
-                            messages: apiMessages,
-                            stream: false
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const errText = await response.text();
-                        throw new Error(errText || `API Error: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    let aiContent = extractChatResponseContent(data);
-
-                    if (!aiContent || aiContent.trim() === '') {
-                        console.error('[聊天] API 响应内容为空:', data);
-                        aiContent = "No response";
-                    }
-
-                    const newAssistantMsg = createAssistantChatMessage({ content: aiContent, modelId: chatModel });
-                    setChatSessions(prev => addAssistantMessageToSessions({ sessions: prev, chatId: chatIdToUse, message: newAssistantMsg }));
-
-                } catch (error) {
-                    console.error("Chat Error", error);
-                    const errorMsg = createAssistantChatMessage({ content: `Error: ${error.message}`, isError: true });
-                    setChatSessions(prev => addAssistantMessageToSessions({ sessions: prev, chatId: chatIdToUse, message: errorMsg }));
-                } finally {
-                    setIsChatSending(false);
-                }
-            };
 
             const disconnectConnection = useCallback((connectionId) => {
                 setConnections(prev => {
