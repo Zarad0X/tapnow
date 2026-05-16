@@ -131,7 +131,11 @@ import {
   getJimengModelName,
   getModelDisplayName,
   getNanoBanana2ImageSizeFlag,
+  isAsyncImageFailureStatus,
+  isAsyncImageRunningStatus,
+  isAsyncImageSuccessStatus,
   isSoraModel,
+  normalizeGenerationStatus,
   normalizeBananaResolution,
   normalizePromptForSora,
   parseDurationSeconds,
@@ -2199,7 +2203,7 @@ import {
                     // 1. { code, message, data: { status, images: [...] } }
                     // 2. { status: "SUCCESS", data: { data: [{ url: "..." }] } }
                     // 3. { task_id: "...", status: "SUCCESS", data: { data: [{ url: "..." }] } }
-                    const status = (data?.data?.status || data?.status || '').toUpperCase();
+                    const status = normalizeGenerationStatus(data?.data?.status || data?.status);
                     console.log('[Async Image] 提取的状态:', status, '原始数据:', {
                         hasData: !!data?.data,
                         hasDataData: !!data?.data?.data,
@@ -2264,7 +2268,7 @@ import {
                         }
 
                         // 如果任务状态是SUCCESS但还没找到图片，立即执行深度搜索（不等待后续处理）
-                        if (images.length === 0 && (status === 'COMPLETED' || status === 'SUCCESS' || status === 'FINISHED' || status === 'DONE')) {
+                        if (images.length === 0 && isAsyncImageSuccessStatus(status)) {
                             console.log('[Async Image] 任务状态为成功但图片数量为0，立即执行深度搜索');
                             const foundUrl = findFirstHttpUrlDeep(data);
                             if (foundUrl) {
@@ -2283,7 +2287,7 @@ import {
                         const updated = prev.map((hItem) => {
                             if (hItem.id === taskId) {
                                 // 支持多种成功状态值
-                                if (status === 'COMPLETED' || status === 'SUCCESS' || status === 'FINISHED' || status === 'DONE') {
+                                if (isAsyncImageSuccessStatus(status)) {
                                     console.log('[Async Image] 任务状态为成功:', status, '图片数量:', images.length);
 
                                     // 保存sourceNodeId，用于后续更新预览窗口
@@ -2445,14 +2449,14 @@ import {
                                         status: 'failed',
                                         errorMsg: errorMsg || '任务完成但未返回图片，请检查控制台日志查看详细响应数据'
                                     };
-                                } else if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED' || status === 'FAILURE') {
+                                } else if (isAsyncImageFailureStatus(status)) {
                                 // 任务失败
                                 return {
                                     ...hItem,
                                     status: 'failed',
                                     errorMsg: errorMsg || `任务失败: ${status}`
                                 };
-                            } else if (status === 'PENDING' || status === 'PROCESSING' || status === 'GENERATING' || status === 'IN_PROGRESS' || status === 'RUNNING') {
+                            } else if (isAsyncImageRunningStatus(status)) {
                                 // 任务进行中，根据轮询次数和进度信息计算进度
                                 let progress = 10 + (attempt * 2); // 基础进度
 
@@ -2527,9 +2531,9 @@ import {
 
                     // 如果任务未完成，继续轮询
                     // 动态调整轮询间隔：任务接近完成时缩短间隔，确保能快速检测到完成状态
-                    const currentStatus = (data?.data?.status || data?.status || '').toUpperCase();
-                    const isCompleted = currentStatus === 'COMPLETED' || currentStatus === 'SUCCESS' || currentStatus === 'FINISHED' || currentStatus === 'DONE';
-                    const isFailed = currentStatus === 'FAILED' || currentStatus === 'ERROR' || currentStatus === 'CANCELLED' || currentStatus === 'FAILURE';
+                    const currentStatus = normalizeGenerationStatus(data?.data?.status || data?.status);
+                    const isCompleted = isAsyncImageSuccessStatus(currentStatus);
+                    const isFailed = isAsyncImageFailureStatus(currentStatus);
 
                     if (!isCompleted && !isFailed) {
                         // 动态轮询间隔策略：

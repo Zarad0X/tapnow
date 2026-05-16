@@ -203,6 +203,24 @@ export const resolveGenerationDurationMs = ({ data, startTime, now = Date.now() 
     };
 };
 
+const ASYNC_IMAGE_SUCCESS_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FINISHED', 'DONE']);
+const ASYNC_IMAGE_FAILURE_STATUSES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'FAILURE']);
+const ASYNC_IMAGE_RUNNING_STATUSES = new Set(['PENDING', 'PROCESSING', 'GENERATING', 'IN_PROGRESS', 'RUNNING']);
+
+export const normalizeGenerationStatus = (status) => String(status || '').toUpperCase();
+
+export const isAsyncImageSuccessStatus = (status) => {
+    return ASYNC_IMAGE_SUCCESS_STATUSES.has(normalizeGenerationStatus(status));
+};
+
+export const isAsyncImageFailureStatus = (status) => {
+    return ASYNC_IMAGE_FAILURE_STATUSES.has(normalizeGenerationStatus(status));
+};
+
+export const isAsyncImageRunningStatus = (status) => {
+    return ASYNC_IMAGE_RUNNING_STATUSES.has(normalizeGenerationStatus(status));
+};
+
 export const findFirstHttpUrlDeep = (value, { maxDepth = 5 } = {}) => {
     const visited = new WeakSet();
     const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
