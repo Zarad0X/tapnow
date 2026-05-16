@@ -249,7 +249,7 @@ import {
                 type: 'import' // 'import' | 'export'
             });
 
-            const [history, setHistory] = useHistory();
+            const [history, setHistory, historyActions] = useHistory();
             const {
                 chatSessions,
                 setChatSessions,
@@ -1246,19 +1246,7 @@ import {
             };
 
             const deleteHistoryItem = (id) => {
-                setHistory(prev => {
-                    const filtered = prev.filter(item => item.id !== id);
-                    // 立即保存到 localStorage，不等待防抖
-                    try {
-                        localStorage.setItem('tapnow_history', JSON.stringify(filtered));
-                    } catch (e) {
-                        console.error('立即保存历史记录失败:', e);
-                    }
-                    return filtered;
-                });
-                if (historyContextMenu.item && historyContextMenu.item.id === id) {
-                    setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-                }
+                historyActions.deleteHistoryItem({ id, historyContextMenu, setHistoryContextMenu });
             };
 
             const scrollToBottom = () => {
