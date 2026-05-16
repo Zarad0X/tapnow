@@ -79,6 +79,7 @@ import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
 import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
 import { useChatResize } from './hooks/useChatResize.js';
 import { useClipboardNodes } from './hooks/useClipboardNodes.js';
+import { useConnectionQueries } from './hooks/useConnectionQueries.js';
 import { useCreateCharacterVideoErrorReset } from './hooks/useCreateCharacterVideoErrorReset.js';
 import { useHistory } from './hooks/useHistory.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
@@ -519,31 +520,25 @@ import {
                 };
             }, [visibleNodes]);
 
-            // 使用 useMemo 缓存连接相关的计算，避免重复计算
-            const connectionsByNode = useMemo(() => {
-                const byNode = {
-                    to: new Map(), // nodeId -> connections[]
-                    from: new Map() // nodeId -> connections[]
-                };
-                connections.forEach(conn => {
-                    if (!byNode.to.has(conn.to)) {
-                        byNode.to.set(conn.to, []);
-                    }
-                    byNode.to.get(conn.to).push(conn);
-
-                    if (!byNode.from.has(conn.from)) {
-                        byNode.from.set(conn.from, []);
-                    }
-                    byNode.from.get(conn.from).push(conn);
-                });
-                return byNode;
-            }, [connections]);
-
             const {
                 getConnectedImageForInput,
                 getConnectedInputImages,
                 getConnectedVideoInputNode,
             } = useConnectedMedia({ connections, nodes, nodesMap, history });
+
+            const {
+                adjacentNodesCache,
+                connectionsByNode,
+                getConnectedGenNodes,
+                getConnectedTextNodes,
+                getConnectedVideoAnalyzeNode,
+                nodeConnectedStatus,
+            } = useConnectionQueries({
+                connections,
+                nodesMap,
+                selectedNodeId,
+                selectedNodeIds,
+            });
 
             useAutoLocalSave({
                 nodes,
@@ -1147,34 +1142,6 @@ import {
                     setContextMenu({ visible: true, x: e.clientX, y: e.clientY, worldX: world.x, worldY: world.y, sourceNodeId: undefined });
                 }
             };
-
-            // 获取连接的 video-analyze 节点（用于 storyboard-node 节点）
-            const getConnectedVideoAnalyzeNode = useCallback((targetNodeId) => {
-                for (const conn of connections) {
-                    if (conn.to === targetNodeId) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'video-analyze') {
-                            return sourceNode;
-                        }
-                    }
-                }
-                return null;
-            }, [connections, nodesMap]);
-
-            // 功能2：获取连接的文字节点内容
-            const getConnectedTextNodes = useCallback((targetNodeId) => {
-                const texts = [];
-                connections.forEach(conn => {
-                    if (conn.to === targetNodeId) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'text-node') {
-                            const text = sourceNode.settings?.text || '';
-                            if (text) texts.push(text);
-                        }
-                    }
-                });
-                return texts;
-            }, [connections, nodesMap]);
 
             // 将生成结果同步到连接的预览节点
             const updatePreviewFromTask = (taskId, url, contentType = 'image', sourceNodeIdOverride = null, mjImages = null) => {
@@ -4120,20 +4087,6 @@ import {
                 setSelectedNodeIds,
             });
 
-            // 获取连接的 gen-image 或 gen-video 节点（用于 storyboard-node 节点）
-            const getConnectedGenNodes = useCallback((sourceNodeId) => {
-                const genNodes = [];
-                for (const conn of connections) {
-                    if (conn.from === sourceNodeId) {
-                        const targetNode = nodesMap.get(conn.to);
-                        if (targetNode && isStandardGenerationNodeType(targetNode.type)) {
-                            genNodes.push(targetNode);
-                        }
-                    }
-                }
-                return genNodes;
-            }, [connections, nodesMap]);
-
             // 获取模型的默认时长
             // 获取风格前缀
             const getStylePrefix = useCallback((style) => {
@@ -6216,40 +6169,6 @@ import {
                 setIsChatOpen(true);
                 closeInputImageContextMenu();
             };
-
-            // ... (rest of render logic unchanged) ...
-            // 使用 useMemo 缓存节点的连接状态，避免每次渲染时重复计算
-            const nodeConnectedStatus = useMemo(() => {
-                const status = new Map(); // nodeId -> boolean
-                connections.forEach(conn => {
-                    if (!conn.inputType || conn.inputType === 'default') {
-                        status.set(conn.to, true);
-                    }
-                });
-                return status;
-            }, [connections]);
-
-            // 功能3：获取相邻节点（上游和下游）- 使用缓存的连接映射优化性能
-            const getAdjacentNodes = useCallback((nodeId) => {
-                const adjacent = new Set();
-                const fromConns = connectionsByNode.from.get(nodeId) || [];
-                const toConns = connectionsByNode.to.get(nodeId) || [];
-                fromConns.forEach(conn => adjacent.add(conn.to));
-                toConns.forEach(conn => adjacent.add(conn.from));
-                return adjacent;
-            }, [connectionsByNode]);
-
-            // 缓存相邻节点集合，避免在renderNode中重复计算
-            const adjacentNodesCache = useMemo(() => {
-                const cache = new Map();
-                if (selectedNodeId || selectedNodeIds.size > 0) {
-                    const selectedId = selectedNodeId || (selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null);
-                    if (selectedId) {
-                        cache.set(selectedId, getAdjacentNodes(selectedId));
-                    }
-                }
-                return cache;
-            }, [selectedNodeId, selectedNodeIds, getAdjacentNodes]);
 
             // NodeItem 组件：提取节点渲染逻辑，使用 React.memo 优化
             // 注意：由于 renderNode 的 JSX 内容非常长（约 2700 行），完整提取需要大量工作
