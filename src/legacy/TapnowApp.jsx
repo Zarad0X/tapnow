@@ -74,6 +74,7 @@ import {
 import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
+import { useAutoArrangeNodes } from './hooks/useAutoArrangeNodes.js';
 import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
 import { useBatchDownload } from './hooks/useBatchDownload.js';
 import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
@@ -4903,187 +4904,13 @@ import {
                 setNodes,
             });
 
-            // 智能整理节点：DAG 层级布局 + 交叉最小化 (Barycenter Heuristic)
-            const autoArrangeNodes = () => {
-                // 1. 获取选中的节点
-                const currentSelectedId = selectedNodeIdRef.current;
-                const currentSelectedIds = selectedNodeIdsRef.current;
-
-                let nodesToArrange = [];
-
-                if (currentSelectedId) {
-                    const node = nodesRef.current.find(n => n.id === currentSelectedId);
-                    if (node) nodesToArrange = [node];
-                } else if (currentSelectedIds && currentSelectedIds.size > 0) {
-                    nodesToArrange = nodesRef.current.filter(n => currentSelectedIds.has(n.id));
-                }
-
-                if (nodesToArrange.length < 2) {
-                     alert('请至少选中两个节点进行智能整理');
-                     return;
-                }
-
-                const targetNodeIds = new Set(nodesToArrange.map(n => n.id));
-
-                // 2. 构建图结构
-                // map: id -> graphNode
-                const graph = {};
-                nodesToArrange.forEach(n => {
-                    graph[n.id] = {
-                        id: n.id,
-                        node: n,
-                        parents: [],
-                        children: [],
-                        level: 0,
-                        rank: 0 // 用于层内排序
-                    };
-                });
-
-                connectionsRef.current.forEach(conn => {
-                    if (targetNodeIds.has(conn.from) && targetNodeIds.has(conn.to)) {
-                        graph[conn.from].children.push(conn.to);
-                        graph[conn.to].parents.push(conn.from);
-                    }
-                });
-
-                // 3. 计算层级 (Assign Layers) - Longest Path Layering
-                // 找出入度为0的节点
-                let roots = Object.values(graph).filter(n => n.parents.length === 0);
-
-                // 处理环路或纯独立节点：如果没有根，取第一个
-                if (roots.length === 0 && nodesToArrange.length > 0) {
-                    roots = [Object.values(graph)[0]];
-                }
-
-                // 计算每个节点的深度 level
-                const calcLevels = () => {
-                    const queue = roots.map(r => ({ node: r, lvl: 0 }));
-                    const visited = new Set();
-
-                    while(queue.length > 0) {
-                        const { node, lvl } = queue.shift();
-                        // 只有当该节点未访问，或者发现了更长的路径时更新
-                        if (lvl >= node.level) {
-                            node.level = lvl;
-                            // 只有当该节点的所有父节点都处理过，或者它是根节点时，才继续往下（简化版拓扑排序）
-                            // 这里为了简单，直接遍历子节点
-                            node.children.forEach(childId => {
-                                const childNode = graph[childId];
-                                if (childNode) {
-                                    // 避免环路无限循环：限制最大深度
-                                    if (lvl < 20) {
-                                        queue.push({ node: childNode, lvl: lvl + 1 });
-                                    }
-                                }
-                            });
-                        }
-                    }
-                };
-                calcLevels();
-
-                // 4. 构建层级数组
-                // layers: [ [node, node], [node], ... ]
-                const maxLevel = Math.max(...Object.values(graph).map(n => n.level));
-                const layers = Array.from({ length: maxLevel + 1 }, () => []);
-
-                Object.values(graph).forEach(n => {
-                    layers[n.level].push(n);
-                });
-
-                // 5. 交叉最小化 (Crossing Minimization) - Iterative Barycenter Method
-                // 初始排序：保持目前的相对顺序或ID顺序
-                layers.forEach(layer => {
-                    layer.sort((a, b) => a.node.y - b.node.y);
-                });
-
-                // 迭代次数，比如做 3 次往返扫描
-                const iterations = 3;
-
-                for (let i = 0; i < iterations; i++) {
-                    // Forward Sweep (从左往右): 子节点跟随父节点的重心
-                    for (let l = 1; l < layers.length; l++) {
-                        const layer = layers[l];
-                        layer.forEach(n => {
-                            if (n.parents.length > 0) {
-                                let sumRank = 0;
-                                n.parents.forEach(pid => {
-                                    // 找到父节点在上一层中的索引位置(rank)
-                                    const parentNode = graph[pid];
-                                    const parentLayerIndex = layers[l-1].indexOf(parentNode);
-                                    if (parentLayerIndex !== -1) sumRank += parentLayerIndex;
-                                });
-                                n.barycenter = sumRank / n.parents.length;
-                            } else {
-                                n.barycenter = layers[l].indexOf(n); // 保持原位
-                            }
-                        });
-                        // 根据重心排序
-                        layer.sort((a, b) => (a.barycenter || 0) - (b.barycenter || 0));
-                    }
-
-                    // Backward Sweep (从右往左): 父节点跟随子节点的重心
-                    // 这一步对于解决图中的那种"输入节点乱序导致连线交叉"非常关键
-                    for (let l = layers.length - 2; l >= 0; l--) {
-                        const layer = layers[l];
-                        layer.forEach(n => {
-                            if (n.children.length > 0) {
-                                let sumRank = 0;
-                                n.children.forEach(cid => {
-                                    const childNode = graph[cid];
-                                    const childLayerIndex = layers[l+1].indexOf(childNode);
-                                    if (childLayerIndex !== -1) sumRank += childLayerIndex;
-                                });
-                                n.barycenter = sumRank / n.children.length;
-                            } else {
-                                n.barycenter = layers[l].indexOf(n);
-                            }
-                        });
-                        layer.sort((a, b) => (a.barycenter || 0) - (b.barycenter || 0));
-                    }
-                }
-
-                // 6. 计算最终坐标 (Coordinate Assignment)
-                const startX = Math.min(...nodesToArrange.map(n => n.x));
-                const startY = Math.min(...nodesToArrange.map(n => n.y));
-                const H_SPACING = 150; // 加宽一点水平间距，给连线留空间
-                const V_SPACING = 40;  // 垂直间距
-
-                let currentX = startX;
-                const updatedNodesMap = new Map();
-
-                layers.forEach((layer, lIndex) => {
-                    if (layer.length === 0) return;
-
-                    // 计算该层最宽的节点，用于推算下一层的X
-                    const maxW = Math.max(...layer.map(n => n.node.width || 260));
-
-                    // 计算该层总高度，用于垂直居中对齐整个层
-                    const totalH = layer.reduce((sum, n) => sum + (n.node.height || 200), 0) + (layer.length - 1) * V_SPACING;
-
-                    // 简单的垂直排列，从 startY 开始
-                    // 进阶优化：可以让层与层之间垂直中心对齐，但这里简单排列通常就够了
-                    let currentY = startY;
-
-                    layer.forEach(graphNode => {
-                        updatedNodesMap.set(graphNode.id, {
-                            ...graphNode.node,
-                            x: currentX,
-                            y: currentY
-                        });
-                        currentY += (graphNode.node.height || 200) + V_SPACING;
-                    });
-
-                    currentX += maxW + H_SPACING;
-                });
-
-                // 7. 应用更新
-                setNodes(prev => prev.map(node => {
-                    if (updatedNodesMap.has(node.id)) {
-                        return updatedNodesMap.get(node.id);
-                    }
-                    return node;
-                }));
-            };
+            const { autoArrangeNodes } = useAutoArrangeNodes({
+                connectionsRef,
+                nodesRef,
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+                setNodes,
+            });
 
             const {
                 handleAutoExtractKeyframes,
