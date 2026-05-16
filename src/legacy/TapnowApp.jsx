@@ -4961,29 +4961,11 @@ import {
                 setNodes,
             });
 
-            const handleHistoryRightClick = (e, item, imageUrl = null, imageIndex = null) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // 如果提供了 imageUrl 和 imageIndex，说明是点击了多图中的某一张
-                // 否则使用 item.url 或 item.originalUrl（单图情况）
-                const selectedUrl = imageUrl || item.url || item.originalUrl;
-                const selectedIndex = imageIndex !== null ? imageIndex : (item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : null);
-
-                // 创建一个修改后的item，使用选中的图片URL
-                const menuItem = {
-                    ...item,
-                    url: selectedUrl,
-                    selectedMjImageIndex: selectedIndex
-                };
-
-                const world = screenToWorld(e.clientX, e.clientY);
-                setHistoryContextMenu({ visible: true, x: e.clientX, y: e.clientY, worldX: world.x, worldY: world.y, item: menuItem });
-            };
-
             const {
                 applyHistoryToSelectedNode,
                 closeInputImageContextMenu,
                 closePreviewContextMenu,
+                handleHistoryRightClick,
                 handleInputImageRightClick,
                 handlePreviewRightClick,
                 sendHistoryToCanvas,

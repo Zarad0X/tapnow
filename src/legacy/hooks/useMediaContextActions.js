@@ -32,6 +32,30 @@ export const useMediaContextActions = ({
         setInputImageContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
     }, [setInputImageContextMenu]);
 
+    const handleHistoryRightClick = useCallback((event, item, imageUrl = null, imageIndex = null) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const selectedUrl = imageUrl || item.url || item.originalUrl;
+        const selectedIndex = imageIndex !== null
+            ? imageIndex
+            : (item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : null);
+        const world = screenToWorld(event.clientX, event.clientY);
+
+        setHistoryContextMenu({
+            visible: true,
+            x: event.clientX,
+            y: event.clientY,
+            worldX: world.x,
+            worldY: world.y,
+            item: {
+                ...item,
+                url: selectedUrl,
+                selectedMjImageIndex: selectedIndex,
+            },
+        });
+    }, [screenToWorld, setHistoryContextMenu]);
+
     const applyHistoryToSelectedNode = useCallback(() => {
         const item = historyContextMenu.item;
         const targetNode = nodesMap.get(selectedNodeId);
@@ -159,6 +183,7 @@ export const useMediaContextActions = ({
         closeInputImageContextMenu,
         closePreviewContextMenu,
         handleInputImageRightClick,
+        handleHistoryRightClick,
         handlePreviewRightClick,
         sendHistoryToCanvas,
         sendHistoryToChat,
