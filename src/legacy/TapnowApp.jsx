@@ -85,6 +85,7 @@ import { useClipboardNodes } from './hooks/useClipboardNodes.js';
 import { useConnectionQueries } from './hooks/useConnectionQueries.js';
 import { useCreateCharacterVideoErrorReset } from './hooks/useCreateCharacterVideoErrorReset.js';
 import { useHistory } from './hooks/useHistory.js';
+import { useImageNodeDrop } from './hooks/useImageNodeDrop.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
 import { useProjectWorkflowActions } from './hooks/useProjectWorkflowActions.js';
@@ -1265,26 +1266,11 @@ import {
                 });
             }, []);
 
-            const handleDrop = (nodeId, e) => {
-                e.preventDefault(); e.stopPropagation();
-                e.currentTarget.classList.remove('drag-over');
-                const files = Array.from(e.dataTransfer.files);
-                const imageFiles = files.filter(file => file.type.startsWith('image/'));
-                if (imageFiles.length > 0) {
-                    const file = imageFiles[0];
-                    const reader = new FileReader();
-                    reader.onload = async (ev) => {
-                        const content = ev.target.result;
-                        let dimensions = { w: 0, h: 0 };
-                        try { dimensions = await getImageDimensions(content); } catch (e) {}
-                        setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, content: content, dimensions } : n));
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('drag-over'); };
-            const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('drag-over'); };
+            const {
+                handleDragLeave,
+                handleDragOver,
+                handleDrop,
+            } = useImageNodeDrop({ getImageDimensions, setNodes });
 
             const pollVeoJob = async (jobId, taskId, baseUrl, apiKey, w, h, attempt = 0) => {
                 const maxAttempts = 90; // 增加到90次，支持最长360秒（6分钟）的生成时间
