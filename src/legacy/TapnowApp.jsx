@@ -101,6 +101,7 @@ import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
 import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
+import { createMediaChatFile } from './services/chatService.js';
 import {
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
@@ -5536,19 +5537,14 @@ import {
                 // 确保正确识别图片和视频类型
                 const isImage = item.type === 'image';
                 const isVideo = item.type === 'video';
-                const fileExt = isImage ? 'png' : (isVideo ? 'mp4' : 'file');
-                const mimeType = isImage ? 'image/png' : (isVideo ? 'video/mp4' : 'application/octet-stream');
-
-                const newFile = {
-                    name: `Generated-${item.id}.${fileExt}`,
-                    type: mimeType,
+                const newFile = createMediaChatFile({
+                    baseName: 'Generated',
+                    id: item.id,
                     content: item.url,
                     isImage,
                     isVideo,
-                    isAudio: false,
                     fromHistory: true,
-                    fileExt
-                };
+                });
 
                 setChatFiles(prev => [...prev, newFile]);
                 setIsChatOpen(true);
@@ -5568,9 +5564,12 @@ import {
                 if (!item?.url) return;
                 const isImage = item.type !== 'video';
                 const isVideo = item.type === 'video';
-                const fileExt = isImage ? 'png' : 'mp4';
-                const mimeType = isImage ? 'image/png' : 'video/mp4';
-                const newFile = { name: `Preview-${Date.now()}.${fileExt}`, type: mimeType, content: item.url, isImage, isVideo, isAudio: false, fileExt };
+                const newFile = createMediaChatFile({
+                    baseName: 'Preview',
+                    content: item.url,
+                    isImage,
+                    isVideo,
+                });
                 setChatFiles(prev => [...prev, newFile]);
                 setIsChatOpen(true);
                 closePreviewContextMenu();
@@ -5606,17 +5605,12 @@ import {
 
                 const isImage = !isVideoUrl(node.content);
                 const isVideo = isVideoUrl(node.content);
-                const fileExt = isImage ? 'png' : 'mp4';
-                const mimeType = isImage ? 'image/png' : 'video/mp4';
-                const newFile = {
-                    name: `InputImage-${Date.now()}.${fileExt}`,
-                    type: mimeType,
+                const newFile = createMediaChatFile({
+                    baseName: 'InputImage',
                     content: node.content,
                     isImage,
                     isVideo,
-                    isAudio: false,
-                    fileExt
-                };
+                });
                 setChatFiles(prev => [...prev, newFile]);
                 setIsChatOpen(true);
                 closeInputImageContextMenu();

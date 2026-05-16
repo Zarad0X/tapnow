@@ -2,6 +2,29 @@ const MAX_HISTORY_MESSAGES = 20;
 
 const createMessageId = () => `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+export const createMediaChatFile = ({
+    baseName,
+    content,
+    id = Date.now(),
+    isImage,
+    isVideo,
+    fromHistory = false,
+}) => {
+    const fileExt = isImage ? 'png' : (isVideo ? 'mp4' : 'file');
+    const mimeType = isImage ? 'image/png' : (isVideo ? 'video/mp4' : 'application/octet-stream');
+
+    return {
+        name: `${baseName}-${id}.${fileExt}`,
+        type: mimeType,
+        content,
+        isImage,
+        isVideo,
+        isAudio: false,
+        ...(fromHistory ? { fromHistory: true } : {}),
+        fileExt,
+    };
+};
+
 export const resolveChatSessionForSend = ({ chatSessions, currentChatId }) => {
     const chatIdToUse = currentChatId || chatSessions[0]?.id;
     const sessionToUse = chatSessions.find((session) => session.id === chatIdToUse) || chatSessions[0];
