@@ -113,6 +113,13 @@ import {
   renumberStoryboardShots,
   updateStoryboardShot
 } from './services/storyboardService.js';
+import {
+  findGeneratingStoryboardShotForSource,
+  getConnectedPreviewTargets,
+  getGenerationResultUrl,
+  resolveTaskSourceNodeId,
+  updateConnectedPreviewNodes
+} from './services/previewSyncService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import { ConnectionLayer } from './canvas/ConnectionLayer.jsx';
 import {
@@ -1147,11 +1154,7 @@ import {
             const updatePreviewFromTask = (taskId, url, contentType = 'image', sourceNodeIdOverride = null, mjImages = null) => {
                 if (!url && (!mjImages || mjImages.length === 0)) return;
                 // 找到对应的源节点ID
-                let sourceNodeId = sourceNodeIdOverride;
-                if (!sourceNodeId) {
-                    const historyItem = historyMap.get(taskId);
-                    sourceNodeId = historyItem?.sourceNodeId;
-                }
+                const sourceNodeId = resolveTaskSourceNodeId({ taskId, sourceNodeIdOverride, historyMap });
                 if (!sourceNodeId) {
                     console.warn('[Tapnow] updatePreviewFromTask: 未找到 sourceNodeId for taskId:', taskId);
                     return;
@@ -1160,28 +1163,13 @@ import {
                 // 检查是否是从分镜表触发的生成，如果是则回填到分镜表
                 // 使用 setTimeout 确保在下一个事件循环中执行，此时 nodes 和 connections 已更新
                 setTimeout(() => {
-                    const sourceNode = nodesMap.get(sourceNodeId);
-                    if (sourceNode && isStandardGenerationNodeType(sourceNode.type)) {
-                        // 查找连接到该生成节点的分镜表节点
-                        const storyboardConnections = connections.filter(c => c.to === sourceNodeId);
-                        for (const conn of storyboardConnections) {
-                            const fromNode = nodesMap.get(conn.from);
-                            const storyboardNode = fromNode && fromNode.type === 'storyboard-node' ? fromNode : null;
-                            if (storyboardNode && storyboardNode.settings?.shots) {
-                                // 查找状态为 generating 的 shot，回填结果
-                                const generatingShot = storyboardNode.settings.shots.find(s => s.status === 'generating');
-                                if (generatingShot) {
-                                    const finalUrl = url || (mjImages && mjImages.length > 0 ? mjImages[0] : null);
-                                    if (finalUrl) {
-                                        updateShot(storyboardNode.id, generatingShot.id, {
-                                            image_url: finalUrl,
-                                            status: 'done'
-                                        });
-                                        break; // 只回填第一个找到的
-                                    }
-                                }
-                            }
-                        }
+                    const finalUrl = getGenerationResultUrl({ url, mjImages });
+                    const storyboardShot = findGeneratingStoryboardShotForSource({ sourceNodeId, nodesMap, connections });
+                    if (finalUrl && storyboardShot) {
+                        updateShot(storyboardShot.nodeId, storyboardShot.shotId, {
+                            image_url: finalUrl,
+                            status: 'done'
+                        });
                     }
                 }, 0);
 
@@ -1192,13 +1180,15 @@ import {
                 // 使用函数式更新，确保获取最新的 connections 状态
                 setNodes((prevNodes) => {
                     // 使用 ref 中的最新 connections
-                    const targetIds = latestConnections
-                        .filter((c) => c.from === sourceNodeId)
-                        .map((c) => c.to);
+                    const { connectionsFromSource, targetIds, previewNodes } = getConnectedPreviewTargets({
+                        nodes: prevNodes,
+                        connections: latestConnections,
+                        sourceNodeId,
+                    });
 
                     console.log('[Tapnow] updatePreviewFromTask: 检查连接', {
                         sourceNodeId,
-                        allConnectionsFromSource: latestConnections.filter(c => c.from === sourceNodeId),
+                        allConnectionsFromSource: connectionsFromSource,
                         targetIds,
                         allNodes: prevNodes.map(n => ({ id: n.id, type: n.type }))
                     });
@@ -1206,23 +1196,24 @@ import {
                     if (!targetIds.length) {
                         console.warn('[Tapnow] updatePreviewFromTask: 未找到连接到预览窗口的连接', {
                             sourceNodeId,
-                            connectionsFromSource: latestConnections.filter(c => c.from === sourceNodeId),
+                            connectionsFromSource,
                             allConnections: latestConnections
                         });
                         return prevNodes;
                     }
 
-                    const previewNodes = prevNodes.filter(n => targetIds.includes(n.id) && n.type === 'preview');
                     console.log('[Tapnow] updatePreviewFromTask: 找到预览节点', {
                         targetIds,
                         previewNodes: previewNodes.map(n => ({ id: n.id, type: n.type }))
                     });
 
-                    return prevNodes.map((n) =>
-                        targetIds.includes(n.id) && n.type === 'preview'
-                            ? { ...n, content: url || (mjImages && mjImages.length > 0 ? mjImages[0] : url), previewType: contentType, previewMjImages: mjImages }
-                            : n
-                    );
+                    return updateConnectedPreviewNodes({
+                        nodes: prevNodes,
+                        targetIds,
+                        url,
+                        contentType,
+                        mjImages,
+                    });
                 });
             };
 
