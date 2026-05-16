@@ -155,3 +155,50 @@ export const extractImageUrls = (data) => {
     }
     return [];
 };
+
+export const getBackendDurationValue = (data) => {
+    return data?.data?.duration ||
+        data?.data?.cost_time ||
+        data?.data?.elapsed_time ||
+        data?.data?.time_cost ||
+        data?.data?.spent_time ||
+        data?.duration ||
+        data?.cost_time ||
+        data?.elapsed_time ||
+        data?.time_cost ||
+        data?.spent_time;
+};
+
+export const parseBackendDurationMs = (backendDuration) => {
+    if (backendDuration === null || backendDuration === undefined) return null;
+
+    if (typeof backendDuration === 'number') {
+        return backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
+    }
+
+    if (typeof backendDuration === 'string') {
+        const match = backendDuration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
+        if (match) {
+            const value = parseFloat(match[1]);
+            const unit = match[2].toLowerCase();
+            return (unit === 's' || unit === '秒') ? value * 1000 : value;
+        }
+
+        const parsed = parseFloat(backendDuration);
+        if (!Number.isNaN(parsed)) {
+            return parsed < 10000 ? parsed * 1000 : parsed;
+        }
+    }
+
+    return null;
+};
+
+export const resolveGenerationDurationMs = ({ data, startTime, now = Date.now() }) => {
+    const backendDuration = getBackendDurationValue(data);
+    const backendDurationMs = parseBackendDurationMs(backendDuration);
+
+    return {
+        backendDuration,
+        durationMs: backendDurationMs ?? (now - (startTime || now)),
+    };
+};
