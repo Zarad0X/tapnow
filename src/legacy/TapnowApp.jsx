@@ -269,6 +269,8 @@ import {
                 setIsChatSending,
                 chatSessionDropdownOpen,
                 setChatSessionDropdownOpen,
+                createNewChat,
+                deleteChatSession,
             } = useChatSessions();
 
             const [lightboxItem, setLightboxItem] = useState(null);
@@ -1240,26 +1242,6 @@ import {
             useEffect(() => {
                 scrollToBottom();
             }, [currentSession?.messages, isChatOpen]);
-
-            const createNewChat = () => {
-                const newId = `chat-${Date.now()}`;
-                const newSession = { id: newId, title: '新对话', messages: [] };
-                setChatSessions(prev => [newSession, ...prev]);
-                setCurrentChatId(newId);
-            };
-
-            const deleteChatSession = (e, id) => {
-                e.stopPropagation();
-                const newSessions = chatSessions.filter(s => s.id !== id);
-                if (newSessions.length === 0) {
-                    const defaultSession = { id: 'default', title: '新对话', messages: [] };
-                    setChatSessions([defaultSession]);
-                    setCurrentChatId('default');
-                } else {
-                    setChatSessions(newSessions);
-                    if (currentChatId === id) setCurrentChatId(newSessions[0].id);
-                }
-            };
 
             const handleChatFileUpload = (e) => {
                 const files = Array.from(e.target.files);
