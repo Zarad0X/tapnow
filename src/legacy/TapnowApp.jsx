@@ -138,6 +138,7 @@ import {
   getNodeLabel
 } from './nodes/nodeCatalog.js';
 import {
+  buildRequestHeaders,
   denormalizePromptForSoraRequest,
   extractAsyncTaskId,
   extractAsyncImageItems,
@@ -2282,10 +2283,7 @@ import {
 
                 fetch(pollUrl, {
                     method: 'GET',
-                    headers: {
-                        Authorization: `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: buildRequestHeaders({ apiKey }),
                 })
                 .then((resp) => resp.text())
                 .then((text) => {
