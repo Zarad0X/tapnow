@@ -82,6 +82,7 @@ export {
 } from './config/promptTemplates.js';
 export {
     createChatMediaFile,
+    createUploadedChatFile,
     extractKeyFrames,
     getImageDimensions,
     getVideoMetadata,

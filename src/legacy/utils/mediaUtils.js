@@ -40,6 +40,52 @@ export const createChatMediaFile = ({
     };
 };
 
+export const getFileExtension = (filename = '') => {
+    return filename.split('.').pop()?.toLowerCase() || '';
+};
+
+export const isCodeFileExtension = (fileExt) => {
+    return [
+        'js',
+        'jsx',
+        'ts',
+        'tsx',
+        'py',
+        'java',
+        'cpp',
+        'c',
+        'html',
+        'css',
+        'json',
+        'xml',
+        'yaml',
+        'yml',
+        'md',
+        'txt',
+        'sh',
+        'bash',
+    ].includes(fileExt);
+};
+
+export const createUploadedChatFile = ({ file, content }) => {
+    const fileExt = getFileExtension(file?.name);
+    const fileType = file?.type || '';
+
+    return {
+        name: file?.name || `Upload.${fileExt || 'file'}`,
+        type: fileType,
+        content,
+        isImage: fileType.startsWith('image/'),
+        isVideo: fileType.startsWith('video/'),
+        isAudio: fileType.startsWith('audio/'),
+        isPDF: fileType === 'application/pdf' || fileExt === 'pdf',
+        isDoc: ['doc', 'docx'].includes(fileExt) || fileType.includes('word'),
+        isExcel: ['xls', 'xlsx'].includes(fileExt) || fileType.includes('excel') || fileType.includes('spreadsheet'),
+        isCode: isCodeFileExtension(fileExt),
+        fileExt,
+    };
+};
+
 export const getVideoMetadata = (src) => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');

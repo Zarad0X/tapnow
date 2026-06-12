@@ -60,6 +60,7 @@ import {
   VIDEO_RES_OPTIONS,
   DELETED_MODEL_IDS,
   createChatMediaFile,
+  createUploadedChatFile,
   getRatiosForModel,
   RESOLUTIONS,
   getResolutionsForModel,
@@ -1365,30 +1366,7 @@ import {
                     const reader = new FileReader();
                     reader.onload = (ev) => {
                         const content = ev.target.result;
-                        const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-
-                        // 判断文件类型
-                        const isImage = file.type.startsWith('image/');
-                        const isVideo = file.type.startsWith('video/');
-                        const isAudio = file.type.startsWith('audio/');
-                        const isPDF = file.type === 'application/pdf' || fileExt === 'pdf';
-                        const isDoc = ['doc', 'docx'].includes(fileExt) || file.type.includes('word');
-                        const isExcel = ['xls', 'xlsx'].includes(fileExt) || file.type.includes('excel') || file.type.includes('spreadsheet');
-                        const isCode = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'cpp', 'c', 'html', 'css', 'json', 'xml', 'yaml', 'yml', 'md', 'txt', 'sh', 'bash'].includes(fileExt);
-
-                        setChatFiles(prev => [...prev, {
-                            name: file.name,
-                            type: file.type,
-                            content: content,
-                            isImage,
-                            isVideo,
-                            isAudio,
-                            isPDF,
-                            isDoc,
-                            isExcel,
-                            isCode,
-                            fileExt
-                        }]);
+                        setChatFiles(prev => [...prev, createUploadedChatFile({ file, content })]);
                     };
 
                     // 根据文件类型选择读取方式

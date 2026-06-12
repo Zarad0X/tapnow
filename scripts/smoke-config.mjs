@@ -48,6 +48,7 @@ import {
 } from '../src/legacy/services/generationService.js';
 import {
     createChatMediaFile,
+    createUploadedChatFile,
 } from '../src/legacy/utils/mediaUtils.js';
 import {
     getBatchHistoryCardDisplay,
@@ -147,6 +148,14 @@ const previewChatFile = createChatMediaFile({ name: 'Preview.mp4', content: 'vid
 assert(previewChatFile.type === 'video/mp4' && previewChatFile.isVideo && previewChatFile.fileExt === 'mp4', 'chat media helper should create preview video files');
 const unknownChatFile = createChatMediaFile({ name: 'Generated-x.file', content: 'asset.bin', mediaType: 'file' });
 assert(unknownChatFile.type === 'application/octet-stream' && unknownChatFile.fileExt === 'file', 'chat media helper should preserve generic file fallback');
+const uploadedImageFile = createUploadedChatFile({ file: { name: 'shot.PNG', type: 'image/png' }, content: 'data:image/png;base64,a' });
+assert(uploadedImageFile.isImage && uploadedImageFile.fileExt === 'png', 'uploaded chat file helper should classify image uploads');
+const uploadedDocFile = createUploadedChatFile({ file: { name: 'brief.docx', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, content: 'doc-data' });
+assert(uploadedDocFile.isDoc && !uploadedDocFile.isCode, 'uploaded chat file helper should classify document uploads');
+const uploadedSheetFile = createUploadedChatFile({ file: { name: 'plan.xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, content: 'sheet-data' });
+assert(uploadedSheetFile.isExcel, 'uploaded chat file helper should classify spreadsheet uploads');
+const uploadedCodeFile = createUploadedChatFile({ file: { name: 'index.tsx', type: 'text/plain' }, content: 'code-data' });
+assert(uploadedCodeFile.isCode && uploadedCodeFile.fileExt === 'tsx', 'uploaded chat file helper should classify code uploads');
 const connectedNodes = [
     { id: 'video-1', type: 'video-input', selectedKeyframes: [{ url: 'frame-a.png' }, { url: 'frame-b.png' }] },
     { id: 'image-1', type: 'input-image', content: 'input.png' },
