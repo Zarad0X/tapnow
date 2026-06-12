@@ -42,6 +42,7 @@ import {
     findFirstHttpImageUrl,
     extractImageUrls,
     getAsyncImagePollDelay,
+    getAsyncImageTimeoutConfig,
     getImageModelFeatures,
     getJimengModelName,
     getModelDisplayName,
@@ -120,6 +121,8 @@ assert(getAsyncImagePollDelay({ progress: 92, attempt: 1, isBananaModel: false, 
 assert(getAsyncImagePollDelay({ progress: 72, attempt: 1, isBananaModel: false, baseDelayMs: 5000 }) === 2000, 'async image poll delay should speed up late progress');
 assert(getAsyncImagePollDelay({ progress: 40, attempt: 51, isBananaModel: false, baseDelayMs: 5000 }) === 10000, 'async image poll delay should back off long non-banana tasks');
 assert(getAsyncImagePollDelay({ progress: 40, attempt: 51, isBananaModel: true, baseDelayMs: 5000 }) === 5000, 'async image poll delay should not long-backoff banana tasks');
+assert(getAsyncImageTimeoutConfig(false).maxAttempts === 300 && getAsyncImageTimeoutConfig(false).timeoutSeconds === 1500, 'async image timeout config should keep default model limits');
+assert(getAsyncImageTimeoutConfig(true).maxAttempts === 160 && getAsyncImageTimeoutConfig(true).timeoutSeconds === 800, 'async image timeout config should keep banana model limits');
 assert(getImageModelFeatures('nano-banana-2', { modelName: 'nano-banana-2' }).isNanoBanana2, 'image model features should detect nano-banana-2');
 assert(getJimengModelName('jimeng-4.1', {}) === 'jimeng-4.1', 'jimeng model name should follow selected model');
 assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) === '4K', 'nano-banana-2 image_size should normalize casing');

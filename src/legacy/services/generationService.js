@@ -216,6 +216,14 @@ export const getAsyncImagePollDelay = ({ progress, attempt, isBananaModel, baseD
     return baseDelayMs;
 };
 
+export const getAsyncImageTimeoutConfig = (isBananaModel) => {
+    return {
+        maxAttempts: isBananaModel ? 160 : 300,
+        timeoutSeconds: isBananaModel ? 800 : 1500,
+        baseDelayMs: 5000,
+    };
+};
+
 export const getImageModelFeatures = (modelId, config = {}) => {
     const modelName = config?.modelName ?? '';
     const provider = config?.provider ?? '';

@@ -156,6 +156,7 @@ import {
   classifyAsyncImageStatus,
   ASYNC_IMAGE_STATUS,
   getAsyncImagePollDelay,
+  getAsyncImageTimeoutConfig,
   resolveAsyncImageProgress,
   submitGenerationRequest
 } from './services/generationService.js';
@@ -2262,11 +2263,9 @@ import {
             // 异步图像生成任务轮询函数
             const pollImageTask = (taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt = 0, isBananaModel = false) => {
                 // banana模型使用800秒超时（160次 * 5秒），其他模型使用25分钟（300次 * 5秒）
-                const maxAttempts = isBananaModel ? 160 : 300;
-                const baseDelayMs = 5000; // 基础轮询间隔5秒
+                const { maxAttempts, timeoutSeconds, baseDelayMs } = getAsyncImageTimeoutConfig(isBananaModel);
 
                 if (attempt > maxAttempts) {
-                    const timeoutSeconds = isBananaModel ? 800 : 1500;
                     setHistory((prev) => prev.map((hItem) =>
                         hItem.id === taskId
                             ? { ...hItem, status: 'failed', errorMsg: `图像生成轮询超时（已等待${timeoutSeconds}秒）` }
@@ -2292,7 +2291,7 @@ import {
                         data = JSON.parse(text);
                     } catch (err) {
                         console.error('[Async Image] Failed to parse response:', err);
-                        setTimeout(() => pollImageTask(taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt + 1, isBananaModel), delayMs);
+                        setTimeout(() => pollImageTask(taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt + 1, isBananaModel), baseDelayMs);
                         return;
                     }
 
