@@ -106,6 +106,20 @@ export const generateScenePrompt = (scene) => {
     return scene.description || '极度奢华的星际战舰舰桥内部，空间广阔如同一座宫殿，四壁装饰着繁复的黄金浮雕与象牙立柱，地面铺着深红色的天鹅绒地毯，巨大的落地舷窗外是深邃星空，中央悬挂着水晶吊灯，操作台被伪装成古典家具的样子，整体色调金碧辉煌，氛围庄严却透着一种不切实际的荒谬感';
 };
 
+export const getDescriptionNodeDefaultPrompt = ({ isCharacter, settings = {} } = {}) => {
+    if (!isCharacter) {
+        return generateScenePrompt({ description: settings.description });
+    }
+
+    return generateCharacterPrompt({
+        name: settings.characterName || '{角色名}',
+        age: settings.age,
+        gender: settings.gender,
+        description: settings.description,
+        role: settings.role,
+    }, 'image');
+};
+
 export const createEmptyStoryboardShot = ({ shotCount = 0, defaultModel = '' } = {}) => ({
     id: `shot-${Date.now()}`,
     scene_index: shotCount + 1,

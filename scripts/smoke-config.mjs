@@ -81,6 +81,7 @@ import {
     filterScenePromptLocal,
     generateCharacterPrompt,
     generateScenePrompt,
+    getDescriptionNodeDefaultPrompt,
     getDefaultDurationForModel,
     getDefaultDurationsForModel,
     getStylePrefix,
@@ -129,6 +130,8 @@ assert(generatedCharacterPrompt.includes('漫画风格') && generatedCharacterPr
 assert(generateCharacterPrompt({ name: '阿青' }).includes('360度全方位展示身体'), 'character prompt helper should keep video turntable suffix by default');
 assert(generateScenePrompt({ description: '雨夜街道' }) === '雨夜街道', 'scene prompt helper should preserve provided scene description');
 assert(generateScenePrompt({}).includes('星际战舰舰桥内部'), 'scene prompt helper should keep fallback scene description');
+assert(getDescriptionNodeDefaultPrompt({ isCharacter: true, settings: { characterName: '阿青' } }).includes('名叫阿青') && !getDescriptionNodeDefaultPrompt({ isCharacter: true, settings: { characterName: '阿青' } }).includes('360度'), 'description node prompt helper should keep character image-mode defaults');
+assert(getDescriptionNodeDefaultPrompt({ isCharacter: false, settings: { description: '雨夜街道' } }) === '雨夜街道', 'description node prompt helper should keep scene defaults');
 assert(filterCharacterPromptLocal('动漫风格，全身视角，角色站在飞船场景里，说你好').includes('纯白色背景'), 'character prompt fallback filter should enforce white background');
 assert(filterScenePromptLocal('角色站在大厅，背景是玻璃幕墙，城市灯光').includes('背景') || filterScenePromptLocal('角色站在大厅，背景是玻璃幕墙，城市灯光').includes('城市灯光'), 'scene prompt fallback filter should keep scene context');
 

@@ -110,6 +110,7 @@ import {
   filterScenePromptLocal,
   generateCharacterPrompt,
   generateScenePrompt,
+  getDescriptionNodeDefaultPrompt,
   getDefaultDurationForModel,
   getDefaultDurationsForModel,
   getStylePrefix,
@@ -7857,10 +7858,10 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                             { value: 'manga', label: '漫画' }
                                         ];
 
-                                        // 默认提示词
-                                        const defaultPrompt = isCharacter
-                                            ? `动漫风格，全身视角，名叫${node.settings?.characterName || '{角色名}'}的${node.settings?.age || '25'}岁左右${node.settings?.gender || '年轻男人'}站在白色背景前，${node.settings?.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${node.settings?.characterName || '{角色名}'}，${node.settings?.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`
-                                            : node.settings?.description || `极度奢华的星际战舰舰桥内部，空间广阔如同一座宫殿，四壁装饰着繁复的黄金浮雕与象牙立柱，地面铺着深红色的天鹅绒地毯，巨大的落地舷窗外是深邃星空，中央悬挂着水晶吊灯，操作台被伪装成古典家具的样子，整体色调金碧辉煌，氛围庄严却透着一种不切实际的荒谬感`;
+                                        const defaultPrompt = getDescriptionNodeDefaultPrompt({
+                                            isCharacter,
+                                            settings: node.settings,
+                                        });
 
                                         return (
                                             <>
