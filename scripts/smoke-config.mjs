@@ -68,6 +68,15 @@ import {
     createUploadedChatFile,
 } from '../src/legacy/utils/mediaUtils.js';
 import {
+    filterCharacterPromptLocal,
+    filterScenePromptLocal,
+    generateCharacterPrompt,
+    generateScenePrompt,
+    getDefaultDurationForModel,
+    getDefaultDurationsForModel,
+    getStylePrefix,
+} from '../src/legacy/services/storyboardService.js';
+import {
     getBatchHistoryCardDisplay,
     getCanvasSendableHistoryItems,
     getCompletedVideoHistory,
@@ -101,6 +110,18 @@ assert(getModelParams('grok-3', '1:1', '720P').sizeStr === '1:1', 'grok model pa
 assert(getDefaultNodeSize('storyboard-node').w === 600, 'storyboard node default size should be cataloged');
 assert(getNodeLabel('generate-scene-image') === '生成场景图片', 'node labels should be cataloged');
 assert(createDefaultNodeSettings('extract-characters-scenes', { apiConfigs: DEFAULT_API_CONFIGS }).model, 'extract node should pick a chat model');
+
+assert(getDefaultDurationForModel('sora-2-pro') === '15s', 'storyboard duration helper should keep sora pro default');
+assert(getDefaultDurationsForModel('veo3').join(',') === '8s', 'storyboard duration helper should keep veo durations constrained');
+assert(getStylePrefix('realistic') === '写实风格', 'style prefix helper should keep realistic style label');
+assert(getStylePrefix('unknown') === '动漫风格', 'style prefix helper should keep anime fallback');
+const generatedCharacterPrompt = generateCharacterPrompt({ name: '阿青', age: '18', gender: '少女', description: '银色短发', role: '飞行员' }, 'image', 'manga');
+assert(generatedCharacterPrompt.includes('漫画风格') && generatedCharacterPrompt.includes('阿青') && !generatedCharacterPrompt.includes('360度'), 'character prompt helper should build image prompts without video turntable suffix');
+assert(generateCharacterPrompt({ name: '阿青' }).includes('360度全方位展示身体'), 'character prompt helper should keep video turntable suffix by default');
+assert(generateScenePrompt({ description: '雨夜街道' }) === '雨夜街道', 'scene prompt helper should preserve provided scene description');
+assert(generateScenePrompt({}).includes('星际战舰舰桥内部'), 'scene prompt helper should keep fallback scene description');
+assert(filterCharacterPromptLocal('动漫风格，全身视角，角色站在飞船场景里，说你好').includes('纯白色背景'), 'character prompt fallback filter should enforce white background');
+assert(filterScenePromptLocal('角色站在大厅，背景是玻璃幕墙，城市灯光').includes('背景') || filterScenePromptLocal('角色站在大厅，背景是玻璃幕墙，城市灯光').includes('城市灯光'), 'scene prompt fallback filter should keep scene context');
 
 assert(normalizeBananaResolution('2k') === '2K', 'banana resolution normalization should preserve API casing');
 assert(normalizePromptForSora('hello @alice', 'sora-2') === 'hello @{alice}', 'sora prompt references should be normalized');

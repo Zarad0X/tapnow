@@ -105,8 +105,13 @@ import {
 import {
   createEmptyStoryboardShot,
   createShotsFromAnalysisResults,
+  filterCharacterPromptLocal,
+  filterScenePromptLocal,
+  generateCharacterPrompt,
+  generateScenePrompt,
   getDefaultDurationForModel,
   getDefaultDurationsForModel,
+  getStylePrefix,
   renumberStoryboardShots,
   updateStoryboardShot
 } from './services/storyboardService.js';
@@ -4316,88 +4321,6 @@ import {
                 return genNodes;
             }, [connections, nodesMap]);
 
-            // 获取模型的默认时长
-            // 获取风格前缀
-            const getStylePrefix = useCallback((style) => {
-                switch(style) {
-                    case '2d-anime': return '2D动漫风格';
-                    case '3d-anime': return '3D动漫风格';
-                    case 'realistic': return '写实风格';
-                    case 'selfie': return '自拍风格';
-                    case 'news': return '新闻风格';
-                    case 'manga': return '漫画风格';
-                    default: return '动漫风格';
-                }
-            }, []);
-
-            // 本地提示词过滤函数（降级方案）- 角色专用，确保白色背景
-            const filterCharacterPromptLocal = useCallback((prompt) => {
-                if (!prompt) return '';
-
-                // 1. 移除所有对话内容
-                let filtered = prompt.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
-
-                // 2. 移除游戏相关描述
-                filtered = filtered.replace(/利用《.*?》游戏.*?/g, '');
-
-                // 3. 移除内心独白描述
-                filtered = filtered.replace(/内心(.*?)(?=[，。；！？、\s])/g, '');
-
-                // 4. 移除动作描述
-                filtered = filtered.replace(/(推动|拉动|操作|转身|站立|走动|说|介绍|正在|负责|穿着|站在|面对|做)(.*?)(?=[，。；！？、\s])/g, '');
-
-                // 5. 移除特定短语
-                filtered = filtered.replace(/(天命杠杆|战舰|游戏|操作|控制|推进|推动|极低速度|以极低速度|最终|最后|现在|正在|目前|此前|起先|起初)/g, '');
-
-                // 6. 移除360度展示相关
-                filtered = filtered.replace(/，然后缓慢转一圈360度全方位展示身体/g, '');
-
-                // 7. 移除场景描述，确保背景是纯白色
-                filtered = filtered.replace(/(背景|场景|环境|建筑|地点|位置|周围|附近|后面|前面|旁边)(.*?)(?=[，。；！？、\s])/g, '');
-
-                // 8. 确保包含纯白色背景描述
-                if (!filtered.includes('白色背景') && !filtered.includes('纯白色背景')) {
-                    filtered = filtered.replace(/(动漫风格，全身视角，)/, '$1站在纯白色背景前，');
-                    if (!filtered.includes('纯白色背景')) {
-                        filtered = `动漫风格，全身视角，站在纯白色背景前，${filtered}`;
-                    }
-                }
-
-                // 9. 清理多余空格和标点
-                filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
-
-                // 10. 如果过滤后内容太少，恢复基本结构
-                if (filtered.length < 50) {
-                    filtered = `动漫风格，全身视角，站在纯白色背景前，角色穿着简洁的服装，表情平静，姿态自然`;
-                }
-
-                return filtered;
-            }, []);
-
-            // 场景提示词本地过滤函数（降级方案）
-            const filterScenePromptLocal = useCallback((prompt) => {
-                if (!prompt) return '';
-
-                // 移除人物相关描述
-                let filtered = prompt.replace(/(人物|角色|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装)(.*?)(?=[，。；！？、\s])/g, '');
-
-                // 移除对话内容
-                filtered = filtered.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
-
-                // 移除特定人物相关短语
-                filtered = filtered.replace(/(名叫|角色|人物|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装|角色特征)/g, '');
-
-                // 清理多余空格和标点
-                filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
-
-                // 如果过滤后内容太少，恢复基本结构
-                if (filtered.length < 30) {
-                    filtered = `场景描述：环境、建筑、背景`;
-                }
-
-                return filtered;
-            }, []);
-
             // 提示词过滤函数 - 使用大模型API过滤（角色专用，确保白色背景）
             const filterCharacterPrompt = useCallback(async (rawPrompt) => {
                 if (!rawPrompt || rawPrompt.trim().length === 0) return rawPrompt;
@@ -4463,7 +4386,7 @@ import {
                     console.error('提示词过滤失败:', error);
                     return filterCharacterPromptLocal(rawPrompt);
                 }
-            }, [apiConfigs, globalApiKey, filterCharacterPromptLocal]);
+            }, [apiConfigs, globalApiKey]);
 
             // 场景提示词过滤函数 - 过滤掉人物、字符描述
             const filterScenePrompt = useCallback(async (rawPrompt) => {
@@ -4521,27 +4444,7 @@ import {
                     console.error('场景提示词过滤失败:', error);
                     return filterScenePromptLocal(rawPrompt);
                 }
-            }, [apiConfigs, globalApiKey, filterScenePromptLocal]);
-
-            // 生成角色描述提示词
-            const generateCharacterPrompt = useCallback((character, mode = 'video', style = 'none') => {
-                const age = character.age || '25';
-                const gender = character.gender || '年轻男人';
-                const stylePrefix = getStylePrefix(style);
-                const basePrompt = `${stylePrefix}，全身视角，名叫${character.name}的${age}岁左右${gender}站在白色背景前，${character.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${character.name}，${character.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`;
-
-                // 如果是视频模式，添加360度展示提示词
-                if (mode === 'video') {
-                    return `${basePrompt}，然后缓慢转一圈360度全方位展示身体`;
-                }
-
-                return basePrompt;
-            }, [getStylePrefix]);
-
-            // 生成场景描述提示词
-            const generateScenePrompt = useCallback((scene) => {
-                return scene.description || `极度奢华的星际战舰舰桥内部，空间广阔如同一座宫殿，四壁装饰着繁复的黄金浮雕与象牙立柱，地面铺着深红色的天鹅绒地毯，巨大的落地舷窗外是深邃星空，中央悬挂着水晶吊灯，操作台被伪装成古典家具的样子，整体色调金碧辉煌，氛围庄严却透着一种不切实际的荒谬感`;
-            }, []);
+            }, [apiConfigs, globalApiKey]);
 
             // 自动生成完整工作流（描述节点 -> 视频生成节点 -> 创建节点）
             const generateFullWorkflow = useCallback((extractNodeId, analysisResults) => {
