@@ -13,6 +13,9 @@ import {
     getConnectedTextNodeContents,
 } from '../src/legacy/canvas/connections.js';
 import {
+    arrangeNodesByGraphLayers,
+} from '../src/legacy/canvas/layout.js';
+import {
     DEFAULT_API_CONFIGS,
     DELETED_MODEL_IDS,
     calculateResolution,
@@ -324,6 +327,30 @@ assert(getConnectedTextNodeContents({ connections: sampleConnections, nodesMap: 
 const imageForInputCache = buildConnectedImageForInputCache({ connections: sampleConnections, nodesMap: connectedNodesMap });
 assert(getConnectedImageForInputFromCache(imageForInputCache, 'target-1') === 'frame-a.png', 'input image cache should prefer first selected video frame');
 assert(getConnectedImageForInputFromCache(imageForInputCache, 'target-1', 'oref') === 'input.png', 'input image cache should preserve named input image');
+const arrangedNodes = arrangeNodesByGraphLayers({
+    nodesToArrange: [
+        { id: 'layout-a', x: 500, y: 300, width: 100, height: 50 },
+        { id: 'layout-b', x: 100, y: 100, width: 100, height: 50 },
+        { id: 'layout-c', x: 300, y: 200, width: 120, height: 60 },
+    ],
+    connections: [
+        { from: 'layout-b', to: 'layout-c' },
+        { from: 'layout-c', to: 'layout-a' },
+    ],
+});
+assert(arrangedNodes.get('layout-b').x === 100 && arrangedNodes.get('layout-c').x === 350 && arrangedNodes.get('layout-a').x === 620, 'graph layout should arrange connected nodes by layer');
+const branchingLayout = arrangeNodesByGraphLayers({
+    nodesToArrange: [
+        { id: 'root', x: 0, y: 0, width: 100, height: 50 },
+        { id: 'low', x: 0, y: 200, width: 100, height: 50 },
+        { id: 'high', x: 0, y: 10, width: 100, height: 50 },
+    ],
+    connections: [
+        { from: 'root', to: 'low' },
+        { from: 'root', to: 'high' },
+    ],
+});
+assert(branchingLayout.get('high').y < branchingLayout.get('low').y, 'graph layout should preserve layer vertical order from existing positions');
 
 [
     CHARACTER_SHEET_PROMPT_TEXT,
