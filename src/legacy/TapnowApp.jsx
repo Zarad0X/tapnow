@@ -140,6 +140,7 @@ import {
 import {
   denormalizePromptForSoraRequest,
   extractAsyncTaskId,
+  extractAsyncImageItems,
   findFirstHttpImageUrl,
   extractImageUrls,
   getImageModelFeatures,
@@ -148,6 +149,7 @@ import {
   getNanoBanana2ImageSizeFlag,
   isSoraModel,
   normalizeBananaResolution,
+  normalizeImageItemsToUrls,
   normalizePromptForSora,
   parseDurationSeconds,
   resolveGenerationDurationMs,
@@ -2310,71 +2312,20 @@ import {
                         dataKeys: data ? Object.keys(data) : []
                     });
 
-                    let images = [];
-
-                    // 尝试多种方式提取图片数据（按优先级顺序）
-                    // 方式1：data.data.data（嵌套格式，最常见）
-                    if (data?.data?.data && Array.isArray(data.data.data) && data.data.data.length > 0) {
-                        images = data.data.data;
-                        console.log('[Async Image] 从 data.data.data 提取到图片:', images.length, '张');
-                    }
-                    // 方式2：data.data.images
-                    else if (data?.data?.images && Array.isArray(data.data.images) && data.data.images.length > 0) {
-                        images = data.data.images;
-                        console.log('[Async Image] 从 data.data.images 提取到图片:', images.length, '张');
-                    }
-                    // 方式3：data.images
-                    else if (data?.images && Array.isArray(data.images) && data.images.length > 0) {
-                        images = data.images;
-                        console.log('[Async Image] 从 data.images 提取到图片:', images.length, '张');
-                    }
-                    // 方式4：data.data（标准OpenAI格式）
-                    else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-                        images = data.data;
-                        console.log('[Async Image] 从 data.data 提取到图片:', images.length, '张');
+                    let { images, source: imageSource } = extractAsyncImageItems(data);
+                    if (images.length > 0 && imageSource) {
+                        console.log(`[Async Image] 从 ${imageSource} 提取到图片:`, images.length, '张');
                     }
 
-                    // 如果还是没有找到图片，尝试从revised_prompt中提取URL（备用方案）
-                    if (images.length === 0) {
-                        // 尝试从data.data.data[0].revised_prompt中提取
-                        if (data?.data?.data && Array.isArray(data.data.data) && data.data.data.length > 0) {
-                            const firstItem = data.data.data[0];
-                            if (firstItem?.revised_prompt) {
-                                const urlMatch = firstItem.revised_prompt.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
-                                if (urlMatch && urlMatch[1]) {
-                                    images = [{ url: urlMatch[1] }];
-                                    console.log('[Async Image] 从 revised_prompt 中提取到图片URL:', urlMatch[1]);
-                                }
-                            }
-                        }
-                        // 尝试从data.data.revised_prompt中提取
-                        if (images.length === 0 && data?.data?.revised_prompt) {
-                            const urlMatch = data.data.revised_prompt.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
-                            if (urlMatch && urlMatch[1]) {
-                                images = [{ url: urlMatch[1] }];
-                                console.log('[Async Image] 从 data.data.revised_prompt 中提取到图片URL:', urlMatch[1]);
-                            }
-                        }
-                        // 最后尝试：如果data.data.data存在但images为空，可能是数据结构问题，直接使用data.data.data
-                        if (images.length === 0 && data?.data?.data && Array.isArray(data.data.data) && data.data.data.length > 0) {
-                            // 检查每个元素是否有url字段
-                            const itemsWithUrl = data.data.data.filter(item => item?.url || item?.image_url || item?.imageUrl);
-                            if (itemsWithUrl.length > 0) {
-                                images = itemsWithUrl;
-                                console.log('[Async Image] 从 data.data.data 中重新提取到图片（二次尝试）:', images.length, '张');
-                            }
-                        }
-
-                        // 如果任务状态是SUCCESS但还没找到图片，立即执行深度搜索（不等待后续处理）
-                        if (images.length === 0 && asyncImageStatus === ASYNC_IMAGE_STATUS.COMPLETED) {
-                            console.log('[Async Image] 任务状态为成功但图片数量为0，立即执行深度搜索');
-                            const foundUrl = findFirstHttpImageUrl(data);
-                            if (foundUrl) {
-                                images = [{ url: foundUrl }];
-                                console.log('[Async Image] 通过立即深度搜索找到图片URL:', foundUrl);
-                            } else {
-                                console.warn('[Async Image] 深度搜索未找到图片URL，响应数据结构:', JSON.stringify(data, null, 2).substring(0, 500));
-                            }
+                    // 如果任务状态是SUCCESS但还没找到图片，立即执行深度搜索（不等待后续处理）
+                    if (images.length === 0 && asyncImageStatus === ASYNC_IMAGE_STATUS.COMPLETED) {
+                        console.log('[Async Image] 任务状态为成功但图片数量为0，立即执行深度搜索');
+                        const foundUrl = findFirstHttpImageUrl(data);
+                        if (foundUrl) {
+                            images = [{ url: foundUrl }];
+                            console.log('[Async Image] 通过立即深度搜索找到图片URL:', foundUrl);
+                        } else {
+                            console.warn('[Async Image] 深度搜索未找到图片URL，响应数据结构:', JSON.stringify(data, null, 2).substring(0, 500));
                         }
                     }
 
@@ -2394,10 +2345,7 @@ import {
                                     // 任务完成
                                     if (images && images.length > 0) {
                                         // 提取图片URL，支持多种字段名和格式
-                                        const imageUrls = images.map(img => {
-                                            if (typeof img === 'string') return img;
-                                            return img?.url || img?.image_url || img?.imageUrl || '';
-                                        }).filter(Boolean);
+                                        const imageUrls = normalizeImageItemsToUrls(images);
 
                                         console.log('[Async Image] 提取到的图片URLs:', imageUrls);
 

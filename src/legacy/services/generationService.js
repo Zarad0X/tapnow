@@ -122,6 +122,55 @@ export const findFirstHttpImageUrl = (value, { maxDepth = 5 } = {}) => {
     return visit(value, 0, new WeakSet());
 };
 
+const extractMarkdownImageUrl = (text) => {
+    if (!text) return null;
+    const urlMatch = String(text).match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+    return urlMatch?.[1] || null;
+};
+
+export const extractAsyncImageItems = (data) => {
+    if (Array.isArray(data?.data?.data) && data.data.data.length > 0) {
+        return { images: data.data.data, source: 'data.data.data' };
+    }
+    if (Array.isArray(data?.data?.images) && data.data.images.length > 0) {
+        return { images: data.data.images, source: 'data.data.images' };
+    }
+    if (Array.isArray(data?.images) && data.images.length > 0) {
+        return { images: data.images, source: 'data.images' };
+    }
+    if (Array.isArray(data?.data) && data.data.length > 0) {
+        return { images: data.data, source: 'data.data' };
+    }
+
+    const nestedRevisedPromptUrl = extractMarkdownImageUrl(data?.data?.data?.[0]?.revised_prompt);
+    if (nestedRevisedPromptUrl) {
+        return { images: [{ url: nestedRevisedPromptUrl }], source: 'data.data.data.revised_prompt' };
+    }
+
+    const revisedPromptUrl = extractMarkdownImageUrl(data?.data?.revised_prompt);
+    if (revisedPromptUrl) {
+        return { images: [{ url: revisedPromptUrl }], source: 'data.data.revised_prompt' };
+    }
+
+    if (Array.isArray(data?.data?.data) && data.data.data.length > 0) {
+        const itemsWithUrl = data.data.data.filter((item) => item?.url || item?.image_url || item?.imageUrl);
+        if (itemsWithUrl.length > 0) {
+            return { images: itemsWithUrl, source: 'data.data.data.url_fields' };
+        }
+    }
+
+    return { images: [], source: null };
+};
+
+export const normalizeImageItemsToUrls = (images) => {
+    return (images || [])
+        .map((image) => {
+            if (typeof image === 'string') return image;
+            return image?.url || image?.image_url || image?.imageUrl || '';
+        })
+        .filter(Boolean);
+};
+
 export const ASYNC_IMAGE_STATUS = {
     COMPLETED: 'completed',
     FAILED: 'failed',

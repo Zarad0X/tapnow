@@ -38,6 +38,7 @@ import {
     classifyAsyncImageStatus,
     denormalizePromptForSoraRequest,
     extractAsyncTaskId,
+    extractAsyncImageItems,
     findFirstHttpImageUrl,
     extractImageUrls,
     getAsyncImagePollDelay,
@@ -46,6 +47,7 @@ import {
     getModelDisplayName,
     getNanoBanana2ImageSizeFlag,
     normalizeBananaResolution,
+    normalizeImageItemsToUrls,
     normalizePromptForSora,
     normalizeDurationToMs,
     parseDurationSeconds,
@@ -126,6 +128,10 @@ assert(buildRequestHeaders({ apiKey: 'k', useMultipart: true })['Content-Type'] 
 assert(resolveEndpointUrl({ endpoint: '/v1/images', baseUrl: 'https://example.com/' }) === 'https://example.com/v1/images', 'relative endpoints should be resolved once');
 assert(extractAsyncTaskId({ data: { task_id: 'task-1' } }) === 'task-1', 'async task id extraction should handle nested task_id');
 assert(extractImageUrls({ data: [{ url: 'a.png' }, 'b.png'] }).join(',') === 'a.png,b.png', 'image URL extraction should handle OpenAI-like arrays');
+assert(extractAsyncImageItems({ data: { data: [{ imageUrl: 'nested.png' }] } }).source === 'data.data.data', 'async image item extraction should prefer nested data arrays');
+assert(extractAsyncImageItems({ data: { images: ['image-a.png'] } }).images[0] === 'image-a.png', 'async image item extraction should handle data.images arrays');
+assert(extractAsyncImageItems({ data: { revised_prompt: '![x](https://example.com/revised.png)' } }).images[0].url === 'https://example.com/revised.png', 'async image item extraction should handle revised_prompt markdown');
+assert(normalizeImageItemsToUrls([{ image_url: 'a.png' }, { imageUrl: 'b.png' }, 'c.png']).join(',') === 'a.png,b.png,c.png', 'image item URL normalization should support common URL fields and strings');
 
 const sampleHistory = [
     { id: '1', type: 'video', status: 'completed', url: 'video.mp4' },
