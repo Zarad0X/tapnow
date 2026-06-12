@@ -193,6 +193,7 @@ import {
   processMaskForInpainting,
   resizeImageForVeo
 } from './utils/mediaProcessing.js';
+import { parseJsonWithRepair } from './utils/jsonUtils.js';
 
         function TapnowApp() {
             const [theme, setTheme] = useLocalStorage('tapnow_theme', 'dark', {
@@ -5383,44 +5384,32 @@ import {
 
                         console.log('[视频拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
 
-                        // 尝试解析 JSON（可能包含 markdown 代码块）
-                        let jsonStr = aiContent.trim();
-                        if (jsonStr.startsWith('```')) {
-                            jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                        }
-
                         let result;
                         try {
-                            result = JSON.parse(jsonStr);
+                            const parsed = parseJsonWithRepair(aiContent);
+                            result = parsed.value;
                             console.log('[视频拆解] JSON 解析成功，场景索引:', result.scene_index || sceneIndex + 1);
-                        } catch (e) {
-                            console.error('[视频拆解] 解析 JSON 失败:', e, '内容前500字符:', jsonStr.substring(0, 500));
-                            // 尝试修复常见的JSON格式问题
-                            try {
-                                // 移除可能的注释
-                                jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                                // 尝试修复尾随逗号
-                                jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                                result = JSON.parse(jsonStr);
+                            if (parsed.repaired) {
                                 console.log('[视频拆解] JSON 修复后解析成功');
-                            } catch (e2) {
-                                console.error('[视频拆解] JSON修复后仍解析失败:', e2, '原始内容:', jsonStr);
-                                // 如果还是失败，创建一个默认结构
-                                result = {
-                                    video_id: videoFileName,
-                                    scene_index: sceneIndex + 1,
-                                    time_range: timeRange,
-                                    keyframes: group.map((frame, fIdx) => ({
-                                        type: fIdx === 0 ? 'prev' : fIdx === 1 ? 'current' : 'next',
-                                        time: frame.time,
-                                        description: `视频帧 ${frame.time.toFixed(1)}s`,
-                                        mj_prompt: 'A detailed scene from the video',
-                                        jimeng_prompt: '视频场景描述'
-                                    })),
-                                    global_tags: { style: [], camera: [], color: [] }
-                                };
-                                console.warn('[视频拆解] 使用默认结构，原始内容:', jsonStr.substring(0, 200));
                             }
+                        } catch (e) {
+                            const jsonText = e.originalText || '';
+                            console.error('[视频拆解] 解析 JSON 失败:', e.firstError || e, '内容前500字符:', jsonText.substring(0, 500));
+                            console.error('[视频拆解] JSON修复后仍解析失败:', e, '原始内容:', (e.repairedText || jsonText).substring(0, 500));
+                            result = {
+                                video_id: videoFileName,
+                                scene_index: sceneIndex + 1,
+                                time_range: timeRange,
+                                keyframes: group.map((frame, fIdx) => ({
+                                    type: fIdx === 0 ? 'prev' : fIdx === 1 ? 'current' : 'next',
+                                    time: frame.time,
+                                    description: `视频帧 ${frame.time.toFixed(1)}s`,
+                                    mj_prompt: 'A detailed scene from the video',
+                                    jimeng_prompt: '视频场景描述'
+                                })),
+                                global_tags: { style: [], camera: [], color: [] }
+                            };
+                            console.warn('[视频拆解] 使用默认结构，原始内容:', jsonText.substring(0, 200));
                         }
 
                         allResults.push(result);
@@ -5683,28 +5672,19 @@ import {
 
                     console.log('[AI导演拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
 
-                    // 解析 JSON
-                    let jsonStr = aiContent.trim();
-                    if (jsonStr.startsWith('```')) {
-                        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                    }
-
                     let result;
                     try {
-                        result = JSON.parse(jsonStr);
+                        const parsed = parseJsonWithRepair(aiContent);
+                        result = parsed.value;
                         console.log('[AI导演拆解] JSON 解析成功，场景数:', result.scenes?.length || 0);
-                    } catch (e) {
-                        console.error('[AI导演拆解] 解析 JSON 失败:', e, '内容前500字符:', jsonStr.substring(0, 500));
-                        // 尝试修复
-                        try {
-                            jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                            jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                            result = JSON.parse(jsonStr);
+                        if (parsed.repaired) {
                             console.log('[AI导演拆解] JSON 修复后解析成功');
-                        } catch (e2) {
-                            console.error('[AI导演拆解] JSON修复后仍解析失败:', e2, '原始内容:', jsonStr.substring(0, 500));
-                            throw new Error(`模型返回的不是有效的 JSON 格式。原始内容: ${jsonStr.substring(0, 200)}`);
                         }
+                    } catch (e) {
+                        const jsonText = e.originalText || '';
+                        console.error('[AI导演拆解] 解析 JSON 失败:', e.firstError || e, '内容前500字符:', jsonText.substring(0, 500));
+                        console.error('[AI导演拆解] JSON修复后仍解析失败:', e, '原始内容:', (e.repairedText || jsonText).substring(0, 500));
+                        throw new Error(`模型返回的不是有效的 JSON 格式。原始内容: ${jsonText.substring(0, 200)}`);
                     }
 
                     // 处理 voiceover_script，转换为 voiceoverResults 格式
@@ -6367,25 +6347,12 @@ import {
                     const data = await response.json();
                     const aiContent = data.choices?.[0]?.message?.content || "{}";
 
-                    // 解析 JSON
-                    let jsonStr = aiContent.trim();
-                    if (jsonStr.startsWith('```')) {
-                        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                    }
-
                     let result;
                     try {
-                        result = JSON.parse(jsonStr);
+                        result = parseJsonWithRepair(aiContent).value;
                     } catch (e) {
-                        console.error('解析 JSON 失败:', e, jsonStr);
-                        // 尝试修复
-                        try {
-                            jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                            jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                            result = JSON.parse(jsonStr);
-                        } catch (e2) {
-                            throw new Error('模型返回的不是有效的 JSON 格式');
-                        }
+                        console.error('解析 JSON 失败:', e.firstError || e, e.originalText || aiContent);
+                        throw new Error('模型返回的不是有效的 JSON 格式');
                     }
 
                     // 更新节点状态

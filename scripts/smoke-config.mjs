@@ -69,6 +69,11 @@ import {
     toggleVideoFrameSelection,
 } from '../src/legacy/utils/mediaUtils.js';
 import {
+    parseJsonWithRepair,
+    repairRelaxedJsonText,
+    stripMarkdownJsonFence,
+} from '../src/legacy/utils/jsonUtils.js';
+import {
     filterCharacterPromptLocal,
     filterScenePromptLocal,
     generateCharacterPrompt,
@@ -239,6 +244,10 @@ const uploadedSheetFile = createUploadedChatFile({ file: { name: 'plan.xlsx', ty
 assert(uploadedSheetFile.isExcel, 'uploaded chat file helper should classify spreadsheet uploads');
 const uploadedCodeFile = createUploadedChatFile({ file: { name: 'index.tsx', type: 'text/plain' }, content: 'code-data' });
 assert(uploadedCodeFile.isCode && uploadedCodeFile.fileExt === 'tsx', 'uploaded chat file helper should classify code uploads');
+assert(stripMarkdownJsonFence('```json\n{"ok":true}\n```') === '{"ok":true}', 'json helper should strip markdown fences');
+assert(repairRelaxedJsonText('{"a":1,}').includes('{"a":1}'), 'json helper should remove trailing commas');
+const repairedJson = parseJsonWithRepair('```json\n{"items":[1,2,],}\n```');
+assert(repairedJson.value.items.length === 2 && repairedJson.repaired, 'json helper should parse fenced relaxed json');
 const sampleFrames = [
     { time: 0, url: 'frame-0.png' },
     { time: 1, url: 'frame-1.png' },
