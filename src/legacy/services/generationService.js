@@ -194,6 +194,11 @@ export const classifyAsyncImageStatus = (status) => {
     return ASYNC_IMAGE_STATUS.UNKNOWN;
 };
 
+export const shouldContinueAsyncImagePolling = (asyncImageStatus) => {
+    return asyncImageStatus !== ASYNC_IMAGE_STATUS.COMPLETED &&
+        asyncImageStatus !== ASYNC_IMAGE_STATUS.FAILED;
+};
+
 const parseProgressValue = (value) => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value !== 'string') return null;

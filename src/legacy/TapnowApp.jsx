@@ -161,6 +161,7 @@ import {
   getAsyncImagePollDelay,
   getAsyncImageTimeoutConfig,
   resolveAsyncImageProgress,
+  shouldContinueAsyncImagePolling,
   submitGenerationRequest
 } from './services/generationService.js';
 import { BatchHistoryModal } from './history/BatchHistoryModal.jsx';
@@ -2564,10 +2565,8 @@ import {
                     // 动态调整轮询间隔：任务接近完成时缩短间隔，确保能快速检测到完成状态
                     const currentStatus = getAsyncImageStatusValue(data);
                     const currentAsyncImageStatus = classifyAsyncImageStatus(currentStatus);
-                    const shouldContinuePolling = currentAsyncImageStatus !== ASYNC_IMAGE_STATUS.COMPLETED &&
-                        currentAsyncImageStatus !== ASYNC_IMAGE_STATUS.FAILED;
 
-                    if (shouldContinuePolling) {
+                    if (shouldContinueAsyncImagePolling(currentAsyncImageStatus)) {
                         // 动态轮询间隔策略：
                         // 1. 任务进度>90%：1秒间隔（快速检测完成）
                         // 2. 任务进度>70%：2秒间隔（加快检测）

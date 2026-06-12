@@ -58,6 +58,7 @@ import {
     resolveAsyncImageProgress,
     resolveGenerationDurationMs,
     resolveEndpointUrl,
+    shouldContinueAsyncImagePolling,
 } from '../src/legacy/services/generationService.js';
 import {
     createChatMediaFile,
@@ -118,6 +119,10 @@ assert(classifyAsyncImageStatus('in_progress') === ASYNC_IMAGE_STATUS.RUNNING, '
 assert(classifyAsyncImageStatus('weird') === ASYNC_IMAGE_STATUS.UNKNOWN, 'async image status classifier should preserve unknown states');
 assert(getAsyncImageStatusValue({ data: { status: 'success' }, status: 'failed' }) === 'SUCCESS', 'async image status getter should prefer nested status');
 assert(getAsyncImageStatusValue({ status: 'done' }) === 'DONE', 'async image status getter should normalize root status casing');
+assert(!shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.COMPLETED), 'async image polling should stop on completed status');
+assert(!shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.FAILED), 'async image polling should stop on failed status');
+assert(shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.RUNNING), 'async image polling should continue on running status');
+assert(shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.UNKNOWN), 'async image polling should continue on unknown status');
 assert(resolveAsyncImageProgress({ data: { data: { progress: '72%' } }, attempt: 2 }) === 72, 'async image progress should parse nested percentage strings');
 assert(resolveAsyncImageProgress({ data: { progress: 120 }, attempt: 2 }) === 95, 'async image progress should clamp high values');
 assert(resolveAsyncImageProgress({ data: {}, attempt: 4 }) === 18, 'async image progress should fall back to attempt-based running progress');
