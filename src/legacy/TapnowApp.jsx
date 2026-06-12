@@ -118,6 +118,7 @@ import {
   getDefaultDurationForModel,
   getDefaultDurationsForModel,
   getStylePrefix,
+  parseTimeRangeToSeconds,
   renumberStoryboardShots,
   removeCharacterTurntablePrompt,
   updateStoryboardShot
@@ -8462,24 +8463,6 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                         const isCharacter = node.type === 'create-character';
                                         const title = isCharacter ? '创建角色' : '创建场景';
 
-                                        // 解析旧数据：早期 create-scene 使用 timeRange（例如 "1,3"）
-                                        const parseTimeRangeToSeconds = (tr) => {
-                                            if (!tr) return null;
-                                            try {
-                                                const cleaned = String(tr)
-                                                    .trim()
-                                                    .replace(/[，\s]+/g, ',')
-                                                    .replace(/[~\-–—]+/g, ',');
-                                                const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
-                                                if (parts.length < 2) return null;
-                                                const start = parseFloat(parts[0]);
-                                                const end = parseFloat(parts[1]);
-                                                if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-                                                return { start, end };
-                                            } catch (e) {
-                                                return null;
-                                            }
-                                        };
                                         const parsedRange = !isCharacter ? parseTimeRangeToSeconds(node.settings?.timeRange) : null;
                                         const uiStartSecond = node.settings?.startSecond ?? parsedRange?.start ?? 1;
                                         const uiEndSecond = node.settings?.endSecond ?? parsedRange?.end ?? 3;

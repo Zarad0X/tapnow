@@ -93,6 +93,7 @@ import {
     getDefaultDurationsForModel,
     getStylePrefix,
     createVoiceoverResultsFromScript,
+    parseTimeRangeToSeconds,
     removeCharacterTurntablePrompt,
 } from '../src/legacy/services/storyboardService.js';
 import {
@@ -154,6 +155,9 @@ const directorAnalysis = createAnalysisResultsFromDirectorScenes([{
     prompts: { mj_prompt: 'mj prompt', jimeng_prompt: 'jimeng prompt' },
 }]);
 assert(directorAnalysis[0].scene_index === 3 && directorAnalysis[0].keyframes[0].description === '推镜 人物转身' && directorAnalysis[0].global_tags.camera[0] === '推镜', 'director scene helper should convert scenes to analysis results');
+assert(parseTimeRangeToSeconds('1,3').start === 1 && parseTimeRangeToSeconds('1,3').end === 3, 'time range parser should handle comma ranges');
+assert(parseTimeRangeToSeconds('1.5s - 3.5s').start === 1.5, 'time range parser should preserve legacy parseFloat behavior for unit-suffixed ranges');
+assert(parseTimeRangeToSeconds(' 1.5 — 3.5 ').end === 3.5, 'time range parser should handle dash-separated ranges');
 
 assert(normalizeBananaResolution('2k') === '2K', 'banana resolution normalization should preserve API casing');
 assert(normalizePromptForSora('hello @alice', 'sora-2') === 'hello @{alice}', 'sora prompt references should be normalized');

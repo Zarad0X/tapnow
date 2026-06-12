@@ -213,3 +213,21 @@ export const createAnalysisResultsFromDirectorScenes = (scenes = []) => {
         },
     }));
 };
+
+export const parseTimeRangeToSeconds = (timeRange) => {
+    if (!timeRange) return null;
+    try {
+        const cleaned = String(timeRange)
+            .trim()
+            .replace(/[，\s]+/g, ',')
+            .replace(/[~\-–—]+/g, ',');
+        const parts = cleaned.split(',').map((part) => part.trim()).filter(Boolean);
+        if (parts.length < 2) return null;
+        const start = parseFloat(parts[0]);
+        const end = parseFloat(parts[1]);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+        return { start, end };
+    } catch (error) {
+        return null;
+    }
+};
