@@ -327,6 +327,13 @@ export const resolveAsyncImagePollUrl = ({ baseUrl, taskIdForPoll }) => {
     });
 };
 
+export const resolveMidjourneyPollUrl = ({ baseUrl, mjMode, jobId }) => {
+    return resolveEndpointUrl({
+        baseUrl,
+        endpoint: `/${mjMode}/mj/task/${jobId}/fetch`,
+    });
+};
+
 export const serializeGenerationPayload = ({ payload, useMultipart = false }) => {
     return useMultipart ? payload : JSON.stringify(payload);
 };

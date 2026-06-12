@@ -158,6 +158,7 @@ import {
   parseDurationSeconds,
   resolveAsyncImagePollUrl,
   resolveGenerationDurationMs,
+  resolveMidjourneyPollUrl,
   classifyAsyncImageStatus,
   ASYNC_IMAGE_STATUS,
   getAsyncImagePollDelay,
@@ -2613,12 +2614,9 @@ import {
                     return;
                 }
 
-                fetch(`${baseUrl}/${mjMode}/mj/task/${jobId}/fetch`, {
+                fetch(resolveMidjourneyPollUrl({ baseUrl, mjMode, jobId }), {
                     method: 'GET',
-                    headers: {
-                        Authorization: `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: buildRequestHeaders({ apiKey }),
                 })
                 .then((resp) => resp.text())
                 .then((text) => {
