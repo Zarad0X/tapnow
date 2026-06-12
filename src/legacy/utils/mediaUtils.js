@@ -86,6 +86,40 @@ export const createUploadedChatFile = ({ file, content }) => {
     };
 };
 
+export const getVideoFrameSelectionKey = (frame) => `${frame?.time}-${frame?.url}`;
+
+export const toggleVideoFrameSelection = ({
+    frames = [],
+    selectedKeyframes = [],
+    frame,
+    index = 0,
+    lastSelectedIndex = null,
+    shiftKey = false,
+} = {}) => {
+    const frameMap = new Map(frames.map((item) => [getVideoFrameSelectionKey(item), item]));
+    let nextSelected = [...selectedKeyframes];
+
+    if (shiftKey && lastSelectedIndex !== undefined && lastSelectedIndex !== null && frames.length > 0) {
+        const start = Math.min(lastSelectedIndex, index);
+        const end = Math.max(lastSelectedIndex, index);
+        const rangeFrames = frames.slice(start, end + 1);
+        const selectedKeys = new Set(nextSelected.map(getVideoFrameSelectionKey));
+        rangeFrames.forEach((item) => selectedKeys.add(getVideoFrameSelectionKey(item)));
+        nextSelected = Array.from(selectedKeys).map((key) => frameMap.get(key)).filter(Boolean);
+    } else {
+        const frameKey = getVideoFrameSelectionKey(frame);
+        const exists = nextSelected.some((item) => getVideoFrameSelectionKey(item) === frameKey);
+        nextSelected = exists
+            ? nextSelected.filter((item) => getVideoFrameSelectionKey(item) !== frameKey)
+            : [...nextSelected, frame];
+    }
+
+    return {
+        selectedKeyframes: nextSelected,
+        lastSelectedIndex: index,
+    };
+};
+
 export const getVideoMetadata = (src) => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');

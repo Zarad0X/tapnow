@@ -71,6 +71,7 @@ import {
   isVideoUrl,
   getVideoMetadata,
   extractKeyFrames,
+  toggleVideoFrameSelection,
   ImageCompareView,
   Button,
   debounce,
@@ -6408,29 +6409,16 @@ import {
                 const shiftKey = !!event?.shiftKey;
                 setNodes(prev => prev.map(n => {
                     if (n.id !== nodeId) return n;
-                    const frames = n.frames || [];
-                    const keyOf = (f) => `${f.time}-${f.url}`;
-                    const frameMap = new Map(frames.map(f => [keyOf(f), f]));
-                    const currentSelected = n.selectedKeyframes || [];
-                    let nextSelected = [...currentSelected];
-
-                    if (shiftKey && frameSelectionRef.current[nodeId] !== undefined && frameSelectionRef.current[nodeId] !== null && frames.length > 0) {
-                        const lastIndex = frameSelectionRef.current[nodeId];
-                        const start = Math.min(lastIndex, index);
-                        const end = Math.max(lastIndex, index);
-                        const rangeFrames = frames.slice(start, end + 1);
-                        const selectedKeys = new Set(nextSelected.map(keyOf));
-                        rangeFrames.forEach(f => selectedKeys.add(keyOf(f)));
-                        nextSelected = Array.from(selectedKeys).map(k => frameMap.get(k)).filter(Boolean);
-                    } else {
-                        const exists = nextSelected.some(f => keyOf(f) === keyOf(frame));
-                        nextSelected = exists
-                            ? nextSelected.filter(f => keyOf(f) !== keyOf(frame))
-                            : [...nextSelected, frame];
-                    }
-
-                    frameSelectionRef.current[nodeId] = index;
-                    return { ...n, selectedKeyframes: nextSelected };
+                    const selection = toggleVideoFrameSelection({
+                        frames: n.frames || [],
+                        selectedKeyframes: n.selectedKeyframes || [],
+                        frame,
+                        index,
+                        lastSelectedIndex: frameSelectionRef.current[nodeId],
+                        shiftKey,
+                    });
+                    frameSelectionRef.current[nodeId] = selection.lastSelectedIndex;
+                    return { ...n, selectedKeyframes: selection.selectedKeyframes };
                 }));
             };
 

@@ -66,6 +66,7 @@ import {
 import {
     createChatMediaFile,
     createUploadedChatFile,
+    toggleVideoFrameSelection,
 } from '../src/legacy/utils/mediaUtils.js';
 import {
     filterCharacterPromptLocal,
@@ -238,6 +239,34 @@ const uploadedSheetFile = createUploadedChatFile({ file: { name: 'plan.xlsx', ty
 assert(uploadedSheetFile.isExcel, 'uploaded chat file helper should classify spreadsheet uploads');
 const uploadedCodeFile = createUploadedChatFile({ file: { name: 'index.tsx', type: 'text/plain' }, content: 'code-data' });
 assert(uploadedCodeFile.isCode && uploadedCodeFile.fileExt === 'tsx', 'uploaded chat file helper should classify code uploads');
+const sampleFrames = [
+    { time: 0, url: 'frame-0.png' },
+    { time: 1, url: 'frame-1.png' },
+    { time: 2, url: 'frame-2.png' },
+];
+const singleFrameSelection = toggleVideoFrameSelection({
+    frames: sampleFrames,
+    selectedKeyframes: [],
+    frame: sampleFrames[1],
+    index: 1,
+});
+assert(singleFrameSelection.selectedKeyframes[0].url === 'frame-1.png' && singleFrameSelection.lastSelectedIndex === 1, 'video frame selection should add clicked frames');
+const removedFrameSelection = toggleVideoFrameSelection({
+    frames: sampleFrames,
+    selectedKeyframes: singleFrameSelection.selectedKeyframes,
+    frame: sampleFrames[1],
+    index: 1,
+});
+assert(removedFrameSelection.selectedKeyframes.length === 0, 'video frame selection should remove clicked selected frames');
+const rangeFrameSelection = toggleVideoFrameSelection({
+    frames: sampleFrames,
+    selectedKeyframes: [sampleFrames[0]],
+    frame: sampleFrames[2],
+    index: 2,
+    lastSelectedIndex: 0,
+    shiftKey: true,
+});
+assert(rangeFrameSelection.selectedKeyframes.map((frame) => frame.url).join(',') === 'frame-0.png,frame-1.png,frame-2.png', 'video frame selection should include shift ranges');
 const connectedNodes = [
     { id: 'video-1', type: 'video-input', selectedKeyframes: [{ url: 'frame-a.png' }, { url: 'frame-b.png' }] },
     { id: 'image-1', type: 'input-image', content: 'input.png' },

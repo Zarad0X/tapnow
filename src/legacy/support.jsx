@@ -86,6 +86,7 @@ export {
     extractKeyFrames,
     getImageDimensions,
     getVideoMetadata,
+    toggleVideoFrameSelection,
     isVideoUrl,
 } from './utils/mediaUtils.js';
 
