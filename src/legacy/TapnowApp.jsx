@@ -138,6 +138,7 @@ import {
   buildConnectedImagesCache,
   buildConnectedNodeTypeCache,
   buildNodeConnectedStatus,
+  filterConnectionsForVisibleNodes,
   findConnectedNodeOfType,
   getConnectedImageForInputFromCache,
   getConnectedInputImagesFromCache,
@@ -6372,15 +6373,9 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                 visibleNodes
             }) => {
                 // 连接线虚拟化：只渲染可见节点的连接线
-                const visibleNodeIds = useMemo(() => {
-                    return new Set(visibleNodes.map(n => n.id));
-                }, [visibleNodes]);
-
                 const visibleConnections = useMemo(() => {
-                    return connections.filter(conn =>
-                        visibleNodeIds.has(conn.from) || visibleNodeIds.has(conn.to)
-                    );
-                }, [connections, visibleNodeIds]);
+                    return filterConnectionsForVisibleNodes({ connections, visibleNodes });
+                }, [connections, visibleNodes]);
 
                 return (
                     <div className="absolute inset-0 pointer-events-none overflow-visible w-full h-full">

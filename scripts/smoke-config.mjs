@@ -8,6 +8,7 @@ import {
     buildConnectedImagesCache,
     buildConnectedNodeTypeCache,
     buildNodeConnectedStatus,
+    filterConnectionsForVisibleNodes,
     findConnectedNodeOfType,
     getConnectedImageForInputFromCache,
     getConnectedInputImagesFromCache,
@@ -370,6 +371,14 @@ const connectedStatus = buildNodeConnectedStatus([
     { from: 'c', to: 'target-explicit-default', inputType: 'default' },
 ]);
 assert(connectedStatus.get('target-default') && connectedStatus.get('target-explicit-default') && !connectedStatus.has('target-named'), 'connected status helper should only mark default inputs');
+assert(filterConnectionsForVisibleNodes({
+    connections: [
+        { from: 'hidden-a', to: 'hidden-b' },
+        { from: 'visible-a', to: 'hidden-c' },
+        { from: 'hidden-d', to: 'visible-b' },
+    ],
+    visibleNodes: [{ id: 'visible-a' }, { id: 'visible-b' }],
+}).length === 2, 'visible connection helper should keep connections touching visible nodes');
 const arrangedNodes = arrangeNodesByGraphLayers({
     nodesToArrange: [
         { id: 'layout-a', x: 500, y: 300, width: 100, height: 50 },

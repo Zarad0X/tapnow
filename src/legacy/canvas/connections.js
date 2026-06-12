@@ -155,3 +155,10 @@ export const buildNodeConnectedStatus = (connections) => {
     });
     return status;
 };
+
+export const filterConnectionsForVisibleNodes = ({ connections, visibleNodes }) => {
+    const visibleNodeIds = new Set((visibleNodes || []).map((node) => node.id));
+    return (connections || []).filter((connection) =>
+        visibleNodeIds.has(connection.from) || visibleNodeIds.has(connection.to)
+    );
+};
