@@ -4,6 +4,15 @@ import {
     getSelectedNodeIdsForClipboard,
 } from '../src/legacy/canvas/clipboard.js';
 import {
+    buildConnectedImageForInputCache,
+    buildConnectedImagesCache,
+    buildConnectedNodeTypeCache,
+    findConnectedNodeOfType,
+    getConnectedImageForInputFromCache,
+    getConnectedInputImagesFromCache,
+    getConnectedTextNodeContents,
+} from '../src/legacy/canvas/connections.js';
+import {
     DEFAULT_API_CONFIGS,
     DELETED_MODEL_IDS,
     calculateResolution,
@@ -138,6 +147,39 @@ const previewChatFile = createChatMediaFile({ name: 'Preview.mp4', content: 'vid
 assert(previewChatFile.type === 'video/mp4' && previewChatFile.isVideo && previewChatFile.fileExt === 'mp4', 'chat media helper should create preview video files');
 const unknownChatFile = createChatMediaFile({ name: 'Generated-x.file', content: 'asset.bin', mediaType: 'file' });
 assert(unknownChatFile.type === 'application/octet-stream' && unknownChatFile.fileExt === 'file', 'chat media helper should preserve generic file fallback');
+const connectedNodes = [
+    { id: 'video-1', type: 'video-input', selectedKeyframes: [{ url: 'frame-a.png' }, { url: 'frame-b.png' }] },
+    { id: 'image-1', type: 'input-image', content: 'input.png' },
+    { id: 'preview-1', type: 'preview', previewMjImages: ['preview-a.png'] },
+    { id: 'gen-1', type: 'gen-image' },
+    { id: 'text-1', type: 'text-node', settings: { text: 'hello prompt' } },
+    { id: 'analyze-1', type: 'video-analyze' },
+    { id: 'target-1', type: 'gen-image' },
+];
+const connectedNodesMap = new Map(connectedNodes.map((node) => [node.id, node]));
+const sampleConnections = [
+    { id: 'c-video', from: 'video-1', to: 'target-1' },
+    { id: 'c-image', from: 'image-1', to: 'target-1', inputType: 'oref' },
+    { id: 'c-preview', from: 'preview-1', to: 'target-1', inputType: 'sref' },
+    { id: 'c-gen', from: 'gen-1', to: 'target-1' },
+    { id: 'c-text', from: 'text-1', to: 'target-1' },
+    { id: 'c-analyze', from: 'analyze-1', to: 'target-1' },
+];
+const connectedImagesCache = buildConnectedImagesCache({
+    connections: sampleConnections,
+    nodesMap: connectedNodesMap,
+    history: [{ sourceNodeId: 'gen-1', status: 'completed', mjImages: ['mj-a.png', 'mj-b.png'] }],
+});
+assert(getConnectedInputImagesFromCache(connectedImagesCache, 'target-1').join(',') === 'frame-a.png,frame-b.png,mj-a.png,mj-b.png', 'connected image cache should include video frames and generated history');
+assert(getConnectedInputImagesFromCache(connectedImagesCache, 'target-1', 'oref')[0] === 'input.png', 'connected image cache should preserve input types');
+assert(getConnectedInputImagesFromCache(connectedImagesCache, 'target-1', 'sref')[0] === 'preview-a.png', 'connected image cache should read preview images');
+const videoNodeCache = buildConnectedNodeTypeCache({ connections: sampleConnections, nodesMap: connectedNodesMap, nodeType: 'video-input' });
+assert(videoNodeCache.get('target-1').id === 'video-1', 'connected node cache should keep first matching node type');
+assert(findConnectedNodeOfType({ connections: sampleConnections, nodesMap: connectedNodesMap, targetNodeId: 'target-1', nodeType: 'video-analyze' }).id === 'analyze-1', 'connected node finder should locate analyze nodes');
+assert(getConnectedTextNodeContents({ connections: sampleConnections, nodesMap: connectedNodesMap, targetNodeId: 'target-1' })[0] === 'hello prompt', 'connected text helper should read text node content');
+const imageForInputCache = buildConnectedImageForInputCache({ connections: sampleConnections, nodesMap: connectedNodesMap });
+assert(getConnectedImageForInputFromCache(imageForInputCache, 'target-1') === 'frame-a.png', 'input image cache should prefer first selected video frame');
+assert(getConnectedImageForInputFromCache(imageForInputCache, 'target-1', 'oref') === 'input.png', 'input image cache should preserve named input image');
 
 [
     CHARACTER_SHEET_PROMPT_TEXT,

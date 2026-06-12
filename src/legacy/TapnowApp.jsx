@@ -118,6 +118,15 @@ import {
   isEditableElement
 } from './canvas/clipboard.js';
 import {
+  buildConnectedImageForInputCache,
+  buildConnectedImagesCache,
+  buildConnectedNodeTypeCache,
+  findConnectedNodeOfType,
+  getConnectedImageForInputFromCache,
+  getConnectedInputImagesFromCache,
+  getConnectedTextNodeContents
+} from './canvas/connections.js';
+import {
   getCanvasDetailLevel,
   getVisibleNodes,
   screenToWorldPoint
@@ -1165,80 +1174,24 @@ import {
 
             // 使用 useMemo 缓存连接图片的计算结果，避免重复计算
             const connectedImagesCache = useMemo(() => {
-                const cache = new Map(); // nodeId -> { inputType -> images[] }
-                connections.forEach(conn => {
-                    const inputType = conn.inputType || 'default';
-                    if (!cache.has(conn.to)) {
-                        cache.set(conn.to, new Map());
-                    }
-                    const nodeConnections = cache.get(conn.to);
-                    if (!nodeConnections.has(inputType)) {
-                        nodeConnections.set(inputType, []);
-                    }
-                    const sourceNode = nodesMap.get(conn.from);
-                    if (sourceNode) {
-                        let images = [];
-                        if (sourceNode.type === 'video-input') {
-                            const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
-                                ? sourceNode.selectedKeyframes.map(f => f.url)
-                                : [];
-                            if (selected.length > 0) {
-                                images = selected;
-                            } else if (sourceNode.frames && sourceNode.frames.length > 0) {
-                                images = [sourceNode.frames[0].url];
-                            }
-                        } else if (sourceNode.type === 'input-image' && sourceNode.content) {
-                            images = [sourceNode.content];
-                        } else if (sourceNode.type === 'preview') {
-                            // 从预览窗口获取选中的图片
-                            if (sourceNode.selectedPreviewImage) {
-                                images = [sourceNode.selectedPreviewImage];
-                            } else if (sourceNode.content) {
-                                images = [sourceNode.content];
-                            } else if (sourceNode.previewMjImages && sourceNode.previewMjImages.length > 0) {
-                                images = [sourceNode.previewMjImages[0]];
-                            }
-                        } else if (sourceNode.type === 'gen-image' || sourceNode.type === 'gen-video') {
-                            // 从历史记录中获取该节点最新生成的图片/视频
-                            const nodeHistory = history.filter(h => h.sourceNodeId === sourceNode.id && h.status === 'completed');
-                            if (nodeHistory.length > 0) {
-                                const latestResult = nodeHistory[nodeHistory.length - 1];
-                                // 优先获取 MJ/jimeng 的4张切割图
-                                if (latestResult.mjImages && latestResult.mjImages.length > 0) {
-                                    images = [...latestResult.mjImages];
-                                } else if (latestResult.resultUrl) {
-                                    images = [latestResult.resultUrl];
-                                } else if (latestResult.resultUrls && latestResult.resultUrls.length > 0) {
-                                    images = latestResult.resultUrls;
-                                }
-                            }
-                        }
-                        if (images.length > 0) {
-                            nodeConnections.get(inputType).push(...images);
-                        }
-                    }
+                return buildConnectedImagesCache({
+                    connections,
+                    nodesMap,
+                    history,
                 });
-                return cache;
             }, [connections, nodesMap, nodes.length, history, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.length || 0}:${n.frames?.length || 0}:${n.selectedPreviewImage || ''}:${n.previewMjImages?.length || 0}`).join('|')]);
 
             function getConnectedInputImages(targetNodeId, inputType = 'default') {
-                const nodeCache = connectedImagesCache.get(targetNodeId);
-                if (!nodeCache) return [];
-                return nodeCache.get(inputType) || [];
+                return getConnectedInputImagesFromCache(connectedImagesCache, targetNodeId, inputType);
             }
 
             // 使用 useMemo 缓存 video-input 节点查找结果
             const connectedVideoInputCache = useMemo(() => {
-                const cache = new Map(); // nodeId -> videoInputNode
-                connections.forEach(conn => {
-                    if (!cache.has(conn.to)) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'video-input') {
-                            cache.set(conn.to, sourceNode);
-                        }
-                    }
+                return buildConnectedNodeTypeCache({
+                    connections,
+                    nodesMap,
+                    nodeType: 'video-input',
                 });
-                return cache;
             }, [connections, nodesMap]);
 
             // 获取连接的 video-input 节点（用于 video-analyze 节点）
@@ -1248,67 +1201,34 @@ import {
 
             // 获取连接的 video-analyze 节点（用于 storyboard-node 节点）
             const getConnectedVideoAnalyzeNode = useCallback((targetNodeId) => {
-                for (const conn of connections) {
-                    if (conn.to === targetNodeId) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'video-analyze') {
-                            return sourceNode;
-                        }
-                    }
-                }
-                return null;
+                return findConnectedNodeOfType({
+                    connections,
+                    nodesMap,
+                    targetNodeId,
+                    nodeType: 'video-analyze',
+                });
             }, [connections, nodesMap]);
 
             // 功能2：获取连接的文字节点内容
             const getConnectedTextNodes = useCallback((targetNodeId) => {
-                const texts = [];
-                connections.forEach(conn => {
-                    if (conn.to === targetNodeId) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'text-node') {
-                            const text = sourceNode.settings?.text || '';
-                            if (text) texts.push(text);
-                        }
-                    }
+                return getConnectedTextNodeContents({
+                    connections,
+                    nodesMap,
+                    targetNodeId,
                 });
-                return texts;
             }, [connections, nodesMap]);
 
             // 使用 useMemo 缓存特定输入点的图片URL
             const connectedImageForInputCache = useMemo(() => {
-                const cache = new Map(); // `${nodeId}:${inputType}` -> imageUrl
-                connections.forEach(conn => {
-                    const inputType = conn.inputType || 'default';
-                    const key = `${conn.to}:${inputType}`;
-                    if (!cache.has(key)) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode) {
-                            let imageUrl = null;
-                            if (sourceNode.type === 'video-input') {
-                                const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
-                                    ? sourceNode.selectedKeyframes[0].url
-                                    : null;
-                                if (selected) {
-                                    imageUrl = selected;
-                                } else if (sourceNode.frames && sourceNode.frames[0]) {
-                                    imageUrl = sourceNode.frames[0].url;
-                                }
-                            } else if (sourceNode.type === 'input-image' && sourceNode.content) {
-                                imageUrl = sourceNode.content;
-                            }
-                            if (imageUrl) {
-                                cache.set(key, imageUrl);
-                            }
-                        }
-                    }
+                return buildConnectedImageForInputCache({
+                    connections,
+                    nodesMap,
                 });
-                return cache;
             }, [connections, nodesMap, nodes.length, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.[0]?.url || ''}:${n.frames?.[0]?.url || ''}`).join('|')]);
 
             // 获取连接到特定输入点的图片URL
             const getConnectedImageForInput = useCallback((targetNodeId, inputType) => {
-                const key = `${targetNodeId}:${inputType || 'default'}`;
-                return connectedImageForInputCache.get(key) || null;
+                return getConnectedImageForInputFromCache(connectedImageForInputCache, targetNodeId, inputType || 'default');
             }, [connectedImageForInputCache]);
 
 
