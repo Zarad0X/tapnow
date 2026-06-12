@@ -43,7 +43,9 @@ import {
     getNanoBanana2ImageSizeFlag,
     normalizeBananaResolution,
     normalizePromptForSora,
+    normalizeDurationToMs,
     parseDurationSeconds,
+    resolveGenerationDurationMs,
     resolveEndpointUrl,
 } from '../src/legacy/services/generationService.js';
 import {
@@ -89,6 +91,12 @@ assert(normalizeBananaResolution('2k') === '2K', 'banana resolution normalizatio
 assert(normalizePromptForSora('hello @alice', 'sora-2') === 'hello @{alice}', 'sora prompt references should be normalized');
 assert(denormalizePromptForSoraRequest('hello @{alice}') === 'hello @alice', 'sora API request prompt references should be denormalized');
 assert(parseDurationSeconds('15s') === 15, 'duration parsing should strip units');
+assert(normalizeDurationToMs(49) === 49000, 'numeric backend durations below 10000 should be treated as seconds');
+assert(normalizeDurationToMs(12000) === 12000, 'large numeric backend durations should be treated as milliseconds');
+assert(normalizeDurationToMs('2.5s') === 2500, 'duration normalization should parse seconds strings');
+assert(normalizeDurationToMs('800ms') === 800, 'duration normalization should parse millisecond strings');
+assert(resolveGenerationDurationMs({ data: { data: { cost_time: '3秒' } }, startTime: 100, endTime: 1000 }).durationMs === 3000, 'generation duration should prefer nested backend timing');
+assert(resolveGenerationDurationMs({ data: {}, startTime: 100, endTime: 1000 }).durationMs === 900, 'generation duration should fall back to frontend timing');
 assert(getImageModelFeatures('nano-banana-2', { modelName: 'nano-banana-2' }).isNanoBanana2, 'image model features should detect nano-banana-2');
 assert(getJimengModelName('jimeng-4.1', {}) === 'jimeng-4.1', 'jimeng model name should follow selected model');
 assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) === '4K', 'nano-banana-2 image_size should normalize casing');

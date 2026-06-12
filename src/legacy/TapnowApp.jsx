@@ -149,6 +149,7 @@ import {
   normalizeBananaResolution,
   normalizePromptForSora,
   parseDurationSeconds,
+  resolveGenerationDurationMs,
   submitGenerationRequest
 } from './services/generationService.js';
 import { BatchHistoryModal } from './history/BatchHistoryModal.jsx';
@@ -2431,38 +2432,14 @@ import {
                                         if (imageUrls.length > 0) {
                                             const primaryUrl = imageUrls[0];
 
-                                            // 优先使用后端返回的实际花费时间（如果存在）
-                                            // 后端可能返回的字段：duration, cost_time, elapsed_time, time_cost, spent_time 等（单位可能是秒或毫秒）
-                                            let durationMs = null;
-                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time ||
-                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration ||
-                                                                  data?.cost_time || data?.elapsed_time || data?.time_cost || data?.spent_time;
-
-                                            if (backendDuration !== null && backendDuration !== undefined) {
-                                                // 如果后端返回的是秒（数字<10000），转换为毫秒；否则认为是毫秒
-                                                if (typeof backendDuration === 'number') {
-                                                    durationMs = backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
-                                                } else if (typeof backendDuration === 'string') {
-                                                    // 尝试解析字符串格式的时间（如 "49.0s", "107.0s"）
-                                                    const match = backendDuration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
-                                                    if (match) {
-                                                        const value = parseFloat(match[1]);
-                                                        const unit = match[2].toLowerCase();
-                                                        durationMs = (unit === 's' || unit === '秒') ? value * 1000 : value;
-                                                    } else {
-                                                        const parsed = parseFloat(backendDuration);
-                                                        if (!isNaN(parsed)) {
-                                                            durationMs = parsed < 10000 ? parsed * 1000 : parsed;
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // 如果后端没有返回时间，使用前端计算的时间
-                                            if (durationMs === null) {
-                                                const endTime = Date.now();
-                                                durationMs = endTime - (hItem.startTime || endTime);
-                                            }
+                                            const {
+                                                durationMs,
+                                                backendDuration,
+                                                usedBackendDuration,
+                                            } = resolveGenerationDurationMs({
+                                                data,
+                                                startTime: hItem.startTime,
+                                            });
 
                                             console.log('[Async Image] 任务完成，准备更新UI:', {
                                                 taskId,
@@ -2471,7 +2448,7 @@ import {
                                                 imageCount: imageUrls.length,
                                                 durationMs,
                                                 backendDuration,
-                                                frontendCalculated: durationMs === null ? null : (Date.now() - (hItem.startTime || Date.now()))
+                                                frontendCalculated: usedBackendDuration ? null : durationMs
                                             });
 
                                             // 更新预览窗口（立即执行，不等待）
@@ -2566,35 +2543,10 @@ import {
                                         if (foundUrl) {
                                             console.log('[Async Image] 通过深度搜索找到图片URL:', foundUrl);
 
-                                            // 优先使用后端返回的实际花费时间（如果存在）
-                                            let durationMs = null;
-                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time ||
-                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration ||
-                                                                  data?.cost_time || data?.elapsed_time || data?.time_cost || data?.spent_time;
-
-                                            if (backendDuration !== null && backendDuration !== undefined) {
-                                                if (typeof backendDuration === 'number') {
-                                                    durationMs = backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
-                                                } else if (typeof backendDuration === 'string') {
-                                                    const match = backendDuration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
-                                                    if (match) {
-                                                        const value = parseFloat(match[1]);
-                                                        const unit = match[2].toLowerCase();
-                                                        durationMs = (unit === 's' || unit === '秒') ? value * 1000 : value;
-                                                    } else {
-                                                        const parsed = parseFloat(backendDuration);
-                                                        if (!isNaN(parsed)) {
-                                                            durationMs = parsed < 10000 ? parsed * 1000 : parsed;
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // 如果后端没有返回时间，使用前端计算的时间
-                                            if (durationMs === null) {
-                                                const endTime = Date.now();
-                                                durationMs = endTime - (hItem.startTime || endTime);
-                                            }
+                                            const { durationMs } = resolveGenerationDurationMs({
+                                                data,
+                                                startTime: hItem.startTime,
+                                            });
 
                                             // 更新预览窗口（立即执行，不等待）
                                             // 即使savedSourceNodeId为空，也尝试调用updatePreviewFromTask，它会从history中查找

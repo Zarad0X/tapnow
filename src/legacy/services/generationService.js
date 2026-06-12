@@ -33,6 +33,59 @@ export const parseDurationSeconds = (duration, fallback = 8) => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+export const extractBackendDuration = (data) => {
+    return data?.data?.duration ??
+        data?.data?.cost_time ??
+        data?.data?.elapsed_time ??
+        data?.data?.time_cost ??
+        data?.data?.spent_time ??
+        data?.duration ??
+        data?.cost_time ??
+        data?.elapsed_time ??
+        data?.time_cost ??
+        data?.spent_time ??
+        null;
+};
+
+export const normalizeDurationToMs = (duration) => {
+    if (duration === null || duration === undefined) return null;
+
+    if (typeof duration === 'number') {
+        return Number.isFinite(duration) ? (duration < 10000 ? duration * 1000 : duration) : null;
+    }
+
+    if (typeof duration === 'string') {
+        const match = duration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
+        if (match) {
+            const value = parseFloat(match[1]);
+            if (!Number.isFinite(value)) return null;
+            const unit = match[2].toLowerCase();
+            return (unit === 's' || unit === '秒') ? value * 1000 : value;
+        }
+
+        const parsed = parseFloat(duration);
+        if (Number.isFinite(parsed)) {
+            return parsed < 10000 ? parsed * 1000 : parsed;
+        }
+    }
+
+    return null;
+};
+
+export const resolveGenerationDurationMs = ({ data, startTime, endTime = Date.now() }) => {
+    const backendDuration = extractBackendDuration(data);
+    const durationMs = normalizeDurationToMs(backendDuration);
+    if (durationMs !== null) {
+        return { durationMs, backendDuration, usedBackendDuration: true };
+    }
+
+    return {
+        durationMs: endTime - (startTime || endTime),
+        backendDuration,
+        usedBackendDuration: false,
+    };
+};
+
 export const getImageModelFeatures = (modelId, config = {}) => {
     const modelName = config?.modelName ?? '';
     const provider = config?.provider ?? '';
