@@ -193,6 +193,7 @@ import {
   processMaskForInpainting,
   resizeImageForVeo
 } from './utils/mediaProcessing.js';
+import { extractAiResponseContent } from './utils/aiResponseUtils.js';
 import { parseJsonWithRepair } from './utils/jsonUtils.js';
 
         function TapnowApp() {
@@ -5343,39 +5344,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                             model: config?.modelName || config?.id
                         });
 
-                        // 支持多种响应格式
-                        let aiContent = null;
-                        if (data.choices && data.choices.length > 0) {
-                            // OpenAI 格式: data.choices[0].message.content
-                            aiContent = data.choices[0]?.message?.content;
-                        } else if (data.data?.choices && data.data.choices.length > 0) {
-                            // 嵌套 data.choices 格式
-                            aiContent = data.data.choices[0]?.message?.content;
-                        } else if (data.content) {
-                            // 直接 content 字段
-                            aiContent = data.content;
-                        } else if (data.data?.content) {
-                            // 嵌套 data.content 格式
-                            aiContent = data.data.content;
-                        } else if (data.text) {
-                            // text 字段
-                            aiContent = data.text;
-                        } else if (data.data?.text) {
-                            // 嵌套 data.text 格式
-                            aiContent = data.data.text;
-                        } else if (data.message) {
-                            // message 字段
-                            aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                        } else if (data.data?.message) {
-                            // 嵌套 data.message 格式
-                            aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                        } else if (data.result) {
-                            // result 字段
-                            aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                        } else if (data.data?.result) {
-                            // 嵌套 data.result 格式
-                            aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                        }
+                        const aiContent = extractAiResponseContent(data);
 
                         if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
                             console.error('[视频拆解] API 响应内容为空:', data);
@@ -5631,39 +5600,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                         model: config?.modelName || config?.id
                     });
 
-                    // 支持多种响应格式
-                    let aiContent = null;
-                    if (data.choices && data.choices.length > 0) {
-                        // OpenAI 格式: data.choices[0].message.content
-                        aiContent = data.choices[0]?.message?.content;
-                    } else if (data.data?.choices && data.data.choices.length > 0) {
-                        // 嵌套 data.choices 格式
-                        aiContent = data.data.choices[0]?.message?.content;
-                    } else if (data.content) {
-                        // 直接 content 字段
-                        aiContent = data.content;
-                    } else if (data.data?.content) {
-                        // 嵌套 data.content 格式
-                        aiContent = data.data.content;
-                    } else if (data.text) {
-                        // text 字段
-                        aiContent = data.text;
-                    } else if (data.data?.text) {
-                        // 嵌套 data.text 格式
-                        aiContent = data.data.text;
-                    } else if (data.message) {
-                        // message 字段
-                        aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                    } else if (data.data?.message) {
-                        // 嵌套 data.message 格式
-                        aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                    } else if (data.result) {
-                        // result 字段
-                        aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                    } else if (data.data?.result) {
-                        // 嵌套 data.result 格式
-                        aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                    }
+                    const aiContent = extractAiResponseContent(data);
 
                     if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
                         console.error('[AI导演拆解] API 响应内容为空:', data);

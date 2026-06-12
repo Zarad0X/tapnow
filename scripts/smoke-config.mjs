@@ -74,6 +74,9 @@ import {
     stripMarkdownJsonFence,
 } from '../src/legacy/utils/jsonUtils.js';
 import {
+    extractAiResponseContent,
+} from '../src/legacy/utils/aiResponseUtils.js';
+import {
     filterCharacterPromptLocal,
     filterScenePromptLocal,
     generateCharacterPrompt,
@@ -248,6 +251,9 @@ assert(stripMarkdownJsonFence('```json\n{"ok":true}\n```') === '{"ok":true}', 'j
 assert(repairRelaxedJsonText('{"a":1,}').includes('{"a":1}'), 'json helper should remove trailing commas');
 const repairedJson = parseJsonWithRepair('```json\n{"items":[1,2,],}\n```');
 assert(repairedJson.value.items.length === 2 && repairedJson.repaired, 'json helper should parse fenced relaxed json');
+assert(extractAiResponseContent({ choices: [{ message: { content: 'root choice' } }] }) === 'root choice', 'ai response helper should read OpenAI-like choices');
+assert(extractAiResponseContent({ data: { choices: [{ message: { content: 'nested choice' } }] } }) === 'nested choice', 'ai response helper should read nested choices');
+assert(extractAiResponseContent({ data: { result: { content: 'nested result' } } }) === 'nested result', 'ai response helper should read nested object content');
 const sampleFrames = [
     { time: 0, url: 'frame-0.png' },
     { time: 1, url: 'frame-1.png' },
