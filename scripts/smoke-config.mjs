@@ -43,6 +43,7 @@ import {
     findFirstHttpImageUrl,
     extractImageUrls,
     getAsyncImagePollDelay,
+    getAsyncImageStatusValue,
     getAsyncImageTimeoutConfig,
     getImageModelFeatures,
     getJimengModelName,
@@ -115,6 +116,8 @@ assert(classifyAsyncImageStatus('success') === ASYNC_IMAGE_STATUS.COMPLETED, 'as
 assert(classifyAsyncImageStatus('FAILURE') === ASYNC_IMAGE_STATUS.FAILED, 'async image status classifier should normalize failure states');
 assert(classifyAsyncImageStatus('in_progress') === ASYNC_IMAGE_STATUS.RUNNING, 'async image status classifier should normalize running states');
 assert(classifyAsyncImageStatus('weird') === ASYNC_IMAGE_STATUS.UNKNOWN, 'async image status classifier should preserve unknown states');
+assert(getAsyncImageStatusValue({ data: { status: 'success' }, status: 'failed' }) === 'SUCCESS', 'async image status getter should prefer nested status');
+assert(getAsyncImageStatusValue({ status: 'done' }) === 'DONE', 'async image status getter should normalize root status casing');
 assert(resolveAsyncImageProgress({ data: { data: { progress: '72%' } }, attempt: 2 }) === 72, 'async image progress should parse nested percentage strings');
 assert(resolveAsyncImageProgress({ data: { progress: 120 }, attempt: 2 }) === 95, 'async image progress should clamp high values');
 assert(resolveAsyncImageProgress({ data: {}, attempt: 4 }) === 18, 'async image progress should fall back to attempt-based running progress');

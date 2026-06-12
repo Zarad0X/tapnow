@@ -145,6 +145,7 @@ import {
   findFirstHttpImageUrl,
   extractImageUrls,
   getImageModelFeatures,
+  getAsyncImageStatusValue,
   getJimengModelName,
   getModelDisplayName,
   getNanoBanana2ImageSizeFlag,
@@ -2302,7 +2303,7 @@ import {
                     // 1. { code, message, data: { status, images: [...] } }
                     // 2. { status: "SUCCESS", data: { data: [{ url: "..." }] } }
                     // 3. { task_id: "...", status: "SUCCESS", data: { data: [{ url: "..." }] } }
-                    const status = (data?.data?.status || data?.status || '').toUpperCase();
+                    const status = getAsyncImageStatusValue(data);
                     const asyncImageStatus = classifyAsyncImageStatus(status);
                     console.log('[Async Image] 提取的状态:', status, '原始数据:', {
                         hasData: !!data?.data,
@@ -2561,7 +2562,7 @@ import {
 
                     // 如果任务未完成，继续轮询
                     // 动态调整轮询间隔：任务接近完成时缩短间隔，确保能快速检测到完成状态
-                    const currentStatus = (data?.data?.status || data?.status || '').toUpperCase();
+                    const currentStatus = getAsyncImageStatusValue(data);
                     const currentAsyncImageStatus = classifyAsyncImageStatus(currentStatus);
                     const shouldContinuePolling = currentAsyncImageStatus !== ASYNC_IMAGE_STATUS.COMPLETED &&
                         currentAsyncImageStatus !== ASYNC_IMAGE_STATUS.FAILED;

@@ -182,6 +182,10 @@ const ASYNC_IMAGE_COMPLETED_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FINISHE
 const ASYNC_IMAGE_FAILED_STATUSES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'FAILURE']);
 const ASYNC_IMAGE_RUNNING_STATUSES = new Set(['PENDING', 'PROCESSING', 'GENERATING', 'IN_PROGRESS', 'RUNNING']);
 
+export const getAsyncImageStatusValue = (data) => {
+    return String(data?.data?.status || data?.status || '').toUpperCase();
+};
+
 export const classifyAsyncImageStatus = (status) => {
     const normalized = String(status || '').toUpperCase();
     if (ASYNC_IMAGE_COMPLETED_STATUSES.has(normalized)) return ASYNC_IMAGE_STATUS.COMPLETED;
