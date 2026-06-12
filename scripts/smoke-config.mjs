@@ -84,6 +84,7 @@ import {
     CHARACTER_TURNTABLE_SUFFIX,
     createAnalysisResultsFromDirectorScenes,
     ensureCharacterTurntablePrompt,
+    formatClipTimestamps,
     filterCharacterPromptLocal,
     filterScenePromptLocal,
     generateCharacterPrompt,
@@ -95,6 +96,7 @@ import {
     createVoiceoverResultsFromScript,
     parseTimeRangeToSeconds,
     removeCharacterTurntablePrompt,
+    validateClipTimeRange,
 } from '../src/legacy/services/storyboardService.js';
 import {
     getBatchHistoryCardDisplay,
@@ -158,6 +160,9 @@ assert(directorAnalysis[0].scene_index === 3 && directorAnalysis[0].keyframes[0]
 assert(parseTimeRangeToSeconds('1,3').start === 1 && parseTimeRangeToSeconds('1,3').end === 3, 'time range parser should handle comma ranges');
 assert(parseTimeRangeToSeconds('1.5s - 3.5s').start === 1.5, 'time range parser should preserve legacy parseFloat behavior for unit-suffixed ranges');
 assert(parseTimeRangeToSeconds(' 1.5 — 3.5 ').end === 3.5, 'time range parser should handle dash-separated ranges');
+assert(validateClipTimeRange(1, 3) && validateClipTimeRange(1, 2), 'clip range validator should accept 1-3 second clips');
+assert(!validateClipTimeRange(1, 1.5) && !validateClipTimeRange(1, 5), 'clip range validator should reject too short or too long clips');
+assert(formatClipTimestamps(1.5, 3.5) === '1.5,3.5', 'clip timestamp formatter should preserve numeric endpoints');
 
 assert(normalizeBananaResolution('2k') === '2K', 'banana resolution normalization should preserve API casing');
 assert(normalizePromptForSora('hello @alice', 'sora-2') === 'hello @{alice}', 'sora prompt references should be normalized');

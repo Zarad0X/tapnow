@@ -110,6 +110,7 @@ import {
   createShotsFromAnalysisResults,
   createVoiceoverResultsFromScript,
   ensureCharacterTurntablePrompt,
+  formatClipTimestamps,
   filterCharacterPromptLocal,
   filterScenePromptLocal,
   generateCharacterPrompt,
@@ -121,6 +122,7 @@ import {
   parseTimeRangeToSeconds,
   renumberStoryboardShots,
   removeCharacterTurntablePrompt,
+  validateClipTimeRange,
   updateStoryboardShot
 } from './services/storyboardService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
@@ -4759,14 +4761,14 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                     }
 
                     // 验证时间范围
-                    if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
+                    if (!validateClipTimeRange(startSecond, endSecond)) {
                         alert('时间范围必须在 1-3 秒之间');
                         setCreateCharacterSubmitting(false);
                         return;
                     }
 
                     // 2. 使用用户提供的 endpoint 或自动构造
-                    const timestamps = `${startSecond},${endSecond}`;
+                    const timestamps = formatClipTimestamps(startSecond, endSecond);
                     let endpoint;
                     if (customEndpoint && customEndpoint.trim()) {
                         endpoint = customEndpoint.trim();
@@ -8592,7 +8594,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                                                 const endSecond = uiEndSecond ?? 3;
 
                                                                 // 验证时间范围
-                                                                if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
+                                                                if (!validateClipTimeRange(startSecond, endSecond)) {
                                                                     alert('时间范围必须在 1-3 秒之间');
                                                                     return;
                                                                 }
@@ -8660,7 +8662,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                                                     const endpoint = `${baseUrl}/sora/v1/characters`;
 
                                                                     // 3. 构造 Body（优先使用 from_task，否则使用 url）
-                                                                    const timestamps = `${startSecond},${endSecond}`;
+                                                                    const timestamps = formatClipTimestamps(startSecond, endSecond);
                                                                     const payload = fromTaskId
                                                                         ? { from_task: fromTaskId, timestamps }
                                                                         : { url: videoUrl, timestamps };
@@ -8788,7 +8790,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                                                 const endSecond = uiEndSecond ?? 3;
 
                                                                 // 验证时间范围
-                                                                if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
+                                                                if (!validateClipTimeRange(startSecond, endSecond)) {
                                                                     alert('时间范围必须在 1-3 秒之间');
                                                                     return;
                                                                 }
@@ -8856,7 +8858,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                                                         ? createCharacterEndpoint.trim()
                                                                         : `${baseUrl}/sora/v1/characters`;
 
-                                                                    const timestamps = `${startSecond},${endSecond}`;
+                                                                    const timestamps = formatClipTimestamps(startSecond, endSecond);
                                                                     const payload = fromTaskId
                                                                         ? { from_task: fromTaskId, timestamps }
                                                                         : { url: videoUrl, timestamps };

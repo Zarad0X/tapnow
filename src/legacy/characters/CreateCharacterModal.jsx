@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { ChevronDown, X } from '../../shared/icons.jsx';
 import { getCompletedVideoHistory } from '../history/historyUtils.js';
+import { validateClipTimeRange } from '../services/storyboardService.js';
 
 const getSelectedVideoUrl = ({
     sourceType,
@@ -65,7 +66,7 @@ export const CreateCharacterModal = ({
             alert('请选择历史记录中的视频');
             return;
         }
-        if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
+        if (!validateClipTimeRange(startSecond, endSecond)) {
             alert('时间范围必须在 1-3 秒之间');
             return;
         }

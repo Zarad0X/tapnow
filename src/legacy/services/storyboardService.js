@@ -231,3 +231,12 @@ export const parseTimeRangeToSeconds = (timeRange) => {
         return null;
     }
 };
+
+export const validateClipTimeRange = (startSecond, endSecond, { minDuration = 1, maxDuration = 3 } = {}) => {
+    const duration = endSecond - startSecond;
+    return Number.isFinite(duration) && duration >= minDuration && duration <= maxDuration;
+};
+
+export const formatClipTimestamps = (startSecond, endSecond) => {
+    return `${startSecond},${endSecond}`;
+};
