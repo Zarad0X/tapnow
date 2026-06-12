@@ -138,6 +138,7 @@ import {
   buildConnectedImagesCache,
   buildConnectedNodeTypeCache,
   buildNodeConnectedStatus,
+  buildConnectionCurve,
   filterConnectionsForVisibleNodes,
   findConnectedNodeOfType,
   getConnectedImageForInputFromCache,
@@ -6407,17 +6408,13 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                     modelConfig: apiConfigsMap.get(toNode.settings?.model),
                                 });
 
-                                const dist = Math.abs(endX - startX);
-                                const cp1X = startX + dist * 0.5;
-                                const cp2X = endX - dist * 0.5;
-                                const midX = (startX + endX) / 2;
-                                const midY = (startY + endY) / 2;
+                                const curve = buildConnectionCurve({ startX, startY, endX, endY });
 
                                 return (
                                     <g key={conn.id} className="connection-group" style={{ opacity }}>
                                         {/* 透明路径用于点击检测连接线 */}
                                         <path
-                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`}
+                                            d={curve.path}
                                             stroke="transparent"
                                             strokeWidth="20"
                                             fill="none"
@@ -6425,7 +6422,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                         />
                                         {/* 优化后的连接线：单层、1px宽度、蚂蚁线效果 */}
                                         <path
-                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`}
+                                            d={curve.path}
                                             stroke={isRelatedToSelected ? "#71717a" : "#a1a1aa"}
                                             strokeWidth="1"
                                             fill="none"
@@ -6454,8 +6451,8 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                         >
                                             {/* 大的透明点击热区（半径25），确保完全覆盖透明 path 的 stroke（宽度20） */}
                                             <circle
-                                                cx={midX}
-                                                cy={midY}
+                                                cx={curve.midX}
+                                                cy={curve.midY}
                                                 r="25"
                                                 fill="transparent"
                                                 style={{ pointerEvents: 'auto', cursor: 'pointer' }}
@@ -6473,9 +6470,9 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                                 }}
                                             />
                                             {/* 视觉元素 */}
-                                            <circle cx={midX} cy={midY} r="12" fill="#ef4444" opacity="0.8" style={{ pointerEvents: 'none' }} />
-                                            <circle cx={midX} cy={midY} r="8" fill="#ef4444" style={{ pointerEvents: 'none' }} />
-                                            <Unlink size={10} className="text-white" x={midX - 5} y={midY - 5} style={{ pointerEvents: 'none' }} />
+                                            <circle cx={curve.midX} cy={curve.midY} r="12" fill="#ef4444" opacity="0.8" style={{ pointerEvents: 'none' }} />
+                                            <circle cx={curve.midX} cy={curve.midY} r="8" fill="#ef4444" style={{ pointerEvents: 'none' }} />
+                                            <Unlink size={10} className="text-white" x={curve.midX - 5} y={curve.midY - 5} style={{ pointerEvents: 'none' }} />
                                         </g>
                                     </g>
                                 );

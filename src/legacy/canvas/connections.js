@@ -221,3 +221,16 @@ export const getNodeInputAnchorY = ({
 
     return node.y + node.height / 2;
 };
+
+export const buildConnectionCurve = ({ startX, startY, endX, endY }) => {
+    const distance = Math.abs(endX - startX);
+    const cp1X = startX + distance * 0.5;
+    const cp2X = endX - distance * 0.5;
+    return {
+        path: `M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`,
+        midX: (startX + endX) / 2,
+        midY: (startY + endY) / 2,
+        cp1X,
+        cp2X,
+    };
+};

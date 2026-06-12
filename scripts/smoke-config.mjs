@@ -7,6 +7,7 @@ import {
     buildConnectedImageForInputCache,
     buildConnectedImagesCache,
     buildConnectedNodeTypeCache,
+    buildConnectionCurve,
     buildNodeConnectedStatus,
     filterConnectionsForVisibleNodes,
     findConnectedNodeOfType,
@@ -400,6 +401,9 @@ assert(getNodeInputAnchorY({
     relevantConnections: [{ inputType: 'default' }],
     modelConfig: midjourneyConfig,
 }) === 286, 'input anchor helper should place midjourney sref after ow control');
+const connectionCurve = buildConnectionCurve({ startX: 100, startY: 50, endX: 300, endY: 150 });
+assert(connectionCurve.path === 'M 100 50 C 200 50, 200 150, 300 150', 'connection curve helper should preserve cubic path geometry');
+assert(connectionCurve.midX === 200 && connectionCurve.midY === 100, 'connection curve helper should expose midpoint for delete controls');
 const arrangedNodes = arrangeNodesByGraphLayers({
     nodesToArrange: [
         { id: 'layout-a', x: 500, y: 300, width: 100, height: 50 },
