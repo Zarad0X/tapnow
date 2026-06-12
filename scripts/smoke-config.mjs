@@ -69,6 +69,7 @@ import {
 import {
     createChatMediaFile,
     createUploadedChatFile,
+    groupKeyframesByTime,
     toggleVideoFrameSelection,
 } from '../src/legacy/utils/mediaUtils.js';
 import {
@@ -294,6 +295,13 @@ const rangeFrameSelection = toggleVideoFrameSelection({
     shiftKey: true,
 });
 assert(rangeFrameSelection.selectedKeyframes.map((frame) => frame.url).join(',') === 'frame-0.png,frame-1.png,frame-2.png', 'video frame selection should include shift ranges');
+const groupedFrames = groupKeyframesByTime([
+    { time: 5, url: 'late.png' },
+    { time: 0, url: 'start.png' },
+    { time: 2, url: 'middle.png' },
+    { time: 7, url: 'end.png' },
+], 4);
+assert(groupedFrames.length === 2 && groupedFrames[0].map((frame) => frame.url).join(',') === 'start.png,middle.png', 'keyframe grouping should sort frames and split by segment duration');
 const connectedNodes = [
     { id: 'video-1', type: 'video-input', selectedKeyframes: [{ url: 'frame-a.png' }, { url: 'frame-b.png' }] },
     { id: 'image-1', type: 'input-image', content: 'input.png' },

@@ -71,6 +71,7 @@ import {
   isVideoUrl,
   getVideoMetadata,
   extractKeyFrames,
+  groupKeyframesByTime,
   toggleVideoFrameSelection,
   ImageCompareView,
   Button,
@@ -5152,31 +5153,6 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                     };
                     reader.readAsDataURL(file);
                 }
-            };
-
-            // 按时间段分组关键帧
-            const groupKeyframesByTime = (keyframes, segmentDuration) => {
-                if (!keyframes || keyframes.length === 0) return [];
-                const sorted = [...keyframes].sort((a, b) => a.time - b.time);
-                const groups = [];
-                let currentGroup = [];
-                let currentGroupStart = sorted[0].time;
-
-                sorted.forEach((frame, idx) => {
-                    if (frame.time - currentGroupStart >= segmentDuration && currentGroup.length > 0) {
-                        groups.push([...currentGroup]);
-                        currentGroup = [frame];
-                        currentGroupStart = frame.time;
-                    } else {
-                        currentGroup.push(frame);
-                    }
-                });
-
-                if (currentGroup.length > 0) {
-                    groups.push(currentGroup);
-                }
-
-                return groups;
             };
 
             // 为选中关键帧生成提示词

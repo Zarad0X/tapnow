@@ -84,6 +84,7 @@ export {
     createChatMediaFile,
     createUploadedChatFile,
     extractKeyFrames,
+    groupKeyframesByTime,
     getImageDimensions,
     getVideoMetadata,
     toggleVideoFrameSelection,

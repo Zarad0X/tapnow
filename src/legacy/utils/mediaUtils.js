@@ -120,6 +120,30 @@ export const toggleVideoFrameSelection = ({
     };
 };
 
+export const groupKeyframesByTime = (keyframes, segmentDuration) => {
+    if (!keyframes || keyframes.length === 0) return [];
+    const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+    const groups = [];
+    let currentGroup = [];
+    let currentGroupStart = sorted[0].time;
+
+    sorted.forEach((frame) => {
+        if (frame.time - currentGroupStart >= segmentDuration && currentGroup.length > 0) {
+            groups.push([...currentGroup]);
+            currentGroup = [frame];
+            currentGroupStart = frame.time;
+        } else {
+            currentGroup.push(frame);
+        }
+    });
+
+    if (currentGroup.length > 0) {
+        groups.push(currentGroup);
+    }
+
+    return groups;
+};
+
 export const getVideoMetadata = (src) => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
