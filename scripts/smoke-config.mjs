@@ -33,7 +33,9 @@ import {
     getNodeLabel,
 } from '../src/legacy/nodes/nodeCatalog.js';
 import {
+    ASYNC_IMAGE_STATUS,
     buildRequestHeaders,
+    classifyAsyncImageStatus,
     denormalizePromptForSoraRequest,
     extractAsyncTaskId,
     findFirstHttpImageUrl,
@@ -102,6 +104,10 @@ const cyclicImageResponse = { data: [{ metadata: { imageUrl: 'https://example.co
 cyclicImageResponse.self = cyclicImageResponse;
 assert(findFirstHttpImageUrl(cyclicImageResponse) === 'https://example.com/image.png', 'image URL deep search should handle nested arrays and cycles');
 assert(findFirstHttpImageUrl({ data: { src: 'blob:image' } }) === null, 'image URL deep search should ignore non-http URLs');
+assert(classifyAsyncImageStatus('success') === ASYNC_IMAGE_STATUS.COMPLETED, 'async image status classifier should normalize success states');
+assert(classifyAsyncImageStatus('FAILURE') === ASYNC_IMAGE_STATUS.FAILED, 'async image status classifier should normalize failure states');
+assert(classifyAsyncImageStatus('in_progress') === ASYNC_IMAGE_STATUS.RUNNING, 'async image status classifier should normalize running states');
+assert(classifyAsyncImageStatus('weird') === ASYNC_IMAGE_STATUS.UNKNOWN, 'async image status classifier should preserve unknown states');
 assert(getImageModelFeatures('nano-banana-2', { modelName: 'nano-banana-2' }).isNanoBanana2, 'image model features should detect nano-banana-2');
 assert(getJimengModelName('jimeng-4.1', {}) === 'jimeng-4.1', 'jimeng model name should follow selected model');
 assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) === '4K', 'nano-banana-2 image_size should normalize casing');

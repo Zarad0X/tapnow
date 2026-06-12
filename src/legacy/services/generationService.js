@@ -122,6 +122,25 @@ export const findFirstHttpImageUrl = (value, { maxDepth = 5 } = {}) => {
     return visit(value, 0, new WeakSet());
 };
 
+export const ASYNC_IMAGE_STATUS = {
+    COMPLETED: 'completed',
+    FAILED: 'failed',
+    RUNNING: 'running',
+    UNKNOWN: 'unknown',
+};
+
+const ASYNC_IMAGE_COMPLETED_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FINISHED', 'DONE']);
+const ASYNC_IMAGE_FAILED_STATUSES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'FAILURE']);
+const ASYNC_IMAGE_RUNNING_STATUSES = new Set(['PENDING', 'PROCESSING', 'GENERATING', 'IN_PROGRESS', 'RUNNING']);
+
+export const classifyAsyncImageStatus = (status) => {
+    const normalized = String(status || '').toUpperCase();
+    if (ASYNC_IMAGE_COMPLETED_STATUSES.has(normalized)) return ASYNC_IMAGE_STATUS.COMPLETED;
+    if (ASYNC_IMAGE_FAILED_STATUSES.has(normalized)) return ASYNC_IMAGE_STATUS.FAILED;
+    if (ASYNC_IMAGE_RUNNING_STATUSES.has(normalized)) return ASYNC_IMAGE_STATUS.RUNNING;
+    return ASYNC_IMAGE_STATUS.UNKNOWN;
+};
+
 export const getImageModelFeatures = (modelId, config = {}) => {
     const modelName = config?.modelName ?? '';
     const provider = config?.provider ?? '';
