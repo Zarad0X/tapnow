@@ -140,7 +140,8 @@ import {
   findConnectedNodeOfType,
   getConnectedImageForInputFromCache,
   getConnectedInputImagesFromCache,
-  getConnectedTextNodeContents
+  getConnectedTextNodeContents,
+  getPreviewTargetNodeId
 } from './canvas/connections.js';
 import {
   getCanvasDetailLevel,
@@ -6183,26 +6184,12 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                 const { frame } = frameContextMenu;
                 if (!frame?.url) return;
                 setNodes(prev => {
-                    // 优先使用当前选中的预览节点
-                    const selectedId = selectedNodeIdRef.current;
-                    const selectedIds = selectedNodeIdsRef.current;
-                    const previews = prev.filter(n => n.type === 'preview');
-                    if (!previews.length) return prev;
-
-                    // 先查找选中的预览节点
-                    let targetId = null;
-                    if (selectedId) {
-                        const selectedPreview = previews.find(p => p.id === selectedId);
-                        if (selectedPreview) targetId = selectedPreview.id;
-                    }
-                    if (!targetId && selectedIds && selectedIds.size > 0) {
-                        const selectedPreview = previews.find(p => selectedIds.has(p.id));
-                        if (selectedPreview) targetId = selectedPreview.id;
-                    }
-                    // 如果没有选中预览节点，则默认使用最后一个预览窗口
-                    if (!targetId) {
-                        targetId = previews[previews.length - 1].id;
-                    }
+                    const targetId = getPreviewTargetNodeId({
+                        nodes: prev,
+                        selectedNodeId: selectedNodeIdRef.current,
+                        selectedNodeIds: selectedNodeIdsRef.current,
+                    });
+                    if (!targetId) return prev;
 
                     return prev.map(n =>
                         n.id === targetId

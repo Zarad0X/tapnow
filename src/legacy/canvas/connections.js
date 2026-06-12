@@ -128,3 +128,20 @@ export const buildConnectedImageForInputCache = ({ connections, nodesMap }) => {
 export const getConnectedImageForInputFromCache = (cache, targetNodeId, inputType = 'default') => {
     return cache.get(`${targetNodeId}:${inputType}`) || null;
 };
+
+export const getPreviewTargetNodeId = ({ nodes, selectedNodeId, selectedNodeIds }) => {
+    const previews = (nodes || []).filter((node) => node.type === 'preview');
+    if (!previews.length) return null;
+
+    if (selectedNodeId) {
+        const selectedPreview = previews.find((preview) => preview.id === selectedNodeId);
+        if (selectedPreview) return selectedPreview.id;
+    }
+
+    if (selectedNodeIds && selectedNodeIds.size > 0) {
+        const selectedPreview = previews.find((preview) => selectedNodeIds.has(preview.id));
+        if (selectedPreview) return selectedPreview.id;
+    }
+
+    return previews[previews.length - 1].id;
+};

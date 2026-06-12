@@ -11,6 +11,7 @@ import {
     getConnectedImageForInputFromCache,
     getConnectedInputImagesFromCache,
     getConnectedTextNodeContents,
+    getPreviewTargetNodeId,
 } from '../src/legacy/canvas/connections.js';
 import {
     arrangeNodesByGraphLayers,
@@ -354,6 +355,14 @@ assert(getConnectedTextNodeContents({ connections: sampleConnections, nodesMap: 
 const imageForInputCache = buildConnectedImageForInputCache({ connections: sampleConnections, nodesMap: connectedNodesMap });
 assert(getConnectedImageForInputFromCache(imageForInputCache, 'target-1') === 'frame-a.png', 'input image cache should prefer first selected video frame');
 assert(getConnectedImageForInputFromCache(imageForInputCache, 'target-1', 'oref') === 'input.png', 'input image cache should preserve named input image');
+const previewTargets = [
+    { id: 'preview-a', type: 'preview' },
+    { id: 'text-a', type: 'text-node' },
+    { id: 'preview-b', type: 'preview' },
+];
+assert(getPreviewTargetNodeId({ nodes: previewTargets, selectedNodeId: 'preview-a' }) === 'preview-a', 'preview target helper should prefer selected preview node');
+assert(getPreviewTargetNodeId({ nodes: previewTargets, selectedNodeIds: new Set(['preview-b']) }) === 'preview-b', 'preview target helper should use selected preview from multi-select');
+assert(getPreviewTargetNodeId({ nodes: previewTargets }) === 'preview-b', 'preview target helper should fall back to last preview node');
 const arrangedNodes = arrangeNodesByGraphLayers({
     nodesToArrange: [
         { id: 'layout-a', x: 500, y: 300, width: 100, height: 50 },
