@@ -233,6 +233,13 @@ export const getAsyncImageTimeoutConfig = (isBananaModel) => {
     };
 };
 
+export const getMidjourneyPollConfig = () => {
+    return {
+        maxAttempts: 120,
+        delayMs: 5000,
+    };
+};
+
 const stringifyErrorValue = (value) => {
     if (!value) return '';
     if (typeof value === 'string') return value;

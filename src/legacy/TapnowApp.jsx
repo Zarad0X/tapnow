@@ -163,6 +163,7 @@ import {
   ASYNC_IMAGE_STATUS,
   getAsyncImagePollDelay,
   getAsyncImageTimeoutConfig,
+  getMidjourneyPollConfig,
   resolveAsyncImageProgress,
   shouldContinueAsyncImagePolling,
   submitGenerationRequest
@@ -2602,8 +2603,7 @@ import {
 
             // Midjourney任务轮询函数
             const pollMidjourneyJob = (jobId, taskId, baseUrl, apiKey, mjMode = 'fast', w, h, attempt = 0) => {
-                const maxAttempts = 120; // 最多轮询120次（约10分钟，假设每次5秒）
-                const delayMs = 5000; // 每5秒轮询一次
+                const { maxAttempts, delayMs } = getMidjourneyPollConfig();
 
                 if (attempt > maxAttempts) {
                     setHistory((prev) => prev.map((hItem) =>

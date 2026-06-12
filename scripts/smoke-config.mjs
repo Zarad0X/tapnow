@@ -47,6 +47,7 @@ import {
     getAsyncImageTimeoutConfig,
     getImageModelFeatures,
     getJimengModelName,
+    getMidjourneyPollConfig,
     getModelDisplayName,
     getNanoBanana2ImageSizeFlag,
     normalizeBananaResolution,
@@ -138,6 +139,8 @@ assert(getAsyncImagePollDelay({ progress: 40, attempt: 51, isBananaModel: false,
 assert(getAsyncImagePollDelay({ progress: 40, attempt: 51, isBananaModel: true, baseDelayMs: 5000 }) === 5000, 'async image poll delay should not long-backoff banana tasks');
 assert(getAsyncImageTimeoutConfig(false).maxAttempts === 300 && getAsyncImageTimeoutConfig(false).timeoutSeconds === 1500, 'async image timeout config should keep default model limits');
 assert(getAsyncImageTimeoutConfig(true).maxAttempts === 160 && getAsyncImageTimeoutConfig(true).timeoutSeconds === 800, 'async image timeout config should keep banana model limits');
+assert(getMidjourneyPollConfig().maxAttempts === 120, 'midjourney poll config should keep max attempts');
+assert(getMidjourneyPollConfig().delayMs === 5000, 'midjourney poll config should keep poll delay');
 assert(getImageModelFeatures('nano-banana-2', { modelName: 'nano-banana-2' }).isNanoBanana2, 'image model features should detect nano-banana-2');
 assert(getJimengModelName('jimeng-4.1', {}) === 'jimeng-4.1', 'jimeng model name should follow selected model');
 assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) === '4K', 'nano-banana-2 image_size should normalize casing');
