@@ -13,6 +13,7 @@ import {
     getConnectedImageForInputFromCache,
     getConnectedInputImagesFromCache,
     getConnectedTextNodeContents,
+    getNodeInputAnchorY,
     getPreviewTargetNodeId,
 } from '../src/legacy/canvas/connections.js';
 import {
@@ -379,6 +380,26 @@ assert(filterConnectionsForVisibleNodes({
     ],
     visibleNodes: [{ id: 'visible-a' }, { id: 'visible-b' }],
 }).length === 2, 'visible connection helper should keep connections touching visible nodes');
+assert(getNodeInputAnchorY({ node: { id: 'plain', type: 'preview', y: 100, height: 80 } }) === 140, 'input anchor helper should use vertical midpoint by default');
+assert(getNodeInputAnchorY({
+    node: { id: 'compare', type: 'image-compare', y: 100, height: 300 },
+    connectionId: 'compare-b',
+    relevantConnections: [{ id: 'compare-a' }, { id: 'compare-b' }],
+}) === 298, 'input anchor helper should place second image compare input lower');
+const midjourneyNode = { id: 'mj-node', type: 'gen-image', y: 10, height: 300 };
+const midjourneyConfig = { id: 'mj-fast', provider: 'Midjourney' };
+assert(getNodeInputAnchorY({
+    node: midjourneyNode,
+    inputType: 'oref',
+    relevantConnections: [{ inputType: 'default' }],
+    modelConfig: midjourneyConfig,
+}) === 230, 'input anchor helper should place midjourney oref after reference area');
+assert(getNodeInputAnchorY({
+    node: midjourneyNode,
+    inputType: 'sref',
+    relevantConnections: [{ inputType: 'default' }],
+    modelConfig: midjourneyConfig,
+}) === 286, 'input anchor helper should place midjourney sref after ow control');
 const arrangedNodes = arrangeNodesByGraphLayers({
     nodesToArrange: [
         { id: 'layout-a', x: 500, y: 300, width: 100, height: 50 },

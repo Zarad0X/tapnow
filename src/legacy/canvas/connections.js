@@ -162,3 +162,62 @@ export const filterConnectionsForVisibleNodes = ({ connections, visibleNodes }) 
         visibleNodeIds.has(connection.from) || visibleNodeIds.has(connection.to)
     );
 };
+
+const isMidjourneyModelConfig = (modelConfig) => {
+    return !!modelConfig &&
+        (modelConfig.id?.includes('mj') || modelConfig.provider?.toLowerCase().includes('midjourney'));
+};
+
+const getMidjourneyInputAnchorY = ({ node, inputType, relevantConnections = [] }) => {
+    const paddingTop = 12;
+    const titleHeight = 16;
+    const titleMarginBottom = 8;
+    const refAreaHeight = 60;
+    const refAreaMarginBottom = 8;
+    const promptAreaHeight = 100;
+    const promptAreaMarginBottom = 8;
+    const instructionGap = 6;
+    const instructionItemHeight = 16;
+    const owInputHeight = 28;
+    const hasRefArea = relevantConnections.some((connection) => !connection.inputType || connection.inputType === 'default');
+
+    let baseOffset = paddingTop + titleHeight + titleMarginBottom;
+    if (hasRefArea) {
+        baseOffset += refAreaHeight + refAreaMarginBottom;
+    }
+    baseOffset += promptAreaHeight + promptAreaMarginBottom;
+
+    if (inputType === 'oref') {
+        return node.y + baseOffset + instructionItemHeight * 0.5;
+    }
+    if (inputType === 'sref') {
+        return node.y + baseOffset + instructionItemHeight + instructionGap + owInputHeight + instructionGap + instructionItemHeight * 0.5;
+    }
+    return node.y + node.height / 2;
+};
+
+export const getNodeInputAnchorY = ({
+    node,
+    inputType,
+    connectionId = null,
+    relevantConnections = [],
+    modelConfig = null,
+}) => {
+    if (!node) return 0;
+
+    if (node.type === 'image-compare' && connectionId) {
+        const index = relevantConnections.findIndex((connection) => connection.id === connectionId);
+        if (index === 0) return node.y + node.height * 0.33;
+        if (index >= 1) return node.y + node.height * 0.66;
+    }
+
+    if (
+        node.type === 'gen-image' &&
+        (inputType === 'oref' || inputType === 'sref') &&
+        isMidjourneyModelConfig(modelConfig)
+    ) {
+        return getMidjourneyInputAnchorY({ node, inputType, relevantConnections });
+    }
+
+    return node.y + node.height / 2;
+};
