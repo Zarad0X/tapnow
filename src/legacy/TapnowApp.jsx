@@ -141,6 +141,7 @@ import {
   denormalizePromptForSoraRequest,
   extractAsyncTaskId,
   extractAsyncImageItems,
+  extractGenerationErrorMessage,
   findFirstHttpImageUrl,
   extractImageUrls,
   getImageModelFeatures,
@@ -2328,7 +2329,7 @@ import {
                         }
                     }
 
-                    const errorMsg = data?.message || data?.error || data?.fail_reason || '';
+                    const errorMsg = extractGenerationErrorMessage(data);
 
                     // 更新历史记录
                     setHistory((prev) => {

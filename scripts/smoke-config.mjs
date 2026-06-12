@@ -39,6 +39,7 @@ import {
     denormalizePromptForSoraRequest,
     extractAsyncTaskId,
     extractAsyncImageItems,
+    extractGenerationErrorMessage,
     findFirstHttpImageUrl,
     extractImageUrls,
     getAsyncImagePollDelay,
@@ -137,6 +138,9 @@ assert(extractAsyncImageItems({ data: { data: [{ imageUrl: 'nested.png' }] } }).
 assert(extractAsyncImageItems({ data: { images: ['image-a.png'] } }).images[0] === 'image-a.png', 'async image item extraction should handle data.images arrays');
 assert(extractAsyncImageItems({ data: { revised_prompt: '![x](https://example.com/revised.png)' } }).images[0].url === 'https://example.com/revised.png', 'async image item extraction should handle revised_prompt markdown');
 assert(normalizeImageItemsToUrls([{ image_url: 'a.png' }, { imageUrl: 'b.png' }, 'c.png']).join(',') === 'a.png,b.png,c.png', 'image item URL normalization should support common URL fields and strings');
+assert(extractGenerationErrorMessage({ error: { message: 'bad request' } }) === 'bad request', 'generation error helper should extract object error messages');
+assert(extractGenerationErrorMessage({ data: { fail_reason: 'quota exceeded' } }) === 'quota exceeded', 'generation error helper should extract nested failure reasons');
+assert(extractGenerationErrorMessage({}, 'fallback error') === 'fallback error', 'generation error helper should preserve fallback errors');
 
 const sampleHistory = [
     { id: '1', type: 'video', status: 'completed', url: 'video.mp4' },

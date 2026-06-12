@@ -224,6 +224,26 @@ export const getAsyncImageTimeoutConfig = (isBananaModel) => {
     };
 };
 
+const stringifyErrorValue = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'object') {
+        return value.message || value.msg || value.code || '';
+    }
+    return '';
+};
+
+export const extractGenerationErrorMessage = (data, fallback = '') => {
+    return stringifyErrorValue(data?.message) ||
+        stringifyErrorValue(data?.error) ||
+        stringifyErrorValue(data?.fail_reason) ||
+        stringifyErrorValue(data?.data?.message) ||
+        stringifyErrorValue(data?.data?.error) ||
+        stringifyErrorValue(data?.data?.fail_reason) ||
+        fallback;
+};
+
 export const getImageModelFeatures = (modelId, config = {}) => {
     const modelName = config?.modelName ?? '';
     const provider = config?.provider ?? '';
