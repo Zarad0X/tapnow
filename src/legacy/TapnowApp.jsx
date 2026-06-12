@@ -137,6 +137,7 @@ import {
   buildConnectedImageForInputCache,
   buildConnectedImagesCache,
   buildConnectedNodeTypeCache,
+  buildNodeConnectedStatus,
   findConnectedNodeOfType,
   getConnectedImageForInputFromCache,
   getConnectedInputImagesFromCache,
@@ -6641,13 +6642,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
 
             // 使用 useMemo 缓存节点的连接状态，避免每次渲染时重复计算
             const nodeConnectedStatus = useMemo(() => {
-                const status = new Map(); // nodeId -> boolean
-                connections.forEach(conn => {
-                    if (!conn.inputType || conn.inputType === 'default') {
-                        status.set(conn.to, true);
-                    }
-                });
-                return status;
+                return buildNodeConnectedStatus(connections);
             }, [connections]);
 
             // 功能3：获取相邻节点（上游和下游）- 使用缓存的连接映射优化性能

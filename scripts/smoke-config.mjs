@@ -7,6 +7,7 @@ import {
     buildConnectedImageForInputCache,
     buildConnectedImagesCache,
     buildConnectedNodeTypeCache,
+    buildNodeConnectedStatus,
     findConnectedNodeOfType,
     getConnectedImageForInputFromCache,
     getConnectedInputImagesFromCache,
@@ -363,6 +364,12 @@ const previewTargets = [
 assert(getPreviewTargetNodeId({ nodes: previewTargets, selectedNodeId: 'preview-a' }) === 'preview-a', 'preview target helper should prefer selected preview node');
 assert(getPreviewTargetNodeId({ nodes: previewTargets, selectedNodeIds: new Set(['preview-b']) }) === 'preview-b', 'preview target helper should use selected preview from multi-select');
 assert(getPreviewTargetNodeId({ nodes: previewTargets }) === 'preview-b', 'preview target helper should fall back to last preview node');
+const connectedStatus = buildNodeConnectedStatus([
+    { from: 'a', to: 'target-default' },
+    { from: 'b', to: 'target-named', inputType: 'oref' },
+    { from: 'c', to: 'target-explicit-default', inputType: 'default' },
+]);
+assert(connectedStatus.get('target-default') && connectedStatus.get('target-explicit-default') && !connectedStatus.has('target-named'), 'connected status helper should only mark default inputs');
 const arrangedNodes = arrangeNodesByGraphLayers({
     nodesToArrange: [
         { id: 'layout-a', x: 500, y: 300, width: 100, height: 50 },

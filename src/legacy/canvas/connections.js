@@ -145,3 +145,13 @@ export const getPreviewTargetNodeId = ({ nodes, selectedNodeId, selectedNodeIds 
 
     return previews[previews.length - 1].id;
 };
+
+export const buildNodeConnectedStatus = (connections) => {
+    const status = new Map();
+    (connections || []).forEach((connection) => {
+        if (!connection.inputType || connection.inputType === 'default') {
+            status.set(connection.to, true);
+        }
+    });
+    return status;
+};
