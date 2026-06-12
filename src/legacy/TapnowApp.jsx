@@ -153,6 +153,8 @@ import {
   resolveGenerationDurationMs,
   classifyAsyncImageStatus,
   ASYNC_IMAGE_STATUS,
+  getAsyncImagePollDelay,
+  resolveAsyncImageProgress,
   submitGenerationRequest
 } from './services/generationService.js';
 import { BatchHistoryModal } from './history/BatchHistoryModal.jsx';
@@ -2557,26 +2559,7 @@ import {
                                 };
                             } else if (asyncImageStatus === ASYNC_IMAGE_STATUS.RUNNING) {
                                 // 任务进行中，根据轮询次数和进度信息计算进度
-                                let progress = 10 + (attempt * 2); // 基础进度
-
-                                // 如果有进度百分比，使用实际进度
-                                if (data?.data?.progress) {
-                                    const progressStr = String(data.data.progress);
-                                    if (progressStr.includes('%')) {
-                                        progress = parseInt(progressStr.replace('%', ''), 10) || progress;
-                                    } else if (typeof data.data.progress === 'number') {
-                                        progress = data.data.progress;
-                                    }
-                                } else if (data?.progress) {
-                                    const progressStr = String(data.progress);
-                                    if (progressStr.includes('%')) {
-                                        progress = parseInt(progressStr.replace('%', ''), 10) || progress;
-                                    } else if (typeof data.progress === 'number') {
-                                        progress = data.progress;
-                                    }
-                                }
-
-                                progress = Math.min(95, Math.max(10, progress)); // 限制在10-95%之间
+                                const progress = resolveAsyncImageProgress({ data, attempt });
 
                                 return {
                                     ...hItem,
@@ -2586,7 +2569,7 @@ import {
                                 };
                             } else {
                                 // 未知状态，继续轮询，但进度缓慢增加
-                                const progress = Math.min(90, 10 + (attempt * 1.5));
+                                const progress = resolveAsyncImageProgress({ data, attempt, isUnknownStatus: true });
                                 return {
                                     ...hItem,
                                     status: 'generating',
@@ -2647,17 +2630,12 @@ import {
                         setHistory((prev) => {
                             const latestItem = prev.find(h => h.id === taskId);
                             const progress = latestItem?.progress || 10;
-
-                            let adjustedDelay = baseDelayMs;
-                            if (progress >= 90) {
-                                adjustedDelay = 1000; // 1秒：任务接近完成，快速检测
-                            } else if (progress >= 70) {
-                                adjustedDelay = 2000; // 2秒：任务进行中后期，加快检测
-                            } else if (progress >= 50) {
-                                adjustedDelay = 3000; // 3秒：任务进行中，中等速度
-                            } else if (attempt > 50 && !isBananaModel) {
-                                adjustedDelay = 10000; // 10秒：长时间运行，节省资源
-                            }
+                            const adjustedDelay = getAsyncImagePollDelay({
+                                progress,
+                                attempt,
+                                isBananaModel,
+                                baseDelayMs,
+                            });
 
                             // 在回调外执行setTimeout，避免闭包问题
                             setTimeout(() => {

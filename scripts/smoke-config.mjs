@@ -40,6 +40,7 @@ import {
     extractAsyncTaskId,
     findFirstHttpImageUrl,
     extractImageUrls,
+    getAsyncImagePollDelay,
     getImageModelFeatures,
     getJimengModelName,
     getModelDisplayName,
@@ -48,6 +49,7 @@ import {
     normalizePromptForSora,
     normalizeDurationToMs,
     parseDurationSeconds,
+    resolveAsyncImageProgress,
     resolveGenerationDurationMs,
     resolveEndpointUrl,
 } from '../src/legacy/services/generationService.js';
@@ -108,6 +110,14 @@ assert(classifyAsyncImageStatus('success') === ASYNC_IMAGE_STATUS.COMPLETED, 'as
 assert(classifyAsyncImageStatus('FAILURE') === ASYNC_IMAGE_STATUS.FAILED, 'async image status classifier should normalize failure states');
 assert(classifyAsyncImageStatus('in_progress') === ASYNC_IMAGE_STATUS.RUNNING, 'async image status classifier should normalize running states');
 assert(classifyAsyncImageStatus('weird') === ASYNC_IMAGE_STATUS.UNKNOWN, 'async image status classifier should preserve unknown states');
+assert(resolveAsyncImageProgress({ data: { data: { progress: '72%' } }, attempt: 2 }) === 72, 'async image progress should parse nested percentage strings');
+assert(resolveAsyncImageProgress({ data: { progress: 120 }, attempt: 2 }) === 95, 'async image progress should clamp high values');
+assert(resolveAsyncImageProgress({ data: {}, attempt: 4 }) === 18, 'async image progress should fall back to attempt-based running progress');
+assert(resolveAsyncImageProgress({ data: {}, attempt: 4, isUnknownStatus: true }) === 16, 'async image progress should use slower unknown-status fallback');
+assert(getAsyncImagePollDelay({ progress: 92, attempt: 1, isBananaModel: false, baseDelayMs: 5000 }) === 1000, 'async image poll delay should speed up near completion');
+assert(getAsyncImagePollDelay({ progress: 72, attempt: 1, isBananaModel: false, baseDelayMs: 5000 }) === 2000, 'async image poll delay should speed up late progress');
+assert(getAsyncImagePollDelay({ progress: 40, attempt: 51, isBananaModel: false, baseDelayMs: 5000 }) === 10000, 'async image poll delay should back off long non-banana tasks');
+assert(getAsyncImagePollDelay({ progress: 40, attempt: 51, isBananaModel: true, baseDelayMs: 5000 }) === 5000, 'async image poll delay should not long-backoff banana tasks');
 assert(getImageModelFeatures('nano-banana-2', { modelName: 'nano-banana-2' }).isNanoBanana2, 'image model features should detect nano-banana-2');
 assert(getJimengModelName('jimeng-4.1', {}) === 'jimeng-4.1', 'jimeng model name should follow selected model');
 assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) === '4K', 'nano-banana-2 image_size should normalize casing');

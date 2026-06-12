@@ -141,6 +141,32 @@ export const classifyAsyncImageStatus = (status) => {
     return ASYNC_IMAGE_STATUS.UNKNOWN;
 };
 
+const parseProgressValue = (value) => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const parsed = parseInt(value.replace('%', ''), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const resolveAsyncImageProgress = ({ data, attempt, isUnknownStatus = false }) => {
+    const fallback = isUnknownStatus
+        ? Math.min(90, 10 + (attempt * 1.5))
+        : 10 + (attempt * 2);
+    const progress = parseProgressValue(data?.data?.progress) ??
+        parseProgressValue(data?.progress) ??
+        fallback;
+
+    return Math.min(95, Math.max(10, progress));
+};
+
+export const getAsyncImagePollDelay = ({ progress, attempt, isBananaModel, baseDelayMs }) => {
+    if (progress >= 90) return 1000;
+    if (progress >= 70) return 2000;
+    if (progress >= 50) return 3000;
+    if (attempt > 50 && !isBananaModel) return 10000;
+    return baseDelayMs;
+};
+
 export const getImageModelFeatures = (modelId, config = {}) => {
     const modelName = config?.modelName ?? '';
     const provider = config?.provider ?? '';
