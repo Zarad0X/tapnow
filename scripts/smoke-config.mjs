@@ -1,4 +1,9 @@
 import {
+    cloneClipboardPayloadAtPoint,
+    createClipboardPayload,
+    getSelectedNodeIdsForClipboard,
+} from '../src/legacy/canvas/clipboard.js';
+import {
     DEFAULT_API_CONFIGS,
     DELETED_MODEL_IDS,
     calculateResolution,
@@ -93,6 +98,37 @@ assert(splitHistoryCacheItems([{ url: 'https://remote/image.png' }, { localCache
 assert(getCanvasSendableHistoryItems(sampleHistory, new Set(['1', '2'])).length === 2, 'canvas send helper should keep items with content URLs');
 assert(getHistoryCanvasContentUrl({ type: 'video', url: 'clip' }, { isVideoUrl: () => false }).includes('force_video_display=true'), 'video canvas URLs should opt into video display when needed');
 assert(getBatchHistoryCardDisplay({ mjImages: ['a.png', 'b.png'], selectedMjImageIndex: 1 }).displayUrl === 'b.png', 'batch card display should preserve selected MJ image');
+
+const selectedNodeIds = getSelectedNodeIdsForClipboard({
+    selectedNodeId: null,
+    selectedNodeIds: new Set(['node-a', 'node-b']),
+});
+assert(selectedNodeIds.join(',') === 'node-a,node-b', 'clipboard should preserve multi-selected node ids');
+const clipboardPayload = createClipboardPayload({
+    nodes: [
+        { id: 'node-a', x: 0, y: 0, width: 100, height: 100 },
+        { id: 'node-b', x: 200, y: 0, width: 100, height: 100 },
+        { id: 'node-c', x: 500, y: 0, width: 100, height: 100 },
+    ],
+    connections: [
+        { id: 'conn-a-b', from: 'node-a', to: 'node-b' },
+        { id: 'conn-a-c', from: 'node-a', to: 'node-c' },
+    ],
+    selectedIds: selectedNodeIds,
+    timestamp: 1,
+});
+assert(clipboardPayload.nodes.length === 2, 'clipboard payload should only include selected nodes');
+assert(clipboardPayload.connections.length === 1, 'clipboard payload should only include internal selected connections');
+const clonedClipboard = cloneClipboardPayloadAtPoint({
+    payload: clipboardPayload,
+    pastePoint: { x: 500, y: 500 },
+    now: () => 100,
+    random: () => 0.123456789,
+});
+assert(clonedClipboard.nodes.length === 2, 'clipboard clone should keep copied node count');
+assert(clonedClipboard.connections.length === 1, 'clipboard clone should recreate internal connections');
+assert(clonedClipboard.connections[0].from !== 'node-a' && clonedClipboard.connections[0].to !== 'node-b', 'clipboard clone should remap connection endpoints');
+assert(clonedClipboard.nodes[0].x === 350 && clonedClipboard.nodes[0].y === 450, 'clipboard clone should center nodes on paste point');
 
 [
     CHARACTER_SHEET_PROMPT_TEXT,

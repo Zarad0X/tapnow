@@ -110,6 +110,13 @@ import {
 } from './services/storyboardService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import {
+  cloneClipboardPayloadAtPoint,
+  createClipboardPayload,
+  getCanvasCenterWorldPoint,
+  getSelectedNodeIdsForClipboard,
+  isEditableElement
+} from './canvas/clipboard.js';
+import {
   getCanvasDetailLevel,
   getVisibleNodes,
   screenToWorldPoint
@@ -1720,13 +1727,47 @@ import {
 
             // 优化后的复制粘贴逻辑
             useEffect(() => {
+                const hasCopiedNodes = () => {
+                    const copied = copiedNodesRef.current;
+                    return copied?.nodes && copied.nodes.length > 0;
+                };
+
+                const pasteCopiedNodesAtCanvasCenter = (event) => {
+                    if (!hasCopiedNodes()) return false;
+
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    const pastePoint = getCanvasCenterWorldPoint({
+                        canvasElement: canvasRef.current,
+                        view,
+                    });
+                    const cloned = cloneClipboardPayloadAtPoint({
+                        payload: copiedNodesRef.current,
+                        pastePoint,
+                    });
+
+                    if (cloned.nodes.length === 0) return false;
+
+                    setNodes((prev) => [...prev, ...cloned.nodes]);
+                    setConnections((prev) => [...prev, ...cloned.connections]);
+
+                    if (cloned.nodes.length === 1) {
+                        setSelectedNodeId(cloned.nodes[0].id);
+                        setSelectedNodeIds(new Set([cloned.nodes[0].id]));
+                    } else {
+                        setSelectedNodeId(null);
+                        setSelectedNodeIds(new Set(cloned.nodes.map((node) => node.id)));
+                    }
+
+                    console.log(`已粘贴 ${cloned.nodes.length} 个节点`);
+                    return true;
+                };
+
                 // 复制功能（Ctrl+C / Cmd+C）
                 const handleCopy = async (e) => {
-                    const target = e.target;
-                    const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-
                     // 优先级1：文本输入框 - 如果有选中文本，使用浏览器默认行为
-                    if (isTextInput) {
+                    if (isEditableElement(e.target)) {
                         const selection = window.getSelection();
                         if (selection && selection.toString().trim()) {
                             // 有选中文本，让浏览器默认处理
@@ -1738,41 +1779,29 @@ import {
                     }
 
                     // 优先级2和3：节点复制（包括所有类型的节点）
-                    const currentSelectedId = selectedNodeIdRef.current;
-                    const currentSelectedIds = selectedNodeIdsRef.current;
-                    const selectedIds = currentSelectedId ? [currentSelectedId] : (currentSelectedIds && currentSelectedIds.size > 0 ? Array.from(currentSelectedIds) : []);
+                    const selectedIds = getSelectedNodeIdsForClipboard({
+                        selectedNodeId: selectedNodeIdRef.current,
+                        selectedNodeIds: selectedNodeIdsRef.current,
+                    });
 
                     if (selectedIds.length > 0) {
                         e.preventDefault();
                         e.stopPropagation();
-                        const selectedNodes = nodesRef.current.filter(n => selectedIds.includes(n.id));
-                        const relatedConnections = connectionsRef.current.filter(c =>
-                            selectedIds.includes(c.from) || selectedIds.includes(c.to)
-                        );
-
-                        // 只保存选中的节点之间的连接
-                        const internalConnections = relatedConnections.filter(c =>
-                            selectedIds.includes(c.from) && selectedIds.includes(c.to)
-                        );
-
-                        copiedNodesRef.current = {
-                            nodes: selectedNodes.map(n => ({ ...n })),
-                            connections: internalConnections.map(c => ({ ...c })),
-                            timestamp: Date.now()
-                        };
+                        copiedNodesRef.current = createClipboardPayload({
+                            nodes: nodesRef.current,
+                            connections: connectionsRef.current,
+                            selectedIds,
+                        });
 
                         // 可选：给用户反馈
-                        console.log(`已复制 ${selectedNodes.length} 个节点`);
+                        console.log(`已复制 ${copiedNodesRef.current.nodes.length} 个节点`);
                     }
                 };
 
                 // 粘贴功能（Ctrl+V / Cmd+V）
                 const handlePaste = async (e) => {
-                    const target = e.target;
-                    const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-
                     // 优先级1：文本输入框 - 使用浏览器默认行为
-                    if (isTextInput) {
+                    if (isEditableElement(e.target)) {
                         // 让浏览器默认处理文本粘贴
                         return;
                     }
@@ -1785,7 +1814,7 @@ import {
                     }
                     // 如果选中了图像或视频节点，尝试粘贴图像/视频
                     if (targetNode && (targetNode.type === 'input-image' || targetNode.type === 'video-input')) {
-                        const items = Array.from(e.clipboardData.items);
+                        const items = Array.from(e.clipboardData?.items || []);
                         const imageItem = items.find(item => item.type.startsWith('image/'));
                         const videoItem = items.find(item => item.type.startsWith('video/'));
 
@@ -1820,86 +1849,13 @@ import {
                     }
 
                     // 优先级3：节点粘贴
-                    if (copiedNodesRef.current && copiedNodesRef.current.nodes && copiedNodesRef.current.nodes.length > 0) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const copied = copiedNodesRef.current;
-
-                        // 计算粘贴位置：使用视图中心或鼠标位置
-                        const canvasElement = canvasRef.current;
-                        let pasteX = 0, pasteY = 0;
-                        if (canvasElement) {
-                            const rect = canvasElement.getBoundingClientRect();
-                            const centerX = (rect.left + rect.width / 2 - view.x) / view.zoom;
-                            const centerY = (rect.top + rect.height / 2 - view.y) / view.zoom;
-                            pasteX = centerX;
-                            pasteY = centerY;
-                        }
-
-                        // 计算原节点的中心点
-                        const originalNodes = copied.nodes;
-                        if (originalNodes.length === 0) return;
-
-                        const minX = Math.min(...originalNodes.map(n => n.x || 0));
-                        const minY = Math.min(...originalNodes.map(n => n.y || 0));
-                        const maxX = Math.max(...originalNodes.map(n => (n.x || 0) + (n.width || 0)));
-                        const maxY = Math.max(...originalNodes.map(n => (n.y || 0) + (n.height || 0)));
-                        const originalCenterX = (minX + maxX) / 2;
-                        const originalCenterY = (minY + maxY) / 2;
-
-                        // 计算偏移量，使新节点中心对齐到粘贴位置
-                        const offsetX = pasteX - originalCenterX;
-                        const offsetY = pasteY - originalCenterY;
-
-                        // 创建新节点ID映射
-                        const idMap = new Map();
-                        const baseTime = Date.now();
-                        copied.nodes.forEach((node, index) => {
-                            const newId = `node-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`;
-                            idMap.set(node.id, newId);
-                        });
-
-                        // 创建新节点
-                        const newNodes = copied.nodes.map(node => ({
-                            ...node,
-                            id: idMap.get(node.id),
-                            x: node.x + offsetX,
-                            y: node.y + offsetY
-                        }));
-
-                        // 创建新连接（只保留两个端点都在新节点中的连接）
-                        const newConnections = (copied.connections || [])
-                            .filter(conn => conn && idMap.has(conn.from) && idMap.has(conn.to))
-                            .map((conn, index) => ({
-                                ...conn,
-                                id: `conn-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-                                from: idMap.get(conn.from),
-                                to: idMap.get(conn.to)
-                            }));
-
-                        setNodes(prev => [...prev, ...newNodes]);
-                        setConnections(prev => [...prev, ...newConnections]);
-
-                        // 选中粘贴的节点
-                        if (newNodes.length === 1) {
-                            setSelectedNodeId(newNodes[0].id);
-                            setSelectedNodeIds(new Set([newNodes[0].id]));
-                        } else if (newNodes.length > 1) {
-                            setSelectedNodeId(null);
-                            setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
-                        }
-
-                        console.log(`已粘贴 ${newNodes.length} 个节点`);
-                    }
+                    pasteCopiedNodesAtCanvasCenter(e);
                 };
 
                 // 添加keydown事件监听，确保Ctrl+V/Cmd+V能触发节点粘贴
                 const handleKeyDown = (e) => {
-                    const target = e.target;
-                    const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-
                     // 如果不在文本输入框中，且按下了Ctrl+V或Cmd+V
-                    if (!isTextInput && (e.ctrlKey || e.metaKey) && e.key === 'v') {
+                    if (!isEditableElement(e.target) && (e.ctrlKey || e.metaKey) && e.key === 'v') {
                         // 先检查是否选中了图像节点，如果是，让paste事件处理图像粘贴
                         const currentSelectedId = selectedNodeIdRef.current;
                         if (currentSelectedId) {
@@ -1911,78 +1867,7 @@ import {
                         }
 
                         // 检查是否有复制的节点
-                        if (copiedNodesRef.current && copiedNodesRef.current.nodes && copiedNodesRef.current.nodes.length > 0) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            // 直接调用粘贴逻辑
-                            const copied = copiedNodesRef.current;
-
-                            // 计算粘贴位置：使用视图中心
-                            const canvasElement = canvasRef.current;
-                            let pasteX = 0, pasteY = 0;
-                            if (canvasElement) {
-                                const rect = canvasElement.getBoundingClientRect();
-                                const centerX = (rect.left + rect.width / 2 - view.x) / view.zoom;
-                                const centerY = (rect.top + rect.height / 2 - view.y) / view.zoom;
-                                pasteX = centerX;
-                                pasteY = centerY;
-                            }
-
-                            // 计算原节点的中心点
-                            const originalNodes = copied.nodes;
-                            if (originalNodes.length === 0) return;
-
-                            const minX = Math.min(...originalNodes.map(n => n.x || 0));
-                            const minY = Math.min(...originalNodes.map(n => n.y || 0));
-                            const maxX = Math.max(...originalNodes.map(n => (n.x || 0) + (n.width || 0)));
-                            const maxY = Math.max(...originalNodes.map(n => (n.y || 0) + (n.height || 0)));
-                            const originalCenterX = (minX + maxX) / 2;
-                            const originalCenterY = (minY + maxY) / 2;
-
-                            // 计算偏移量
-                            const offsetX = pasteX - originalCenterX;
-                            const offsetY = pasteY - originalCenterY;
-
-                            // 创建新节点ID映射
-                            const idMap = new Map();
-                            const baseTime = Date.now();
-                            copied.nodes.forEach((node, index) => {
-                                const newId = `node-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`;
-                                idMap.set(node.id, newId);
-                            });
-
-                            // 创建新节点
-                            const newNodes = copied.nodes.map(node => ({
-                                ...node,
-                                id: idMap.get(node.id),
-                                x: node.x + offsetX,
-                                y: node.y + offsetY
-                            }));
-
-                        // 创建新连接（只保留两个端点都在新节点中的连接）
-                        const newConnections = (copied.connections || [])
-                            .filter(conn => conn && idMap.has(conn.from) && idMap.has(conn.to))
-                            .map((conn, index) => ({
-                                ...conn,
-                                id: `conn-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-                                from: idMap.get(conn.from),
-                                to: idMap.get(conn.to)
-                            }));
-
-                        setNodes(prev => [...prev, ...newNodes]);
-                        setConnections(prev => [...prev, ...newConnections]);
-
-                            // 选中粘贴的节点
-                            if (newNodes.length === 1) {
-                                setSelectedNodeId(newNodes[0].id);
-                                setSelectedNodeIds(new Set([newNodes[0].id]));
-                            } else if (newNodes.length > 1) {
-                                setSelectedNodeId(null);
-                                setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
-                            }
-
-                            console.log(`已粘贴 ${newNodes.length} 个节点`);
-                        }
+                        pasteCopiedNodesAtCanvasCenter(e);
                     }
                 };
 
