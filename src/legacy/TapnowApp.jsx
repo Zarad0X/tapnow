@@ -94,7 +94,11 @@ import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
 import { saveProject, loadProjectFromFile } from './services/projectService.js';
-import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
+import {
+  getSelectedWorkflowItems,
+  importWorkflowFromFile,
+  saveSelectedWorkflow
+} from './services/workflowService.js';
 import {
   uploadImageToGetHttpUrl,
   uploadMidjourneyImages
@@ -4161,16 +4165,20 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                 try {
                     setSelectionContextMenu({ visible: false, x: 0, y: 0 });
 
-                    const selectedIds = selectedNodeIds.size > 0 ? selectedNodeIds : (selectedNodeId ? new Set([selectedNodeId]) : new Set());
+                    const {
+                        selectedIds,
+                        selectedNodes,
+                        selectedConnections,
+                    } = getSelectedWorkflowItems({
+                        nodes,
+                        connections,
+                        selectedNodeId,
+                        selectedNodeIds,
+                    });
                     if (selectedIds.size === 0) {
                         alert('请先选择要保存的节点');
                         return;
                     }
-
-                    const selectedNodes = nodes.filter(n => selectedIds.has(n.id));
-                    const selectedConnections = connections.filter(
-                        conn => selectedIds.has(conn.from) && selectedIds.has(conn.to)
-                    );
 
                     const saved = await saveSelectedWorkflow({ selectedNodes, selectedConnections });
                     if (saved) alert('工作流保存成功！');

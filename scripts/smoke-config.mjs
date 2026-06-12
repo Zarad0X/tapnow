@@ -104,6 +104,9 @@ import {
     validateClipTimeRange,
 } from '../src/legacy/services/storyboardService.js';
 import {
+    getSelectedWorkflowItems,
+} from '../src/legacy/services/workflowService.js';
+import {
     getBatchHistoryCardDisplay,
     getCanvasSendableHistoryItems,
     getCompletedVideoHistory,
@@ -260,6 +263,25 @@ const clipboardPayload = createClipboardPayload({
 });
 assert(clipboardPayload.nodes.length === 2, 'clipboard payload should only include selected nodes');
 assert(clipboardPayload.connections.length === 1, 'clipboard payload should only include internal selected connections');
+const selectedWorkflow = getSelectedWorkflowItems({
+    nodes: clipboardPayload.nodes.concat([{ id: 'node-c' }]),
+    connections: [
+        { id: 'conn-a-b', from: 'node-a', to: 'node-b' },
+        { id: 'conn-a-c', from: 'node-a', to: 'node-c' },
+    ],
+    selectedNodeId: 'node-c',
+    selectedNodeIds: new Set(['node-a', 'node-b']),
+});
+assert(selectedWorkflow.selectedIds.size === 2 && !selectedWorkflow.selectedIds.has('node-c'), 'workflow selection helper should prefer multi-select over single selected node');
+assert(selectedWorkflow.selectedNodes.map((node) => node.id).join(',') === 'node-a,node-b', 'workflow selection helper should preserve selected nodes');
+assert(selectedWorkflow.selectedConnections.map((connection) => connection.id).join(',') === 'conn-a-b', 'workflow selection helper should keep only internal connections');
+const singleWorkflow = getSelectedWorkflowItems({
+    nodes: clipboardPayload.nodes,
+    connections: clipboardPayload.connections,
+    selectedNodeId: 'node-a',
+    selectedNodeIds: new Set(),
+});
+assert(singleWorkflow.selectedIds.has('node-a') && singleWorkflow.selectedNodes.length === 1, 'workflow selection helper should fall back to single selected node');
 const clonedClipboard = cloneClipboardPayloadAtPoint({
     payload: clipboardPayload,
     pastePoint: { x: 500, y: 500 },
