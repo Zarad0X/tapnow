@@ -82,6 +82,7 @@ import {
 } from '../src/legacy/utils/aiResponseUtils.js';
 import {
     CHARACTER_TURNTABLE_SUFFIX,
+    createAnalysisResultsFromDirectorScenes,
     ensureCharacterTurntablePrompt,
     filterCharacterPromptLocal,
     filterScenePromptLocal,
@@ -91,6 +92,7 @@ import {
     getDefaultDurationForModel,
     getDefaultDurationsForModel,
     getStylePrefix,
+    createVoiceoverResultsFromScript,
     removeCharacterTurntablePrompt,
 } from '../src/legacy/services/storyboardService.js';
 import {
@@ -144,6 +146,14 @@ assert(getDescriptionNodeDefaultPrompt({ isCharacter: true, settings: { characte
 assert(getDescriptionNodeDefaultPrompt({ isCharacter: false, settings: { description: '雨夜街道' } }) === '雨夜街道', 'description node prompt helper should keep scene defaults');
 assert(filterCharacterPromptLocal('动漫风格，全身视角，角色站在飞船场景里，说你好').includes('纯白色背景'), 'character prompt fallback filter should enforce white background');
 assert(filterScenePromptLocal('角色站在大厅，背景是玻璃幕墙，城市灯光').includes('背景') || filterScenePromptLocal('角色站在大厅，背景是玻璃幕墙，城市灯光').includes('城市灯光'), 'scene prompt fallback filter should keep scene context');
+assert(createVoiceoverResultsFromScript([{ text: '第一句' }, {}]).map((item) => item.text).join('|') === '第一句|', 'director voiceover helper should preserve indexed text payloads');
+const directorAnalysis = createAnalysisResultsFromDirectorScenes([{
+    scene_id: 3,
+    time_range: '0-3s',
+    visual_analysis: { camera_movement: '推镜', subject_dynamics: '人物转身', atmosphere: '紧张' },
+    prompts: { mj_prompt: 'mj prompt', jimeng_prompt: 'jimeng prompt' },
+}]);
+assert(directorAnalysis[0].scene_index === 3 && directorAnalysis[0].keyframes[0].description === '推镜 人物转身' && directorAnalysis[0].global_tags.camera[0] === '推镜', 'director scene helper should convert scenes to analysis results');
 
 assert(normalizeBananaResolution('2k') === '2K', 'banana resolution normalization should preserve API casing');
 assert(normalizePromptForSora('hello @alice', 'sora-2') === 'hello @{alice}', 'sora prompt references should be normalized');

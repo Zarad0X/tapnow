@@ -106,7 +106,9 @@ import {
 } from './services/gridSplitService.js';
 import {
   createEmptyStoryboardShot,
+  createAnalysisResultsFromDirectorScenes,
   createShotsFromAnalysisResults,
+  createVoiceoverResultsFromScript,
   ensureCharacterTurntablePrompt,
   filterCharacterPromptLocal,
   filterScenePromptLocal,
@@ -5604,30 +5606,10 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                         throw new Error(`模型返回的不是有效的 JSON 格式。原始内容: ${jsonText.substring(0, 200)}`);
                     }
 
-                    // 处理 voiceover_script，转换为 voiceoverResults 格式
-                    const voiceoverResults = (result.voiceover_script || []).map((v, idx) => ({
-                        time: idx,
-                        text: v.text || ''
-                    }));
+                    const voiceoverResults = createVoiceoverResultsFromScript(result.voiceover_script);
                     console.log('[AI导演拆解] 口播文案数:', voiceoverResults.length);
 
-                    // 处理 scenes，转换为 analysisResults 格式
-                    const analysisResults = (result.scenes || []).map((scene, idx) => ({
-                        scene_index: scene.scene_id || idx + 1,
-                        time_range: scene.time_range || '',
-                        keyframes: [{
-                            type: 'current',
-                            time: 0,
-                            description: `${scene.visual_analysis?.camera_movement || ''} ${scene.visual_analysis?.subject_dynamics || ''}`.trim(),
-                            mj_prompt: scene.prompts?.mj_prompt || '',
-                            jimeng_prompt: scene.prompts?.jimeng_prompt || ''
-                        }],
-                        global_tags: {
-                            style: scene.visual_analysis?.atmosphere ? [scene.visual_analysis.atmosphere] : [],
-                            camera: scene.visual_analysis?.camera_movement ? [scene.visual_analysis.camera_movement] : [],
-                            color: []
-                        }
-                    }));
+                    const analysisResults = createAnalysisResultsFromDirectorScenes(result.scenes);
                     console.log('[AI导演拆解] 场景数:', analysisResults.length);
 
                     // 更新节点状态

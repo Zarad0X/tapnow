@@ -187,3 +187,29 @@ export const createShotsFromAnalysisResults = (
         };
     });
 };
+
+export const createVoiceoverResultsFromScript = (voiceoverScript = []) => {
+    return (voiceoverScript || []).map((voiceover, index) => ({
+        time: index,
+        text: voiceover.text || '',
+    }));
+};
+
+export const createAnalysisResultsFromDirectorScenes = (scenes = []) => {
+    return (scenes || []).map((scene, index) => ({
+        scene_index: scene.scene_id || index + 1,
+        time_range: scene.time_range || '',
+        keyframes: [{
+            type: 'current',
+            time: 0,
+            description: `${scene.visual_analysis?.camera_movement || ''} ${scene.visual_analysis?.subject_dynamics || ''}`.trim(),
+            mj_prompt: scene.prompts?.mj_prompt || '',
+            jimeng_prompt: scene.prompts?.jimeng_prompt || '',
+        }],
+        global_tags: {
+            style: scene.visual_analysis?.atmosphere ? [scene.visual_analysis.atmosphere] : [],
+            camera: scene.visual_analysis?.camera_movement ? [scene.visual_analysis.camera_movement] : [],
+            color: [],
+        },
+    }));
+};
