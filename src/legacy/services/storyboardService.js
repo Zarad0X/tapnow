@@ -1,5 +1,6 @@
 const CAMERA_TAG_KEYWORDS = ['推', '拉', '摇', '移', '跟', '升', '降', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
 const CAMERA_FIELD_KEYWORDS = ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
+export const CHARACTER_TURNTABLE_SUFFIX = '，然后缓慢转一圈360度全方位展示身体';
 
 const inferCameraTags = (description) => {
     if (!description) return [];
@@ -47,6 +48,15 @@ export const getStylePrefix = (style) => {
     }
 };
 
+export const ensureCharacterTurntablePrompt = (prompt) => {
+    const text = String(prompt || '');
+    return text.includes('360度') ? text : `${text}${CHARACTER_TURNTABLE_SUFFIX}`;
+};
+
+export const removeCharacterTurntablePrompt = (prompt) => {
+    return String(prompt || '').split(CHARACTER_TURNTABLE_SUFFIX).join('');
+};
+
 export const filterCharacterPromptLocal = (prompt) => {
     if (!prompt) return '';
 
@@ -55,7 +65,7 @@ export const filterCharacterPromptLocal = (prompt) => {
     filtered = filtered.replace(/内心(.*?)(?=[，。；！？、\s])/g, '');
     filtered = filtered.replace(/(推动|拉动|操作|转身|站立|走动|说|介绍|正在|负责|穿着|站在|面对|做)(.*?)(?=[，。；！？、\s])/g, '');
     filtered = filtered.replace(/(天命杠杆|战舰|游戏|操作|控制|推进|推动|极低速度|以极低速度|最终|最后|现在|正在|目前|此前|起先|起初)/g, '');
-    filtered = filtered.replace(/，然后缓慢转一圈360度全方位展示身体/g, '');
+    filtered = removeCharacterTurntablePrompt(filtered);
     filtered = filtered.replace(/(背景|场景|环境|建筑|地点|位置|周围|附近|后面|前面|旁边)(.*?)(?=[，。；！？、\s])/g, '');
 
     if (!filtered.includes('白色背景') && !filtered.includes('纯白色背景')) {
@@ -96,7 +106,7 @@ export const generateCharacterPrompt = (character, mode = 'video', style = 'none
     const basePrompt = `${stylePrefix}，全身视角，名叫${character.name}的${age}岁左右${gender}站在白色背景前，${character.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${character.name}，${character.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`;
 
     if (mode === 'video') {
-        return `${basePrompt}，然后缓慢转一圈360度全方位展示身体`;
+        return ensureCharacterTurntablePrompt(basePrompt);
     }
 
     return basePrompt;

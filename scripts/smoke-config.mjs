@@ -77,6 +77,8 @@ import {
     extractAiResponseContent,
 } from '../src/legacy/utils/aiResponseUtils.js';
 import {
+    CHARACTER_TURNTABLE_SUFFIX,
+    ensureCharacterTurntablePrompt,
     filterCharacterPromptLocal,
     filterScenePromptLocal,
     generateCharacterPrompt,
@@ -85,6 +87,7 @@ import {
     getDefaultDurationForModel,
     getDefaultDurationsForModel,
     getStylePrefix,
+    removeCharacterTurntablePrompt,
 } from '../src/legacy/services/storyboardService.js';
 import {
     getBatchHistoryCardDisplay,
@@ -125,6 +128,9 @@ assert(getDefaultDurationForModel('sora-2-pro') === '15s', 'storyboard duration 
 assert(getDefaultDurationsForModel('veo3').join(',') === '8s', 'storyboard duration helper should keep veo durations constrained');
 assert(getStylePrefix('realistic') === '写实风格', 'style prefix helper should keep realistic style label');
 assert(getStylePrefix('unknown') === '动漫风格', 'style prefix helper should keep anime fallback');
+assert(ensureCharacterTurntablePrompt('角色提示').endsWith(CHARACTER_TURNTABLE_SUFFIX), 'turntable helper should append video suffix');
+assert(ensureCharacterTurntablePrompt(`角色提示${CHARACTER_TURNTABLE_SUFFIX}`) === `角色提示${CHARACTER_TURNTABLE_SUFFIX}`, 'turntable helper should not duplicate suffix');
+assert(removeCharacterTurntablePrompt(`角色提示${CHARACTER_TURNTABLE_SUFFIX}`) === '角色提示', 'turntable helper should remove exact video suffix');
 const generatedCharacterPrompt = generateCharacterPrompt({ name: '阿青', age: '18', gender: '少女', description: '银色短发', role: '飞行员' }, 'image', 'manga');
 assert(generatedCharacterPrompt.includes('漫画风格') && generatedCharacterPrompt.includes('阿青') && !generatedCharacterPrompt.includes('360度'), 'character prompt helper should build image prompts without video turntable suffix');
 assert(generateCharacterPrompt({ name: '阿青' }).includes('360度全方位展示身体'), 'character prompt helper should keep video turntable suffix by default');

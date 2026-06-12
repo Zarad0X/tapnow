@@ -106,6 +106,7 @@ import {
 import {
   createEmptyStoryboardShot,
   createShotsFromAnalysisResults,
+  ensureCharacterTurntablePrompt,
   filterCharacterPromptLocal,
   filterScenePromptLocal,
   generateCharacterPrompt,
@@ -115,6 +116,7 @@ import {
   getDefaultDurationsForModel,
   getStylePrefix,
   renumberStoryboardShots,
+  removeCharacterTurntablePrompt,
   updateStoryboardShot
 } from './services/storyboardService.js';
 import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
@@ -7893,9 +7895,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                                                 const newMode = 'video';
                                                                 const currentPrompt = node.settings?.prompt || defaultPrompt;
                                                                 if (isCharacter) {
-                                                                    const newPrompt = currentPrompt.includes('360度')
-                                                                        ? currentPrompt
-                                                                        : currentPrompt + '，然后缓慢转一圈360度全方位展示身体';
+                                                                    const newPrompt = ensureCharacterTurntablePrompt(currentPrompt);
                                                                     updateNodeSettings(node.id, { mode: newMode, prompt: newPrompt });
                                                                 } else {
                                                                     updateNodeSettings(node.id, { mode: newMode });
@@ -7917,7 +7917,7 @@ import { parseJsonWithRepair } from './utils/jsonUtils.js';
                                                                 const newMode = 'image';
                                                                 const currentPrompt = node.settings?.prompt || defaultPrompt;
                                                                 if (isCharacter) {
-                                                                    const newPrompt = currentPrompt.replace(/，然后缓慢转一圈360度全方位展示身体/g, '');
+                                                                    const newPrompt = removeCharacterTurntablePrompt(currentPrompt);
                                                                     updateNodeSettings(node.id, { mode: newMode, prompt: newPrompt });
                                                                 } else {
                                                                     updateNodeSettings(node.id, { mode: newMode });
