@@ -15,6 +15,31 @@ export const isVideoUrl = (url) => {
     return ['mp4', 'webm', 'ogg', 'mov'].includes(ext);
 };
 
+export const createChatMediaFile = ({
+    name,
+    content,
+    mediaType = 'image',
+    fromHistory = false,
+    fromPreview = false,
+}) => {
+    const isImage = mediaType === 'image';
+    const isVideo = mediaType === 'video';
+    const fileExt = isImage ? 'png' : (isVideo ? 'mp4' : 'file');
+    const mimeType = isImage ? 'image/png' : (isVideo ? 'video/mp4' : 'application/octet-stream');
+
+    return {
+        name: name || `Media.${fileExt}`,
+        type: mimeType,
+        content,
+        isImage,
+        isVideo,
+        isAudio: false,
+        ...(fromHistory ? { fromHistory: true } : {}),
+        ...(fromPreview ? { fromPreview: true } : {}),
+        fileExt,
+    };
+};
+
 export const getVideoMetadata = (src) => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');

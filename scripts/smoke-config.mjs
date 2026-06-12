@@ -38,6 +38,9 @@ import {
     resolveEndpointUrl,
 } from '../src/legacy/services/generationService.js';
 import {
+    createChatMediaFile,
+} from '../src/legacy/utils/mediaUtils.js';
+import {
     getBatchHistoryCardDisplay,
     getCanvasSendableHistoryItems,
     getCompletedVideoHistory,
@@ -129,6 +132,12 @@ assert(clonedClipboard.nodes.length === 2, 'clipboard clone should keep copied n
 assert(clonedClipboard.connections.length === 1, 'clipboard clone should recreate internal connections');
 assert(clonedClipboard.connections[0].from !== 'node-a' && clonedClipboard.connections[0].to !== 'node-b', 'clipboard clone should remap connection endpoints');
 assert(clonedClipboard.nodes[0].x === 350 && clonedClipboard.nodes[0].y === 450, 'clipboard clone should center nodes on paste point');
+const historyChatFile = createChatMediaFile({ name: 'Generated-1.png', content: 'image.png', mediaType: 'image', fromHistory: true });
+assert(historyChatFile.type === 'image/png' && historyChatFile.isImage && historyChatFile.fromHistory, 'chat media helper should create history image files');
+const previewChatFile = createChatMediaFile({ name: 'Preview.mp4', content: 'video.mp4', mediaType: 'video', fromPreview: true });
+assert(previewChatFile.type === 'video/mp4' && previewChatFile.isVideo && previewChatFile.fileExt === 'mp4', 'chat media helper should create preview video files');
+const unknownChatFile = createChatMediaFile({ name: 'Generated-x.file', content: 'asset.bin', mediaType: 'file' });
+assert(unknownChatFile.type === 'application/octet-stream' && unknownChatFile.fileExt === 'file', 'chat media helper should preserve generic file fallback');
 
 [
     CHARACTER_SHEET_PROMPT_TEXT,
