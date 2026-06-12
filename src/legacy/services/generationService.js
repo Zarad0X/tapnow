@@ -291,6 +291,13 @@ export const resolveEndpointUrl = ({ endpoint, baseUrl }) => {
     return `${cleanBaseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 };
 
+export const resolveAsyncImagePollUrl = ({ baseUrl, taskIdForPoll }) => {
+    return resolveEndpointUrl({
+        baseUrl,
+        endpoint: `/v1/images/tasks/${taskIdForPoll}`,
+    });
+};
+
 export const serializeGenerationPayload = ({ payload, useMultipart = false }) => {
     return useMultipart ? payload : JSON.stringify(payload);
 };

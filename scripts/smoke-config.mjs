@@ -52,6 +52,7 @@ import {
     normalizePromptForSora,
     normalizeDurationToMs,
     parseDurationSeconds,
+    resolveAsyncImagePollUrl,
     resolveAsyncImageProgress,
     resolveGenerationDurationMs,
     resolveEndpointUrl,
@@ -129,6 +130,7 @@ assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) ==
 assert(getModelDisplayName({ modelId: 'jimeng-3.1', config: {} }) === 'Jimeng 3.1', 'display name should special-case jimeng');
 assert(buildRequestHeaders({ apiKey: 'k', useMultipart: true })['Content-Type'] === undefined, 'multipart requests should not force content-type');
 assert(resolveEndpointUrl({ endpoint: '/v1/images', baseUrl: 'https://example.com/' }) === 'https://example.com/v1/images', 'relative endpoints should be resolved once');
+assert(resolveAsyncImagePollUrl({ baseUrl: 'https://example.com///', taskIdForPoll: 'task-1' }) === 'https://example.com/v1/images/tasks/task-1', 'async image poll URL should normalize base URL slashes');
 assert(extractAsyncTaskId({ data: { task_id: 'task-1' } }) === 'task-1', 'async task id extraction should handle nested task_id');
 assert(extractImageUrls({ data: [{ url: 'a.png' }, 'b.png'] }).join(',') === 'a.png,b.png', 'image URL extraction should handle OpenAI-like arrays');
 assert(extractAsyncImageItems({ data: { data: [{ imageUrl: 'nested.png' }] } }).source === 'data.data.data', 'async image item extraction should prefer nested data arrays');

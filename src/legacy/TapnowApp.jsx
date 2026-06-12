@@ -152,6 +152,7 @@ import {
   normalizeImageItemsToUrls,
   normalizePromptForSora,
   parseDurationSeconds,
+  resolveAsyncImagePollUrl,
   resolveGenerationDurationMs,
   classifyAsyncImageStatus,
   ASYNC_IMAGE_STATUS,
@@ -2274,8 +2275,7 @@ import {
                     return;
                 }
 
-                const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-                const pollUrl = `${cleanBaseUrl}/v1/images/tasks/${taskIdForPoll}`;
+                const pollUrl = resolveAsyncImagePollUrl({ baseUrl, taskIdForPoll });
 
                 fetch(pollUrl, {
                     method: 'GET',
