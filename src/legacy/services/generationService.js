@@ -199,7 +199,7 @@ export const shouldContinueAsyncImagePolling = (asyncImageStatus) => {
         asyncImageStatus !== ASYNC_IMAGE_STATUS.FAILED;
 };
 
-const parseProgressValue = (value) => {
+export const parseProgressValue = (value) => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value !== 'string') return null;
     const parsed = parseInt(value.replace('%', ''), 10);

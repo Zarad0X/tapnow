@@ -54,6 +54,7 @@ import {
     normalizePromptForSora,
     normalizeDurationToMs,
     parseDurationSeconds,
+    parseProgressValue,
     resolveAsyncImagePollUrl,
     resolveAsyncImageProgress,
     resolveGenerationDurationMs,
@@ -123,6 +124,9 @@ assert(!shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.COMPLETED), 'async im
 assert(!shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.FAILED), 'async image polling should stop on failed status');
 assert(shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.RUNNING), 'async image polling should continue on running status');
 assert(shouldContinueAsyncImagePolling(ASYNC_IMAGE_STATUS.UNKNOWN), 'async image polling should continue on unknown status');
+assert(parseProgressValue('72%') === 72, 'progress parser should parse percentage strings');
+assert(parseProgressValue(48) === 48, 'progress parser should keep numeric values');
+assert(parseProgressValue('bad') === null, 'progress parser should reject invalid strings');
 assert(resolveAsyncImageProgress({ data: { data: { progress: '72%' } }, attempt: 2 }) === 72, 'async image progress should parse nested percentage strings');
 assert(resolveAsyncImageProgress({ data: { progress: 120 }, attempt: 2 }) === 95, 'async image progress should clamp high values');
 assert(resolveAsyncImageProgress({ data: {}, attempt: 4 }) === 18, 'async image progress should fall back to attempt-based running progress');

@@ -154,6 +154,7 @@ import {
   normalizeBananaResolution,
   normalizeImageItemsToUrls,
   normalizePromptForSora,
+  parseProgressValue,
   parseDurationSeconds,
   resolveAsyncImagePollUrl,
   resolveGenerationDurationMs,
@@ -2639,12 +2640,7 @@ import {
                     const buttons = data?.buttons || [];
 
                     // 解析进度百分比
-                    let progressNum = 0;
-                    if (typeof progress === 'string' && progress.includes('%')) {
-                        progressNum = parseInt(progress.replace('%', ''), 10) || 0;
-                    } else if (typeof progress === 'number') {
-                        progressNum = progress;
-                    }
+                    const progressNum = parseProgressValue(progress) || 0;
 
                     // 更新历史记录
                     setHistory((prev) => prev.map((hItem) => {
