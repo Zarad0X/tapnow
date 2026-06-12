@@ -86,6 +86,42 @@ export const resolveGenerationDurationMs = ({ data, startTime, endTime = Date.no
     };
 };
 
+export const findFirstHttpImageUrl = (value, { maxDepth = 5 } = {}) => {
+    const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
+
+    const visit = (current, depth, visited) => {
+        if (depth > maxDepth) return null;
+        if (!current || typeof current !== 'object') return null;
+        if (visited.has(current)) return null;
+        visited.add(current);
+
+        for (const field of urlFields) {
+            const candidate = current[field];
+            if (typeof candidate === 'string' && candidate.startsWith('http')) {
+                return candidate;
+            }
+        }
+
+        if (Array.isArray(current)) {
+            for (const item of current) {
+                const result = visit(item, depth + 1, visited);
+                if (result) return result;
+            }
+            return null;
+        }
+
+        for (const key in current) {
+            if (!Object.prototype.hasOwnProperty.call(current, key) || urlFields.includes(key)) continue;
+            const result = visit(current[key], depth + 1, visited);
+            if (result) return result;
+        }
+
+        return null;
+    };
+
+    return visit(value, 0, new WeakSet());
+};
+
 export const getImageModelFeatures = (modelId, config = {}) => {
     const modelName = config?.modelName ?? '';
     const provider = config?.provider ?? '';

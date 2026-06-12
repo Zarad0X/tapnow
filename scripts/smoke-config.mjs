@@ -36,6 +36,7 @@ import {
     buildRequestHeaders,
     denormalizePromptForSoraRequest,
     extractAsyncTaskId,
+    findFirstHttpImageUrl,
     extractImageUrls,
     getImageModelFeatures,
     getJimengModelName,
@@ -97,6 +98,10 @@ assert(normalizeDurationToMs('2.5s') === 2500, 'duration normalization should pa
 assert(normalizeDurationToMs('800ms') === 800, 'duration normalization should parse millisecond strings');
 assert(resolveGenerationDurationMs({ data: { data: { cost_time: '3秒' } }, startTime: 100, endTime: 1000 }).durationMs === 3000, 'generation duration should prefer nested backend timing');
 assert(resolveGenerationDurationMs({ data: {}, startTime: 100, endTime: 1000 }).durationMs === 900, 'generation duration should fall back to frontend timing');
+const cyclicImageResponse = { data: [{ metadata: { imageUrl: 'https://example.com/image.png' } }] };
+cyclicImageResponse.self = cyclicImageResponse;
+assert(findFirstHttpImageUrl(cyclicImageResponse) === 'https://example.com/image.png', 'image URL deep search should handle nested arrays and cycles');
+assert(findFirstHttpImageUrl({ data: { src: 'blob:image' } }) === null, 'image URL deep search should ignore non-http URLs');
 assert(getImageModelFeatures('nano-banana-2', { modelName: 'nano-banana-2' }).isNanoBanana2, 'image model features should detect nano-banana-2');
 assert(getJimengModelName('jimeng-4.1', {}) === 'jimeng-4.1', 'jimeng model name should follow selected model');
 assert(getNanoBanana2ImageSizeFlag({ isNanoBanana2: true, resolution: '4k' }) === '4K', 'nano-banana-2 image_size should normalize casing');
