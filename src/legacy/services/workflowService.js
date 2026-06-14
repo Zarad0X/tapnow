@@ -13,6 +13,25 @@ import {
 
 const WORKFLOW_VERSION = '2.8';
 
+export const getSelectedWorkflowItems = ({
+    nodes = [],
+    connections = [],
+    selectedNodeId = null,
+    selectedNodeIds = new Set(),
+} = {}) => {
+    const selectedIds = selectedNodeIds && selectedNodeIds.size > 0
+        ? selectedNodeIds
+        : (selectedNodeId ? new Set([selectedNodeId]) : new Set());
+
+    return {
+        selectedIds,
+        selectedNodes: nodes.filter((node) => selectedIds.has(node.id)),
+        selectedConnections: connections.filter((connection) =>
+            selectedIds.has(connection.from) && selectedIds.has(connection.to)
+        ),
+    };
+};
+
 export const saveSelectedWorkflow = async ({ selectedNodes, selectedConnections }) => {
     if (!window.showSaveFilePicker) {
         const shouldProceed = confirm('您的浏览器不支持流式保存大文件。\n\n是否继续使用传统方式保存？');
@@ -139,4 +158,3 @@ export const importWorkflowFromFile = async ({ file, importPosition = { x: 100, 
 
     return { newNodes, newConnections };
 };
-

@@ -1,5 +1,6 @@
 const CAMERA_TAG_KEYWORDS = ['推', '拉', '摇', '移', '跟', '升', '降', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
 const CAMERA_FIELD_KEYWORDS = ['推', '拉', '摇', '移', '跟', 'Dolly', 'Pan', 'Tilt', 'Zoom'];
+export const CHARACTER_TURNTABLE_SUFFIX = '，然后缓慢转一圈360度全方位展示身体';
 
 const inferCameraTags = (description) => {
     if (!description) return [];
@@ -26,6 +27,107 @@ export const getDefaultDurationsForModel = (modelId) => {
     if (modelId.includes('veo') || modelId === 'google-veo3') return ['8s'];
     if (modelId.includes('grok') || modelId === 'grok-3') return ['8s', '5s'];
     return ['5s', '10s', '8s'];
+};
+
+export const getStylePrefix = (style) => {
+    switch (style) {
+        case '2d-anime':
+            return '2D动漫风格';
+        case '3d-anime':
+            return '3D动漫风格';
+        case 'realistic':
+            return '写实风格';
+        case 'selfie':
+            return '自拍风格';
+        case 'news':
+            return '新闻风格';
+        case 'manga':
+            return '漫画风格';
+        default:
+            return '动漫风格';
+    }
+};
+
+export const ensureCharacterTurntablePrompt = (prompt) => {
+    const text = String(prompt || '');
+    return text.includes('360度') ? text : `${text}${CHARACTER_TURNTABLE_SUFFIX}`;
+};
+
+export const removeCharacterTurntablePrompt = (prompt) => {
+    return String(prompt || '').split(CHARACTER_TURNTABLE_SUFFIX).join('');
+};
+
+export const filterCharacterPromptLocal = (prompt) => {
+    if (!prompt) return '';
+
+    let filtered = prompt.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
+    filtered = filtered.replace(/利用《.*?》游戏.*?/g, '');
+    filtered = filtered.replace(/内心(.*?)(?=[，。；！？、\s])/g, '');
+    filtered = filtered.replace(/(推动|拉动|操作|转身|站立|走动|说|介绍|正在|负责|穿着|站在|面对|做)(.*?)(?=[，。；！？、\s])/g, '');
+    filtered = filtered.replace(/(天命杠杆|战舰|游戏|操作|控制|推进|推动|极低速度|以极低速度|最终|最后|现在|正在|目前|此前|起先|起初)/g, '');
+    filtered = removeCharacterTurntablePrompt(filtered);
+    filtered = filtered.replace(/(背景|场景|环境|建筑|地点|位置|周围|附近|后面|前面|旁边)(.*?)(?=[，。；！？、\s])/g, '');
+
+    if (!filtered.includes('白色背景') && !filtered.includes('纯白色背景')) {
+        filtered = filtered.replace(/(动漫风格，全身视角，)/, '$1站在纯白色背景前，');
+        if (!filtered.includes('纯白色背景')) {
+            filtered = `动漫风格，全身视角，站在纯白色背景前，${filtered}`;
+        }
+    }
+
+    filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
+
+    if (filtered.length < 50) {
+        filtered = '动漫风格，全身视角，站在纯白色背景前，角色穿着简洁的服装，表情平静，姿态自然';
+    }
+
+    return filtered;
+};
+
+export const filterScenePromptLocal = (prompt) => {
+    if (!prompt) return '';
+
+    let filtered = prompt.replace(/(人物|角色|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装)(.*?)(?=[，。；！？、\s])/g, '');
+    filtered = filtered.replace(/["'""「」](.*?)[^,，。；！？、\s]["'""「」]/g, '');
+    filtered = filtered.replace(/(名叫|角色|人物|角色名|人名|站在|面向|说|介绍|正在|负责|穿着|动作|表情|姿态|外貌|服装|角色特征)/g, '');
+    filtered = filtered.replace(/\s{2,}/g, ' ').replace(/[，。；！？、]{2,}/g, '，').trim();
+
+    if (filtered.length < 30) {
+        filtered = '场景描述：环境、建筑、背景';
+    }
+
+    return filtered;
+};
+
+export const generateCharacterPrompt = (character, mode = 'video', style = 'none') => {
+    const age = character.age || '25';
+    const gender = character.gender || '年轻男人';
+    const stylePrefix = getStylePrefix(style);
+    const basePrompt = `${stylePrefix}，全身视角，名叫${character.name}的${age}岁左右${gender}站在白色背景前，${character.description || '皮肤因长期处于室内而显得苍白，凌乱的黑色碎发遮住额头，眼神疲惫却透着一股锐利的机智，深灰色瞳孔，上身穿着一件原本华丽但此刻解开扣子、袖口卷起的白色金边军礼服外套，内搭一件普通的深灰色吸汗T恤，下身穿着沾染了少许机油污渍的白色笔挺军裤，脚穿厚重的黑色防滑军靴，身材精瘦结实，气质颓废中带着不羁'}，正在用中文普通话面向镜头做自我介绍，说着：我是${character.name}，${character.role || '这艘船的首席手动推进官，也就是个推杆子的苦力'}`;
+
+    if (mode === 'video') {
+        return ensureCharacterTurntablePrompt(basePrompt);
+    }
+
+    return basePrompt;
+};
+
+export const generateScenePrompt = (scene) => {
+    return scene.description || '极度奢华的星际战舰舰桥内部，空间广阔如同一座宫殿，四壁装饰着繁复的黄金浮雕与象牙立柱，地面铺着深红色的天鹅绒地毯，巨大的落地舷窗外是深邃星空，中央悬挂着水晶吊灯，操作台被伪装成古典家具的样子，整体色调金碧辉煌，氛围庄严却透着一种不切实际的荒谬感';
+};
+
+export const getDescriptionNodeDefaultPrompt = ({ isCharacter, settings = {} } = {}) => {
+    if (!isCharacter) {
+        return generateScenePrompt({ description: settings.description });
+    }
+
+    return generateCharacterPrompt({
+        name: settings.characterName || '{角色名}',
+        age: settings.age,
+        gender: settings.gender,
+        description: settings.description,
+        role: settings.role,
+    }, 'image');
 };
 
 export const createEmptyStoryboardShot = ({ shotCount = 0, defaultModel = '' } = {}) => ({
@@ -84,4 +186,57 @@ export const createShotsFromAnalysisResults = (
             status: 'draft',
         };
     });
+};
+
+export const createVoiceoverResultsFromScript = (voiceoverScript = []) => {
+    return (voiceoverScript || []).map((voiceover, index) => ({
+        time: index,
+        text: voiceover.text || '',
+    }));
+};
+
+export const createAnalysisResultsFromDirectorScenes = (scenes = []) => {
+    return (scenes || []).map((scene, index) => ({
+        scene_index: scene.scene_id || index + 1,
+        time_range: scene.time_range || '',
+        keyframes: [{
+            type: 'current',
+            time: 0,
+            description: `${scene.visual_analysis?.camera_movement || ''} ${scene.visual_analysis?.subject_dynamics || ''}`.trim(),
+            mj_prompt: scene.prompts?.mj_prompt || '',
+            jimeng_prompt: scene.prompts?.jimeng_prompt || '',
+        }],
+        global_tags: {
+            style: scene.visual_analysis?.atmosphere ? [scene.visual_analysis.atmosphere] : [],
+            camera: scene.visual_analysis?.camera_movement ? [scene.visual_analysis.camera_movement] : [],
+            color: [],
+        },
+    }));
+};
+
+export const parseTimeRangeToSeconds = (timeRange) => {
+    if (!timeRange) return null;
+    try {
+        const cleaned = String(timeRange)
+            .trim()
+            .replace(/[，\s]+/g, ',')
+            .replace(/[~\-–—]+/g, ',');
+        const parts = cleaned.split(',').map((part) => part.trim()).filter(Boolean);
+        if (parts.length < 2) return null;
+        const start = parseFloat(parts[0]);
+        const end = parseFloat(parts[1]);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+        return { start, end };
+    } catch (error) {
+        return null;
+    }
+};
+
+export const validateClipTimeRange = (startSecond, endSecond, { minDuration = 1, maxDuration = 3 } = {}) => {
+    const duration = endSecond - startSecond;
+    return Number.isFinite(duration) && duration >= minDuration && duration <= maxDuration;
+};
+
+export const formatClipTimestamps = (startSecond, endSecond) => {
+    return `${startSecond},${endSecond}`;
 };

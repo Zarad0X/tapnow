@@ -33,6 +33,233 @@ export const parseDurationSeconds = (duration, fallback = 8) => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+export const extractBackendDuration = (data) => {
+    return data?.data?.duration ??
+        data?.data?.cost_time ??
+        data?.data?.elapsed_time ??
+        data?.data?.time_cost ??
+        data?.data?.spent_time ??
+        data?.duration ??
+        data?.cost_time ??
+        data?.elapsed_time ??
+        data?.time_cost ??
+        data?.spent_time ??
+        null;
+};
+
+export const normalizeDurationToMs = (duration) => {
+    if (duration === null || duration === undefined) return null;
+
+    if (typeof duration === 'number') {
+        return Number.isFinite(duration) ? (duration < 10000 ? duration * 1000 : duration) : null;
+    }
+
+    if (typeof duration === 'string') {
+        const match = duration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
+        if (match) {
+            const value = parseFloat(match[1]);
+            if (!Number.isFinite(value)) return null;
+            const unit = match[2].toLowerCase();
+            return (unit === 's' || unit === '秒') ? value * 1000 : value;
+        }
+
+        const parsed = parseFloat(duration);
+        if (Number.isFinite(parsed)) {
+            return parsed < 10000 ? parsed * 1000 : parsed;
+        }
+    }
+
+    return null;
+};
+
+export const resolveGenerationDurationMs = ({ data, startTime, endTime = Date.now() }) => {
+    const backendDuration = extractBackendDuration(data);
+    const durationMs = normalizeDurationToMs(backendDuration);
+    if (durationMs !== null) {
+        return { durationMs, backendDuration, usedBackendDuration: true };
+    }
+
+    return {
+        durationMs: endTime - (startTime || endTime),
+        backendDuration,
+        usedBackendDuration: false,
+    };
+};
+
+export const findFirstHttpImageUrl = (value, { maxDepth = 5 } = {}) => {
+    const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
+
+    const visit = (current, depth, visited) => {
+        if (depth > maxDepth) return null;
+        if (!current || typeof current !== 'object') return null;
+        if (visited.has(current)) return null;
+        visited.add(current);
+
+        for (const field of urlFields) {
+            const candidate = current[field];
+            if (typeof candidate === 'string' && candidate.startsWith('http')) {
+                return candidate;
+            }
+        }
+
+        if (Array.isArray(current)) {
+            for (const item of current) {
+                const result = visit(item, depth + 1, visited);
+                if (result) return result;
+            }
+            return null;
+        }
+
+        for (const key in current) {
+            if (!Object.prototype.hasOwnProperty.call(current, key) || urlFields.includes(key)) continue;
+            const result = visit(current[key], depth + 1, visited);
+            if (result) return result;
+        }
+
+        return null;
+    };
+
+    return visit(value, 0, new WeakSet());
+};
+
+const extractMarkdownImageUrl = (text) => {
+    if (!text) return null;
+    const urlMatch = String(text).match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+    return urlMatch?.[1] || null;
+};
+
+export const extractAsyncImageItems = (data) => {
+    if (Array.isArray(data?.data?.data) && data.data.data.length > 0) {
+        return { images: data.data.data, source: 'data.data.data' };
+    }
+    if (Array.isArray(data?.data?.images) && data.data.images.length > 0) {
+        return { images: data.data.images, source: 'data.data.images' };
+    }
+    if (Array.isArray(data?.images) && data.images.length > 0) {
+        return { images: data.images, source: 'data.images' };
+    }
+    if (Array.isArray(data?.data) && data.data.length > 0) {
+        return { images: data.data, source: 'data.data' };
+    }
+
+    const nestedRevisedPromptUrl = extractMarkdownImageUrl(data?.data?.data?.[0]?.revised_prompt);
+    if (nestedRevisedPromptUrl) {
+        return { images: [{ url: nestedRevisedPromptUrl }], source: 'data.data.data.revised_prompt' };
+    }
+
+    const revisedPromptUrl = extractMarkdownImageUrl(data?.data?.revised_prompt);
+    if (revisedPromptUrl) {
+        return { images: [{ url: revisedPromptUrl }], source: 'data.data.revised_prompt' };
+    }
+
+    if (Array.isArray(data?.data?.data) && data.data.data.length > 0) {
+        const itemsWithUrl = data.data.data.filter((item) => item?.url || item?.image_url || item?.imageUrl);
+        if (itemsWithUrl.length > 0) {
+            return { images: itemsWithUrl, source: 'data.data.data.url_fields' };
+        }
+    }
+
+    return { images: [], source: null };
+};
+
+export const normalizeImageItemsToUrls = (images) => {
+    return (images || [])
+        .map((image) => {
+            if (typeof image === 'string') return image;
+            return image?.url || image?.image_url || image?.imageUrl || '';
+        })
+        .filter(Boolean);
+};
+
+export const ASYNC_IMAGE_STATUS = {
+    COMPLETED: 'completed',
+    FAILED: 'failed',
+    RUNNING: 'running',
+    UNKNOWN: 'unknown',
+};
+
+const ASYNC_IMAGE_COMPLETED_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FINISHED', 'DONE']);
+const ASYNC_IMAGE_FAILED_STATUSES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'FAILURE']);
+const ASYNC_IMAGE_RUNNING_STATUSES = new Set(['PENDING', 'PROCESSING', 'GENERATING', 'IN_PROGRESS', 'RUNNING']);
+
+export const getAsyncImageStatusValue = (data) => {
+    return String(data?.data?.status || data?.status || '').toUpperCase();
+};
+
+export const classifyAsyncImageStatus = (status) => {
+    const normalized = String(status || '').toUpperCase();
+    if (ASYNC_IMAGE_COMPLETED_STATUSES.has(normalized)) return ASYNC_IMAGE_STATUS.COMPLETED;
+    if (ASYNC_IMAGE_FAILED_STATUSES.has(normalized)) return ASYNC_IMAGE_STATUS.FAILED;
+    if (ASYNC_IMAGE_RUNNING_STATUSES.has(normalized)) return ASYNC_IMAGE_STATUS.RUNNING;
+    return ASYNC_IMAGE_STATUS.UNKNOWN;
+};
+
+export const shouldContinueAsyncImagePolling = (asyncImageStatus) => {
+    return asyncImageStatus !== ASYNC_IMAGE_STATUS.COMPLETED &&
+        asyncImageStatus !== ASYNC_IMAGE_STATUS.FAILED;
+};
+
+export const parseProgressValue = (value) => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const parsed = parseInt(value.replace('%', ''), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const resolveAsyncImageProgress = ({ data, attempt, isUnknownStatus = false }) => {
+    const fallback = isUnknownStatus
+        ? Math.min(90, 10 + (attempt * 1.5))
+        : 10 + (attempt * 2);
+    const progress = parseProgressValue(data?.data?.progress) ??
+        parseProgressValue(data?.progress) ??
+        fallback;
+
+    return Math.min(95, Math.max(10, progress));
+};
+
+export const getAsyncImagePollDelay = ({ progress, attempt, isBananaModel, baseDelayMs }) => {
+    if (progress >= 90) return 1000;
+    if (progress >= 70) return 2000;
+    if (progress >= 50) return 3000;
+    if (attempt > 50 && !isBananaModel) return 10000;
+    return baseDelayMs;
+};
+
+export const getAsyncImageTimeoutConfig = (isBananaModel) => {
+    return {
+        maxAttempts: isBananaModel ? 160 : 300,
+        timeoutSeconds: isBananaModel ? 800 : 1500,
+        baseDelayMs: 5000,
+    };
+};
+
+export const getMidjourneyPollConfig = () => {
+    return {
+        maxAttempts: 120,
+        delayMs: 5000,
+    };
+};
+
+const stringifyErrorValue = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'object') {
+        return value.message || value.msg || value.code || '';
+    }
+    return '';
+};
+
+export const extractGenerationErrorMessage = (data, fallback = '') => {
+    return stringifyErrorValue(data?.message) ||
+        stringifyErrorValue(data?.error) ||
+        stringifyErrorValue(data?.fail_reason) ||
+        stringifyErrorValue(data?.data?.message) ||
+        stringifyErrorValue(data?.data?.error) ||
+        stringifyErrorValue(data?.data?.fail_reason) ||
+        fallback;
+};
+
 export const getImageModelFeatures = (modelId, config = {}) => {
     const modelName = config?.modelName ?? '';
     const provider = config?.provider ?? '';
@@ -98,6 +325,20 @@ export const resolveEndpointUrl = ({ endpoint, baseUrl }) => {
     if (endpoint.startsWith('http')) return endpoint;
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
     return `${cleanBaseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+};
+
+export const resolveAsyncImagePollUrl = ({ baseUrl, taskIdForPoll }) => {
+    return resolveEndpointUrl({
+        baseUrl,
+        endpoint: `/v1/images/tasks/${taskIdForPoll}`,
+    });
+};
+
+export const resolveMidjourneyPollUrl = ({ baseUrl, mjMode, jobId }) => {
+    return resolveEndpointUrl({
+        baseUrl,
+        endpoint: `/${mjMode}/mj/task/${jobId}/fetch`,
+    });
 };
 
 export const serializeGenerationPayload = ({ payload, useMultipart = false }) => {
@@ -166,189 +407,48 @@ export const extractImageUrls = (data) => {
     return [];
 };
 
-const extractMarkdownImageUrl = (text) => {
-    if (typeof text !== 'string') return null;
-    const match = text.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
-    return match?.[1] ?? null;
-};
-
-export const extractAsyncImageItems = (data) => {
-    if (Array.isArray(data?.data?.data) && data.data.data.length > 0) {
-        return { images: data.data.data, source: 'data.data.data' };
-    }
-
-    if (Array.isArray(data?.data?.images) && data.data.images.length > 0) {
-        return { images: data.data.images, source: 'data.data.images' };
-    }
-
-    if (Array.isArray(data?.images) && data.images.length > 0) {
-        return { images: data.images, source: 'data.images' };
-    }
-
-    if (Array.isArray(data?.data) && data.data.length > 0) {
-        return { images: data.data, source: 'data.data' };
-    }
-
-    const revisedPromptUrl = extractMarkdownImageUrl(data?.data?.revised_prompt);
-    if (revisedPromptUrl) {
-        return {
-            images: [{ url: revisedPromptUrl }],
-            source: 'data.data.revised_prompt',
-            url: revisedPromptUrl,
-        };
-    }
-
-    return { images: [], source: null };
-};
-
-export const getBackendDurationValue = (data) => {
-    return data?.data?.duration ||
-        data?.data?.cost_time ||
-        data?.data?.elapsed_time ||
-        data?.data?.time_cost ||
-        data?.data?.spent_time ||
-        data?.duration ||
-        data?.cost_time ||
-        data?.elapsed_time ||
-        data?.time_cost ||
-        data?.spent_time;
-};
-
-export const parseBackendDurationMs = (backendDuration) => {
-    if (backendDuration === null || backendDuration === undefined) return null;
-
-    if (typeof backendDuration === 'number') {
-        return backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
-    }
-
-    if (typeof backendDuration === 'string') {
-        const match = backendDuration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
-        if (match) {
-            const value = parseFloat(match[1]);
-            const unit = match[2].toLowerCase();
-            return (unit === 's' || unit === '秒') ? value * 1000 : value;
-        }
-
-        const parsed = parseFloat(backendDuration);
-        if (!Number.isNaN(parsed)) {
-            return parsed < 10000 ? parsed * 1000 : parsed;
-        }
-    }
-
-    return null;
-};
-
-export const resolveGenerationDurationMs = ({ data, startTime, now = Date.now() }) => {
-    const backendDuration = getBackendDurationValue(data);
-    const backendDurationMs = parseBackendDurationMs(backendDuration);
-
-    return {
-        backendDuration,
-        durationMs: backendDurationMs ?? (now - (startTime || now)),
-    };
-};
-
-const ASYNC_IMAGE_SUCCESS_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FINISHED', 'DONE']);
-const ASYNC_IMAGE_FAILURE_STATUSES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'FAILURE']);
-const ASYNC_IMAGE_RUNNING_STATUSES = new Set(['PENDING', 'PROCESSING', 'GENERATING', 'IN_PROGRESS', 'RUNNING']);
-
 export const normalizeGenerationStatus = (status) => String(status || '').toUpperCase();
 
 export const isAsyncImageSuccessStatus = (status) => {
-    return ASYNC_IMAGE_SUCCESS_STATUSES.has(normalizeGenerationStatus(status));
+    return classifyAsyncImageStatus(status) === ASYNC_IMAGE_STATUS.COMPLETED;
 };
 
 export const isAsyncImageFailureStatus = (status) => {
-    return ASYNC_IMAGE_FAILURE_STATUSES.has(normalizeGenerationStatus(status));
+    return classifyAsyncImageStatus(status) === ASYNC_IMAGE_STATUS.FAILED;
 };
 
 export const isAsyncImageRunningStatus = (status) => {
-    return ASYNC_IMAGE_RUNNING_STATUSES.has(normalizeGenerationStatus(status));
+    return classifyAsyncImageStatus(status) === ASYNC_IMAGE_STATUS.RUNNING;
 };
 
 export const parseGenerationProgressValue = (progress, fallback) => {
-    if (!progress) return fallback;
-
-    if (typeof progress === 'number') {
-        return progress;
-    }
-
-    const progressText = String(progress);
-    if (progressText.includes('%')) {
-        return parseInt(progressText.replace('%', ''), 10) || fallback;
-    }
-
-    return fallback;
+    return parseProgressValue(progress) ?? fallback;
 };
 
 export const resolveAsyncImageRunningProgress = ({ data, attempt }) => {
-    let progress = 10 + (attempt * 2);
-
-    if (data?.data?.progress) {
-        progress = parseGenerationProgressValue(data.data.progress, progress);
-    } else if (data?.progress) {
-        progress = parseGenerationProgressValue(data.progress, progress);
-    }
-
-    return Math.min(95, Math.max(10, progress));
+    return resolveAsyncImageProgress({ data, attempt });
 };
 
 export const resolveAsyncImageUnknownProgress = ({ attempt }) => {
-    return Math.min(90, 10 + (attempt * 1.5));
+    return resolveAsyncImageProgress({ data: {}, attempt, isUnknownStatus: true });
 };
 
 export const resolveAsyncImagePollDelayMs = ({ progress, attempt, isBananaModel, baseDelayMs = 5000 }) => {
-    if (progress >= 90) return 1000;
-    if (progress >= 70) return 2000;
-    if (progress >= 50) return 3000;
-    if (attempt > 50 && !isBananaModel) return 10000;
-    return baseDelayMs;
+    return getAsyncImagePollDelay({ progress, attempt, isBananaModel, baseDelayMs });
 };
 
 export const getAsyncImagePollMaxAttempts = (isBananaModel) => {
-    return isBananaModel ? 160 : 300;
+    return getAsyncImageTimeoutConfig(isBananaModel).maxAttempts;
 };
 
 export const getAsyncImageTimeoutSeconds = (isBananaModel) => {
-    return isBananaModel ? 800 : 1500;
+    return getAsyncImageTimeoutConfig(isBananaModel).timeoutSeconds;
 };
 
 export const buildAsyncImageTaskPollUrl = ({ baseUrl, taskIdForPoll }) => {
-    const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-    return `${cleanBaseUrl}/v1/images/tasks/${taskIdForPoll}`;
+    return resolveAsyncImagePollUrl({ baseUrl, taskIdForPoll });
 };
 
 export const findFirstHttpUrlDeep = (value, { maxDepth = 5 } = {}) => {
-    const visited = new WeakSet();
-    const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
-
-    const search = (current, depth = 0) => {
-        if (depth > maxDepth) return null;
-        if (!current || typeof current !== 'object') return null;
-
-        if (visited.has(current)) return null;
-        visited.add(current);
-
-        for (const field of urlFields) {
-            if (typeof current[field] === 'string' && current[field].startsWith('http')) {
-                return current[field];
-            }
-        }
-
-        if (Array.isArray(current) && current.length > 0) {
-            const firstResult = search(current[0], depth + 1);
-            if (firstResult) return firstResult;
-        }
-
-        for (const key in current) {
-            if (Object.prototype.hasOwnProperty.call(current, key) && !urlFields.includes(key)) {
-                const result = search(current[key], depth + 1);
-                if (result) return result;
-            }
-        }
-
-        return null;
-    };
-
-    return search(value);
+    return findFirstHttpImageUrl(value, { maxDepth });
 };

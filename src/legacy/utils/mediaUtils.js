@@ -15,6 +15,135 @@ export const isVideoUrl = (url) => {
     return ['mp4', 'webm', 'ogg', 'mov'].includes(ext);
 };
 
+export const createChatMediaFile = ({
+    name,
+    content,
+    mediaType = 'image',
+    fromHistory = false,
+    fromPreview = false,
+}) => {
+    const isImage = mediaType === 'image';
+    const isVideo = mediaType === 'video';
+    const fileExt = isImage ? 'png' : (isVideo ? 'mp4' : 'file');
+    const mimeType = isImage ? 'image/png' : (isVideo ? 'video/mp4' : 'application/octet-stream');
+
+    return {
+        name: name || `Media.${fileExt}`,
+        type: mimeType,
+        content,
+        isImage,
+        isVideo,
+        isAudio: false,
+        ...(fromHistory ? { fromHistory: true } : {}),
+        ...(fromPreview ? { fromPreview: true } : {}),
+        fileExt,
+    };
+};
+
+export const getFileExtension = (filename = '') => {
+    return filename.split('.').pop()?.toLowerCase() || '';
+};
+
+export const isCodeFileExtension = (fileExt) => {
+    return [
+        'js',
+        'jsx',
+        'ts',
+        'tsx',
+        'py',
+        'java',
+        'cpp',
+        'c',
+        'html',
+        'css',
+        'json',
+        'xml',
+        'yaml',
+        'yml',
+        'md',
+        'txt',
+        'sh',
+        'bash',
+    ].includes(fileExt);
+};
+
+export const createUploadedChatFile = ({ file, content }) => {
+    const fileExt = getFileExtension(file?.name);
+    const fileType = file?.type || '';
+
+    return {
+        name: file?.name || `Upload.${fileExt || 'file'}`,
+        type: fileType,
+        content,
+        isImage: fileType.startsWith('image/'),
+        isVideo: fileType.startsWith('video/'),
+        isAudio: fileType.startsWith('audio/'),
+        isPDF: fileType === 'application/pdf' || fileExt === 'pdf',
+        isDoc: ['doc', 'docx'].includes(fileExt) || fileType.includes('word'),
+        isExcel: ['xls', 'xlsx'].includes(fileExt) || fileType.includes('excel') || fileType.includes('spreadsheet'),
+        isCode: isCodeFileExtension(fileExt),
+        fileExt,
+    };
+};
+
+export const getVideoFrameSelectionKey = (frame) => `${frame?.time}-${frame?.url}`;
+
+export const toggleVideoFrameSelection = ({
+    frames = [],
+    selectedKeyframes = [],
+    frame,
+    index = 0,
+    lastSelectedIndex = null,
+    shiftKey = false,
+} = {}) => {
+    const frameMap = new Map(frames.map((item) => [getVideoFrameSelectionKey(item), item]));
+    let nextSelected = [...selectedKeyframes];
+
+    if (shiftKey && lastSelectedIndex !== undefined && lastSelectedIndex !== null && frames.length > 0) {
+        const start = Math.min(lastSelectedIndex, index);
+        const end = Math.max(lastSelectedIndex, index);
+        const rangeFrames = frames.slice(start, end + 1);
+        const selectedKeys = new Set(nextSelected.map(getVideoFrameSelectionKey));
+        rangeFrames.forEach((item) => selectedKeys.add(getVideoFrameSelectionKey(item)));
+        nextSelected = Array.from(selectedKeys).map((key) => frameMap.get(key)).filter(Boolean);
+    } else {
+        const frameKey = getVideoFrameSelectionKey(frame);
+        const exists = nextSelected.some((item) => getVideoFrameSelectionKey(item) === frameKey);
+        nextSelected = exists
+            ? nextSelected.filter((item) => getVideoFrameSelectionKey(item) !== frameKey)
+            : [...nextSelected, frame];
+    }
+
+    return {
+        selectedKeyframes: nextSelected,
+        lastSelectedIndex: index,
+    };
+};
+
+export const groupKeyframesByTime = (keyframes, segmentDuration) => {
+    if (!keyframes || keyframes.length === 0) return [];
+    const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+    const groups = [];
+    let currentGroup = [];
+    let currentGroupStart = sorted[0].time;
+
+    sorted.forEach((frame) => {
+        if (frame.time - currentGroupStart >= segmentDuration && currentGroup.length > 0) {
+            groups.push([...currentGroup]);
+            currentGroup = [frame];
+            currentGroupStart = frame.time;
+        } else {
+            currentGroup.push(frame);
+        }
+    });
+
+    if (currentGroup.length > 0) {
+        groups.push(currentGroup);
+    }
+
+    return groups;
+};
+
 export const getVideoMetadata = (src) => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');

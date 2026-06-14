@@ -81,9 +81,13 @@ export {
     UPSCALE_PROMPT_TEXT,
 } from './config/promptTemplates.js';
 export {
+    createChatMediaFile,
+    createUploadedChatFile,
     extractKeyFrames,
+    groupKeyframesByTime,
     getImageDimensions,
     getVideoMetadata,
+    toggleVideoFrameSelection,
     isVideoUrl,
 } from './utils/mediaUtils.js';
 
