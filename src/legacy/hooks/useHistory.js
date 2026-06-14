@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { debounce } from '../support.jsx';
 
 const loadHistory = () => {
@@ -83,6 +83,21 @@ export const useHistory = () => {
         }
     }, [history, debouncedSaveHistory]);
 
-    return [history, setHistory];
-};
+    const deleteHistoryItem = useCallback(({ id, historyContextMenu, setHistoryContextMenu }) => {
+        setHistory((prev) => {
+            const filtered = prev.filter((item) => item.id !== id);
+            try {
+                localStorage.setItem('tapnow_history', JSON.stringify(filtered));
+            } catch (error) {
+                console.error('立即保存历史记录失败:', error);
+            }
+            return filtered;
+        });
 
+        if (historyContextMenu.item?.id === id) {
+            setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
+        }
+    }, []);
+
+    return [history, setHistory, { deleteHistoryItem }];
+};

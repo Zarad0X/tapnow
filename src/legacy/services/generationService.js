@@ -146,12 +146,209 @@ export const extractAsyncTaskId = (data) => {
     return null;
 };
 
+export const extractImageUrlFromItem = (item) => {
+    if (typeof item === 'string') return item;
+    return item?.url || item?.image_url || item?.imageUrl || '';
+};
+
+export const extractImageUrlsFromItems = (items) => {
+    if (!Array.isArray(items)) return [];
+    return items.map(extractImageUrlFromItem).filter(Boolean);
+};
+
 export const extractImageUrls = (data) => {
     if (data?.data && Array.isArray(data.data)) {
-        return data.data.map((item) => item.url || item.image_url || item).filter((url) => typeof url === 'string');
+        return extractImageUrlsFromItems(data.data);
     }
     if (data?.data?.data && Array.isArray(data.data.data)) {
-        return data.data.data.map((item) => item.url).filter(Boolean);
+        return extractImageUrlsFromItems(data.data.data);
     }
     return [];
+};
+
+const extractMarkdownImageUrl = (text) => {
+    if (typeof text !== 'string') return null;
+    const match = text.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+    return match?.[1] ?? null;
+};
+
+export const extractAsyncImageItems = (data) => {
+    if (Array.isArray(data?.data?.data) && data.data.data.length > 0) {
+        return { images: data.data.data, source: 'data.data.data' };
+    }
+
+    if (Array.isArray(data?.data?.images) && data.data.images.length > 0) {
+        return { images: data.data.images, source: 'data.data.images' };
+    }
+
+    if (Array.isArray(data?.images) && data.images.length > 0) {
+        return { images: data.images, source: 'data.images' };
+    }
+
+    if (Array.isArray(data?.data) && data.data.length > 0) {
+        return { images: data.data, source: 'data.data' };
+    }
+
+    const revisedPromptUrl = extractMarkdownImageUrl(data?.data?.revised_prompt);
+    if (revisedPromptUrl) {
+        return {
+            images: [{ url: revisedPromptUrl }],
+            source: 'data.data.revised_prompt',
+            url: revisedPromptUrl,
+        };
+    }
+
+    return { images: [], source: null };
+};
+
+export const getBackendDurationValue = (data) => {
+    return data?.data?.duration ||
+        data?.data?.cost_time ||
+        data?.data?.elapsed_time ||
+        data?.data?.time_cost ||
+        data?.data?.spent_time ||
+        data?.duration ||
+        data?.cost_time ||
+        data?.elapsed_time ||
+        data?.time_cost ||
+        data?.spent_time;
+};
+
+export const parseBackendDurationMs = (backendDuration) => {
+    if (backendDuration === null || backendDuration === undefined) return null;
+
+    if (typeof backendDuration === 'number') {
+        return backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
+    }
+
+    if (typeof backendDuration === 'string') {
+        const match = backendDuration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
+        if (match) {
+            const value = parseFloat(match[1]);
+            const unit = match[2].toLowerCase();
+            return (unit === 's' || unit === '秒') ? value * 1000 : value;
+        }
+
+        const parsed = parseFloat(backendDuration);
+        if (!Number.isNaN(parsed)) {
+            return parsed < 10000 ? parsed * 1000 : parsed;
+        }
+    }
+
+    return null;
+};
+
+export const resolveGenerationDurationMs = ({ data, startTime, now = Date.now() }) => {
+    const backendDuration = getBackendDurationValue(data);
+    const backendDurationMs = parseBackendDurationMs(backendDuration);
+
+    return {
+        backendDuration,
+        durationMs: backendDurationMs ?? (now - (startTime || now)),
+    };
+};
+
+const ASYNC_IMAGE_SUCCESS_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FINISHED', 'DONE']);
+const ASYNC_IMAGE_FAILURE_STATUSES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'FAILURE']);
+const ASYNC_IMAGE_RUNNING_STATUSES = new Set(['PENDING', 'PROCESSING', 'GENERATING', 'IN_PROGRESS', 'RUNNING']);
+
+export const normalizeGenerationStatus = (status) => String(status || '').toUpperCase();
+
+export const isAsyncImageSuccessStatus = (status) => {
+    return ASYNC_IMAGE_SUCCESS_STATUSES.has(normalizeGenerationStatus(status));
+};
+
+export const isAsyncImageFailureStatus = (status) => {
+    return ASYNC_IMAGE_FAILURE_STATUSES.has(normalizeGenerationStatus(status));
+};
+
+export const isAsyncImageRunningStatus = (status) => {
+    return ASYNC_IMAGE_RUNNING_STATUSES.has(normalizeGenerationStatus(status));
+};
+
+export const parseGenerationProgressValue = (progress, fallback) => {
+    if (!progress) return fallback;
+
+    if (typeof progress === 'number') {
+        return progress;
+    }
+
+    const progressText = String(progress);
+    if (progressText.includes('%')) {
+        return parseInt(progressText.replace('%', ''), 10) || fallback;
+    }
+
+    return fallback;
+};
+
+export const resolveAsyncImageRunningProgress = ({ data, attempt }) => {
+    let progress = 10 + (attempt * 2);
+
+    if (data?.data?.progress) {
+        progress = parseGenerationProgressValue(data.data.progress, progress);
+    } else if (data?.progress) {
+        progress = parseGenerationProgressValue(data.progress, progress);
+    }
+
+    return Math.min(95, Math.max(10, progress));
+};
+
+export const resolveAsyncImageUnknownProgress = ({ attempt }) => {
+    return Math.min(90, 10 + (attempt * 1.5));
+};
+
+export const resolveAsyncImagePollDelayMs = ({ progress, attempt, isBananaModel, baseDelayMs = 5000 }) => {
+    if (progress >= 90) return 1000;
+    if (progress >= 70) return 2000;
+    if (progress >= 50) return 3000;
+    if (attempt > 50 && !isBananaModel) return 10000;
+    return baseDelayMs;
+};
+
+export const getAsyncImagePollMaxAttempts = (isBananaModel) => {
+    return isBananaModel ? 160 : 300;
+};
+
+export const getAsyncImageTimeoutSeconds = (isBananaModel) => {
+    return isBananaModel ? 800 : 1500;
+};
+
+export const buildAsyncImageTaskPollUrl = ({ baseUrl, taskIdForPoll }) => {
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+    return `${cleanBaseUrl}/v1/images/tasks/${taskIdForPoll}`;
+};
+
+export const findFirstHttpUrlDeep = (value, { maxDepth = 5 } = {}) => {
+    const visited = new WeakSet();
+    const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
+
+    const search = (current, depth = 0) => {
+        if (depth > maxDepth) return null;
+        if (!current || typeof current !== 'object') return null;
+
+        if (visited.has(current)) return null;
+        visited.add(current);
+
+        for (const field of urlFields) {
+            if (typeof current[field] === 'string' && current[field].startsWith('http')) {
+                return current[field];
+            }
+        }
+
+        if (Array.isArray(current) && current.length > 0) {
+            const firstResult = search(current[0], depth + 1);
+            if (firstResult) return firstResult;
+        }
+
+        for (const key in current) {
+            if (Object.prototype.hasOwnProperty.call(current, key) && !urlFields.includes(key)) {
+                const result = search(current[key], depth + 1);
+                if (result) return result;
+            }
+        }
+
+        return null;
+    };
+
+    return search(value);
 };

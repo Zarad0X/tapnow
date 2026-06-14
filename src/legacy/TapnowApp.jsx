@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './styles.css';
 import './app.css';
 import {
@@ -38,7 +38,6 @@ import {
   Sparkles,
   Sun,
   Trash2,
-  Unlink,
   User,
   Users,
   Video,
@@ -68,69 +67,111 @@ import {
   getImageDimensions,
   isVideoUrl,
   getVideoMetadata,
-  extractKeyFrames,
   ImageCompareView,
   Button,
-  debounce,
   Lightbox
 } from './support.jsx';
 import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { useApiConfigs } from './hooks/useApiConfigs.js';
 import { useApiConfigActions } from './hooks/useApiConfigActions.js';
+import { useAutoArrangeNodes } from './hooks/useAutoArrangeNodes.js';
 import { useAutoLocalSave } from './hooks/useAutoLocalSave.js';
+import { useBatchDownload } from './hooks/useBatchDownload.js';
 import { useCanvasWheelGuards } from './hooks/useCanvasWheelGuards.js';
+import { useChatFiles } from './hooks/useChatFiles.js';
+import { useChatMessaging } from './hooks/useChatMessaging.js';
 import { useChatResize } from './hooks/useChatResize.js';
+import { useClipboardNodes } from './hooks/useClipboardNodes.js';
+import { useConnectionQueries } from './hooks/useConnectionQueries.js';
+import { useCreateCharacterAction } from './hooks/useCreateCharacterAction.js';
+import { useCreateCharacterVideoErrorReset } from './hooks/useCreateCharacterVideoErrorReset.js';
+import { useGridSplitActions } from './hooks/useGridSplitActions.js';
 import { useHistory } from './hooks/useHistory.js';
+import { useImageNodeDrop } from './hooks/useImageNodeDrop.js';
 import { useChatSessions } from './hooks/useChatSessions.js';
 import { usePromptLibrary } from './hooks/usePromptLibrary.js';
+import { useProjectWorkflowActions } from './hooks/useProjectWorkflowActions.js';
 import { useCharacterLibrary } from './hooks/useCharacterLibrary.js';
 import { useCreateCharacterForm } from './hooks/useCreateCharacterForm.js';
+import { useDeleteKeyHandler } from './hooks/useDeleteKeyHandler.js';
+import { useGlobalApiKeyPersistence } from './hooks/useGlobalApiKeyPersistence.js';
 import { useHistoryThumbnails } from './hooks/useHistoryThumbnails.js';
 import { useLocalCacheServer } from './hooks/useLocalCacheServer.js';
+import { useFrameActions } from './hooks/useFrameActions.js';
+import { useMediaContextActions } from './hooks/useMediaContextActions.js';
+import { useStoryboardActions } from './hooks/useStoryboardActions.js';
+import { useVideoInputActions } from './hooks/useVideoInputActions.js';
+import { useConnectedMedia } from './hooks/useConnectedMedia.js';
 import { useMidjourneyAutoSplit } from './hooks/useMidjourneyAutoSplit.js';
 import { useNodeTimers } from './hooks/useNodeTimers.js';
-import { saveProject, loadProjectFromFile } from './services/projectService.js';
-import { saveSelectedWorkflow, importWorkflowFromFile } from './services/workflowService.js';
+import { useSyncedInteractionRefs } from './hooks/useSyncedInteractionRefs.js';
+import { useSyncedViewRef } from './hooks/useSyncedViewRef.js';
 import {
-  uploadImageToGetHttpUrl,
   uploadMidjourneyImages
 } from './services/midjourneyUploadService.js';
 import {
-  createGridImageNodes,
+  createDefaultFrameAnalysisResult,
+  extractRequiredAnalysisContent,
+  groupKeyframesByTime,
+  normalizeAutoDirectorResult,
+  parseAnalysisJson
+} from './services/videoAnalysisService.js';
+import {
   splitMidjourneyImage,
-  splitGridImage
 } from './services/gridSplitService.js';
 import {
-  createEmptyStoryboardShot,
-  createShotsFromAnalysisResults,
   getDefaultDurationForModel,
-  getDefaultDurationsForModel,
-  renumberStoryboardShots,
-  updateStoryboardShot
+  getDefaultDurationsForModel
 } from './services/storyboardService.js';
-import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
 import {
-  getCanvasDetailLevel,
+  findGeneratingStoryboardShotForSource,
+  getConnectedPreviewTargets,
+  getGenerationResultUrl,
+  resolveTaskSourceNodeId,
+  updateConnectedPreviewNodes
+} from './services/previewSyncService.js';
+import { CanvasContextMenus } from './canvas/CanvasContextMenus.jsx';
+import { ConnectionLayer } from './canvas/ConnectionLayer.jsx';
+import {
   getVisibleNodes,
   screenToWorldPoint
 } from './canvas/viewport.js';
 import {
   createDefaultNodeSettings,
   getDefaultNodeSize,
-  getNodeLabel
+  getNodeLabel,
+  isCharacterSceneImageNodeType,
+  isCharacterSceneVideoNodeType,
+  isInputMediaNodeType,
+  isPreviewNodeType,
+  isStandardGenerationNodeType
 } from './nodes/nodeCatalog.js';
 import {
+  buildAsyncImageTaskPollUrl,
   denormalizePromptForSoraRequest,
+  extractAsyncImageItems,
   extractAsyncTaskId,
   extractImageUrls,
+  extractImageUrlsFromItems,
+  findFirstHttpUrlDeep,
+  getAsyncImagePollMaxAttempts,
+  getAsyncImageTimeoutSeconds,
   getImageModelFeatures,
   getJimengModelName,
   getModelDisplayName,
   getNanoBanana2ImageSizeFlag,
+  isAsyncImageFailureStatus,
+  isAsyncImageRunningStatus,
+  isAsyncImageSuccessStatus,
   isSoraModel,
+  normalizeGenerationStatus,
   normalizeBananaResolution,
   normalizePromptForSora,
   parseDurationSeconds,
+  resolveAsyncImagePollDelayMs,
+  resolveAsyncImageRunningProgress,
+  resolveAsyncImageUnknownProgress,
+  resolveGenerationDurationMs,
   submitGenerationRequest
 } from './services/generationService.js';
 import { BatchHistoryModal } from './history/BatchHistoryModal.jsx';
@@ -216,7 +257,7 @@ import {
                 type: 'import' // 'import' | 'export'
             });
 
-            const [history, setHistory] = useHistory();
+            const [history, setHistory, historyActions] = useHistory();
             const {
                 chatSessions,
                 setChatSessions,
@@ -237,9 +278,15 @@ import {
                 setIsChatSending,
                 chatSessionDropdownOpen,
                 setChatSessionDropdownOpen,
+                createNewChat,
+                deleteChatSession,
             } = useChatSessions();
 
             const [lightboxItem, setLightboxItem] = useState(null);
+            const {
+                handleChatFileUpload,
+                removeChatFile,
+            } = useChatFiles({ setChatFiles });
 
             const {
                 promptLibrary,
@@ -250,7 +297,10 @@ import {
                 setPromptLibraryCollapsed,
                 promptLibraryEditorOpen,
                 setPromptLibraryEditorOpen,
-            } = usePromptLibrary();
+                addPromptLibraryItem,
+                removePromptLibraryItem,
+                applyLibraryPrompt,
+            } = usePromptLibrary({ updateNodeSettings });
 
             // State management
             const [isPanning, setIsPanning] = useState(false);
@@ -350,7 +400,6 @@ import {
             const selectedNodeIdsRef = useRef(selectedNodeIds); // 存储多选节点ID的ref
             const connectionsRef = useRef(connections);
             const frameSelectionRef = useRef({});
-            const copiedNodesRef = useRef(null); // 存储复制的节点数据
             const isPanningRef = useRef(false); // 使用ref跟踪画布拖动状态，避免状态丢失
             const panRafRef = useRef(null); // 画布拖动的 requestAnimationFrame
             const pendingPanUpdate = useRef(null); // 待处理的画布拖动更新
@@ -368,55 +417,25 @@ import {
 
             useHistoryThumbnails({ history, setHistory, historyPerformanceMode });
 
-            // 全局 Delete 键删除节点
-            useEffect(() => {
-                const handleDeleteKey = (e) => {
-                    // 防止在输入框中触发
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-
-                    // 检查是否按下了 Delete 或 Del 键
-                    if (e.key === 'Delete' || e.key === 'Del') {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const currentSelectedId = selectedNodeIdRef.current;
-                        const currentSelectedIds = selectedNodeIdsRef.current;
-
-                        // 删除选中的节点
-                        if (currentSelectedId) {
-                            deleteNode(currentSelectedId);
-                            setSelectedNodeId(null);
-                        } else if (currentSelectedIds && currentSelectedIds.size > 0) {
-                            // 删除多选节点
-                            currentSelectedIds.forEach(id => deleteNode(id));
-                            setSelectedNodeIds(new Set());
-                        }
-                    }
-                };
-
-                window.addEventListener('keydown', handleDeleteKey);
-                return () => {
-                    window.removeEventListener('keydown', handleDeleteKey);
-                };
-            }, []);
-            // 当视频 URL 改变时清除错误提示
-            useEffect(() => {
-                setCreateCharacterVideoError(null);
-            }, [createCharacterVideoUrl, createCharacterSelectedTaskId, createCharacterVideoSourceType]);
-
-            const debouncedSaveGlobalKey = useMemo(() => debounce((key) => {
-                localStorage.setItem('tapnow_global_key', key);
-            }, 1000), []);
-
-            useEffect(() => { debouncedSaveGlobalKey(globalApiKey); }, [globalApiKey, debouncedSaveGlobalKey]);
-
-            useEffect(() => {
-                nodesRef.current = nodes;
-                selectedNodeIdRef.current = selectedNodeId;
-                selectedNodeIdsRef.current = selectedNodeIds; // 同步更新多选节点ref
-                connectionsRef.current = connections;
-                isSelectingRef.current = isSelecting; // 同步更新框选状态ref
-            }, [nodes, selectedNodeId, selectedNodeIds, connections, isSelecting]);
+            useCreateCharacterVideoErrorReset({
+                createCharacterVideoUrl,
+                createCharacterSelectedTaskId,
+                createCharacterVideoSourceType,
+                setCreateCharacterVideoError,
+            });
+            useGlobalApiKeyPersistence(globalApiKey);
+            useSyncedInteractionRefs({
+                nodesRef,
+                nodes,
+                selectedNodeIdRef,
+                selectedNodeId,
+                selectedNodeIdsRef,
+                selectedNodeIds,
+                connectionsRef,
+                connections,
+                isSelectingRef,
+                isSelecting,
+            });
 
             // 使用 useMemo 创建 nodes Map，优化节点查找性能（O(1) 查找）
             const nodesMap = useMemo(() => {
@@ -469,13 +488,7 @@ import {
                 });
             }, [nodes, view.x, view.y, view.zoom]);
 
-            // 性能优化：根据 zoom 计算 LOD 细节等级
-            const getDetailLevel = useCallback(getCanvasDetailLevel, []);
-
-            // 同步 viewRef 和 view state
-            useEffect(() => {
-                viewRef.current = view;
-            }, [view]);
+            useSyncedViewRef(viewRef, view);
 
             // 媒体降载：当节点完全离开视口时，隐藏其内部 img/video（保留骨架 DOM，不影响 React 状态）
             // 注意：节点本身仍由 visibleNodes 控制渲染范围（含 padding），这里只处理“仍在 padding 内但已离开可视区”的媒体开销
@@ -532,25 +545,25 @@ import {
                 };
             }, [visibleNodes]);
 
-            // 使用 useMemo 缓存连接相关的计算，避免重复计算
-            const connectionsByNode = useMemo(() => {
-                const byNode = {
-                    to: new Map(), // nodeId -> connections[]
-                    from: new Map() // nodeId -> connections[]
-                };
-                connections.forEach(conn => {
-                    if (!byNode.to.has(conn.to)) {
-                        byNode.to.set(conn.to, []);
-                    }
-                    byNode.to.get(conn.to).push(conn);
+            const {
+                getConnectedImageForInput,
+                getConnectedInputImages,
+                getConnectedVideoInputNode,
+            } = useConnectedMedia({ connections, nodes, nodesMap, history });
 
-                    if (!byNode.from.has(conn.from)) {
-                        byNode.from.set(conn.from, []);
-                    }
-                    byNode.from.get(conn.from).push(conn);
-                });
-                return byNode;
-            }, [connections]);
+            const {
+                adjacentNodesCache,
+                connectionsByNode,
+                getConnectedGenNodes,
+                getConnectedTextNodes,
+                getConnectedVideoAnalyzeNode,
+                nodeConnectedStatus,
+            } = useConnectionQueries({
+                connections,
+                nodesMap,
+                selectedNodeId,
+                selectedNodeIds,
+            });
 
             useAutoLocalSave({
                 nodes,
@@ -558,6 +571,24 @@ import {
                 getConnectedInputImages,
                 updateNodeSettings,
                 isVideoUrl,
+            });
+
+            const { sendChatMessage } = useChatMessaging({
+                apiConfigsMap,
+                chatFiles,
+                chatInput,
+                chatModel,
+                chatSessions,
+                currentChatId,
+                defaultBaseUrl: DEFAULT_BASE_URL,
+                globalApiKey,
+                isChatSending,
+                setChatFiles,
+                setChatInput,
+                setChatSessions,
+                setCurrentChatId,
+                setIsChatSending,
+                setSettingsOpen,
             });
 
             useMidjourneyAutoSplit({ history, setHistory });
@@ -1155,164 +1186,11 @@ import {
                 }
             };
 
-            // 使用 useMemo 缓存连接图片的计算结果，避免重复计算
-            const connectedImagesCache = useMemo(() => {
-                const cache = new Map(); // nodeId -> { inputType -> images[] }
-                connections.forEach(conn => {
-                    const inputType = conn.inputType || 'default';
-                    if (!cache.has(conn.to)) {
-                        cache.set(conn.to, new Map());
-                    }
-                    const nodeConnections = cache.get(conn.to);
-                    if (!nodeConnections.has(inputType)) {
-                        nodeConnections.set(inputType, []);
-                    }
-                    const sourceNode = nodesMap.get(conn.from);
-                    if (sourceNode) {
-                        let images = [];
-                        if (sourceNode.type === 'video-input') {
-                            const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
-                                ? sourceNode.selectedKeyframes.map(f => f.url)
-                                : [];
-                            if (selected.length > 0) {
-                                images = selected;
-                            } else if (sourceNode.frames && sourceNode.frames.length > 0) {
-                                images = [sourceNode.frames[0].url];
-                            }
-                        } else if (sourceNode.type === 'input-image' && sourceNode.content) {
-                            images = [sourceNode.content];
-                        } else if (sourceNode.type === 'preview') {
-                            // 从预览窗口获取选中的图片
-                            if (sourceNode.selectedPreviewImage) {
-                                images = [sourceNode.selectedPreviewImage];
-                            } else if (sourceNode.content) {
-                                images = [sourceNode.content];
-                            } else if (sourceNode.previewMjImages && sourceNode.previewMjImages.length > 0) {
-                                images = [sourceNode.previewMjImages[0]];
-                            }
-                        } else if (sourceNode.type === 'gen-image' || sourceNode.type === 'gen-video') {
-                            // 从历史记录中获取该节点最新生成的图片/视频
-                            const nodeHistory = history.filter(h => h.sourceNodeId === sourceNode.id && h.status === 'completed');
-                            if (nodeHistory.length > 0) {
-                                const latestResult = nodeHistory[nodeHistory.length - 1];
-                                // 优先获取 MJ/jimeng 的4张切割图
-                                if (latestResult.mjImages && latestResult.mjImages.length > 0) {
-                                    images = [...latestResult.mjImages];
-                                } else if (latestResult.resultUrl) {
-                                    images = [latestResult.resultUrl];
-                                } else if (latestResult.resultUrls && latestResult.resultUrls.length > 0) {
-                                    images = latestResult.resultUrls;
-                                }
-                            }
-                        }
-                        if (images.length > 0) {
-                            nodeConnections.get(inputType).push(...images);
-                        }
-                    }
-                });
-                return cache;
-            }, [connections, nodesMap, nodes.length, history, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.length || 0}:${n.frames?.length || 0}:${n.selectedPreviewImage || ''}:${n.previewMjImages?.length || 0}`).join('|')]);
-
-            function getConnectedInputImages(targetNodeId, inputType = 'default') {
-                const nodeCache = connectedImagesCache.get(targetNodeId);
-                if (!nodeCache) return [];
-                return nodeCache.get(inputType) || [];
-            }
-
-            // 使用 useMemo 缓存 video-input 节点查找结果
-            const connectedVideoInputCache = useMemo(() => {
-                const cache = new Map(); // nodeId -> videoInputNode
-                connections.forEach(conn => {
-                    if (!cache.has(conn.to)) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'video-input') {
-                            cache.set(conn.to, sourceNode);
-                        }
-                    }
-                });
-                return cache;
-            }, [connections, nodesMap]);
-
-            // 获取连接的 video-input 节点（用于 video-analyze 节点）
-            const getConnectedVideoInputNode = useCallback((targetNodeId) => {
-                return connectedVideoInputCache.get(targetNodeId) || null;
-            }, [connectedVideoInputCache]);
-
-            // 获取连接的 video-analyze 节点（用于 storyboard-node 节点）
-            const getConnectedVideoAnalyzeNode = useCallback((targetNodeId) => {
-                for (const conn of connections) {
-                    if (conn.to === targetNodeId) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'video-analyze') {
-                            return sourceNode;
-                        }
-                    }
-                }
-                return null;
-            }, [connections, nodesMap]);
-
-            // 功能2：获取连接的文字节点内容
-            const getConnectedTextNodes = useCallback((targetNodeId) => {
-                const texts = [];
-                connections.forEach(conn => {
-                    if (conn.to === targetNodeId) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode && sourceNode.type === 'text-node') {
-                            const text = sourceNode.settings?.text || '';
-                            if (text) texts.push(text);
-                        }
-                    }
-                });
-                return texts;
-            }, [connections, nodesMap]);
-
-            // 使用 useMemo 缓存特定输入点的图片URL
-            const connectedImageForInputCache = useMemo(() => {
-                const cache = new Map(); // `${nodeId}:${inputType}` -> imageUrl
-                connections.forEach(conn => {
-                    const inputType = conn.inputType || 'default';
-                    const key = `${conn.to}:${inputType}`;
-                    if (!cache.has(key)) {
-                        const sourceNode = nodesMap.get(conn.from);
-                        if (sourceNode) {
-                            let imageUrl = null;
-                            if (sourceNode.type === 'video-input') {
-                                const selected = sourceNode.selectedKeyframes && sourceNode.selectedKeyframes.length > 0
-                                    ? sourceNode.selectedKeyframes[0].url
-                                    : null;
-                                if (selected) {
-                                    imageUrl = selected;
-                                } else if (sourceNode.frames && sourceNode.frames[0]) {
-                                    imageUrl = sourceNode.frames[0].url;
-                                }
-                            } else if (sourceNode.type === 'input-image' && sourceNode.content) {
-                                imageUrl = sourceNode.content;
-                            }
-                            if (imageUrl) {
-                                cache.set(key, imageUrl);
-                            }
-                        }
-                    }
-                });
-                return cache;
-            }, [connections, nodesMap, nodes.length, nodes.map(n => `${n.id}:${n.type}:${n.content ? 'hasContent' : ''}:${n.selectedKeyframes?.[0]?.url || ''}:${n.frames?.[0]?.url || ''}`).join('|')]);
-
-            // 获取连接到特定输入点的图片URL
-            const getConnectedImageForInput = useCallback((targetNodeId, inputType) => {
-                const key = `${targetNodeId}:${inputType || 'default'}`;
-                return connectedImageForInputCache.get(key) || null;
-            }, [connectedImageForInputCache]);
-
-
             // 将生成结果同步到连接的预览节点
             const updatePreviewFromTask = (taskId, url, contentType = 'image', sourceNodeIdOverride = null, mjImages = null) => {
                 if (!url && (!mjImages || mjImages.length === 0)) return;
                 // 找到对应的源节点ID
-                let sourceNodeId = sourceNodeIdOverride;
-                if (!sourceNodeId) {
-                    const historyItem = historyMap.get(taskId);
-                    sourceNodeId = historyItem?.sourceNodeId;
-                }
+                const sourceNodeId = resolveTaskSourceNodeId({ taskId, sourceNodeIdOverride, historyMap });
                 if (!sourceNodeId) {
                     console.warn('[Tapnow] updatePreviewFromTask: 未找到 sourceNodeId for taskId:', taskId);
                     return;
@@ -1321,28 +1199,13 @@ import {
                 // 检查是否是从分镜表触发的生成，如果是则回填到分镜表
                 // 使用 setTimeout 确保在下一个事件循环中执行，此时 nodes 和 connections 已更新
                 setTimeout(() => {
-                    const sourceNode = nodesMap.get(sourceNodeId);
-                    if (sourceNode && (sourceNode.type === 'gen-image' || sourceNode.type === 'gen-video')) {
-                        // 查找连接到该生成节点的分镜表节点
-                        const storyboardConnections = connections.filter(c => c.to === sourceNodeId);
-                        for (const conn of storyboardConnections) {
-                            const fromNode = nodesMap.get(conn.from);
-                            const storyboardNode = fromNode && fromNode.type === 'storyboard-node' ? fromNode : null;
-                            if (storyboardNode && storyboardNode.settings?.shots) {
-                                // 查找状态为 generating 的 shot，回填结果
-                                const generatingShot = storyboardNode.settings.shots.find(s => s.status === 'generating');
-                                if (generatingShot) {
-                                    const finalUrl = url || (mjImages && mjImages.length > 0 ? mjImages[0] : null);
-                                    if (finalUrl) {
-                                        updateShot(storyboardNode.id, generatingShot.id, {
-                                            image_url: finalUrl,
-                                            status: 'done'
-                                        });
-                                        break; // 只回填第一个找到的
-                                    }
-                                }
-                            }
-                        }
+                    const finalUrl = getGenerationResultUrl({ url, mjImages });
+                    const storyboardShot = findGeneratingStoryboardShotForSource({ sourceNodeId, nodesMap, connections });
+                    if (finalUrl && storyboardShot) {
+                        updateShot(storyboardShot.nodeId, storyboardShot.shotId, {
+                            image_url: finalUrl,
+                            status: 'done'
+                        });
                     }
                 }, 0);
 
@@ -1353,13 +1216,15 @@ import {
                 // 使用函数式更新，确保获取最新的 connections 状态
                 setNodes((prevNodes) => {
                     // 使用 ref 中的最新 connections
-                    const targetIds = latestConnections
-                        .filter((c) => c.from === sourceNodeId)
-                        .map((c) => c.to);
+                    const { connectionsFromSource, targetIds, previewNodes } = getConnectedPreviewTargets({
+                        nodes: prevNodes,
+                        connections: latestConnections,
+                        sourceNodeId,
+                    });
 
                     console.log('[Tapnow] updatePreviewFromTask: 检查连接', {
                         sourceNodeId,
-                        allConnectionsFromSource: latestConnections.filter(c => c.from === sourceNodeId),
+                        allConnectionsFromSource: connectionsFromSource,
                         targetIds,
                         allNodes: prevNodes.map(n => ({ id: n.id, type: n.type }))
                     });
@@ -1367,40 +1232,29 @@ import {
                     if (!targetIds.length) {
                         console.warn('[Tapnow] updatePreviewFromTask: 未找到连接到预览窗口的连接', {
                             sourceNodeId,
-                            connectionsFromSource: latestConnections.filter(c => c.from === sourceNodeId),
+                            connectionsFromSource,
                             allConnections: latestConnections
                         });
                         return prevNodes;
                     }
 
-                    const previewNodes = prevNodes.filter(n => targetIds.includes(n.id) && n.type === 'preview');
                     console.log('[Tapnow] updatePreviewFromTask: 找到预览节点', {
                         targetIds,
                         previewNodes: previewNodes.map(n => ({ id: n.id, type: n.type }))
                     });
 
-                    return prevNodes.map((n) =>
-                        targetIds.includes(n.id) && n.type === 'preview'
-                            ? { ...n, content: url || (mjImages && mjImages.length > 0 ? mjImages[0] : url), previewType: contentType, previewMjImages: mjImages }
-                            : n
-                    );
+                    return updateConnectedPreviewNodes({
+                        nodes: prevNodes,
+                        targetIds,
+                        url,
+                        contentType,
+                        mjImages,
+                    });
                 });
             };
 
             const deleteHistoryItem = (id) => {
-                setHistory(prev => {
-                    const filtered = prev.filter(item => item.id !== id);
-                    // 立即保存到 localStorage，不等待防抖
-                    try {
-                        localStorage.setItem('tapnow_history', JSON.stringify(filtered));
-                    } catch (e) {
-                        console.error('立即保存历史记录失败:', e);
-                    }
-                    return filtered;
-                });
-                if (historyContextMenu.item && historyContextMenu.item.id === id) {
-                    setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-                }
+                historyActions.deleteHistoryItem({ id, historyContextMenu, setHistoryContextMenu });
             };
 
             const scrollToBottom = () => {
@@ -1411,284 +1265,6 @@ import {
                 scrollToBottom();
             }, [currentSession?.messages, isChatOpen]);
 
-            const createNewChat = () => {
-                const newId = `chat-${Date.now()}`;
-                const newSession = { id: newId, title: '新对话', messages: [] };
-                setChatSessions(prev => [newSession, ...prev]);
-                setCurrentChatId(newId);
-            };
-
-            const deleteChatSession = (e, id) => {
-                e.stopPropagation();
-                const newSessions = chatSessions.filter(s => s.id !== id);
-                if (newSessions.length === 0) {
-                    const defaultSession = { id: 'default', title: '新对话', messages: [] };
-                    setChatSessions([defaultSession]);
-                    setCurrentChatId('default');
-                } else {
-                    setChatSessions(newSessions);
-                    if (currentChatId === id) setCurrentChatId(newSessions[0].id);
-                }
-            };
-
-            const handleChatFileUpload = (e) => {
-                const files = Array.from(e.target.files);
-                files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        const content = ev.target.result;
-                        const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-
-                        // 判断文件类型
-                        const isImage = file.type.startsWith('image/');
-                        const isVideo = file.type.startsWith('video/');
-                        const isAudio = file.type.startsWith('audio/');
-                        const isPDF = file.type === 'application/pdf' || fileExt === 'pdf';
-                        const isDoc = ['doc', 'docx'].includes(fileExt) || file.type.includes('word');
-                        const isExcel = ['xls', 'xlsx'].includes(fileExt) || file.type.includes('excel') || file.type.includes('spreadsheet');
-                        const isCode = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'cpp', 'c', 'html', 'css', 'json', 'xml', 'yaml', 'yml', 'md', 'txt', 'sh', 'bash'].includes(fileExt);
-
-                        setChatFiles(prev => [...prev, {
-                            name: file.name,
-                            type: file.type,
-                            content: content,
-                            isImage,
-                            isVideo,
-                            isAudio,
-                            isPDF,
-                            isDoc,
-                            isExcel,
-                            isCode,
-                            fileExt
-                        }]);
-                    };
-
-                    // 根据文件类型选择读取方式
-                    if (file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')) {
-                        reader.readAsDataURL(file);
-                    } else if (file.type === 'application/pdf') {
-                        // PDF 也转换为 data URL
-                        reader.readAsDataURL(file);
-                    } else if (file.name.match(/\.(txt|md|js|jsx|ts|tsx|py|html|css|json|csv|xml|yaml|yml|sh|bash|java|cpp|c)$/i)) {
-                        // 代码和文本文件读取为文本
-                        reader.readAsText(file);
-                    } else {
-                        // 其他文件（如 Word、Excel）也尝试读取为 data URL
-                        reader.readAsDataURL(file);
-                    }
-                });
-                e.target.value = '';
-            };
-
-            const removeChatFile = (index) => {
-                setChatFiles(prev => prev.filter((_, i) => i !== index));
-            };
-
-            const sendChatMessage = async () => {
-                if ((!chatInput.trim() && chatFiles.length === 0) || isChatSending) return;
-
-                const config = apiConfigsMap.get(chatModel);
-                const apiKey = config?.key || globalApiKey;
-                const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-
-                if (!apiKey) {
-                    alert('请先在 API 设置中配置 Key');
-                    setSettingsOpen(true);
-                    return;
-                }
-
-                // 确保使用当前激活的会话（避免新建对话后第一条消息被写入旧会话）
-                const chatIdToUse = currentChatId || chatSessions[0]?.id;
-                const sessionToUse = chatSessions.find(s => s.id === chatIdToUse) || chatSessions[0];
-                const currentSessionMessages = sessionToUse?.messages || [];
-                if (sessionToUse && sessionToUse.id !== currentChatId) setCurrentChatId(sessionToUse.id);
-
-                setIsChatSending(true);
-
-                const newUserMsg = {
-                    id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    role: 'user',
-                    content: chatInput,
-                    files: [...chatFiles],
-                    timestamp: Date.now(),
-                    modelId: chatModel // 保存发送消息时使用的模型ID
-                };
-
-                setChatSessions(prev => prev.map(s => {
-                    if (s.id === chatIdToUse) {
-                        return { ...s, messages: [...s.messages, newUserMsg], title: s.messages.length === 0 ? chatInput.slice(0, 20) : s.title };
-                    }
-                    return s;
-                }));
-                setChatInput('');
-                setChatFiles([]);
-
-                // 构建带上下文的对话历史，帮助模型回顾上下文
-                // 使用当前会话的消息加上新消息
-                const allMessages = [...currentSessionMessages, newUserMsg];
-                const MAX_HISTORY_MESSAGES = 20;
-                const recentMessages = allMessages.length > MAX_HISTORY_MESSAGES
-                    ? allMessages.slice(-MAX_HISTORY_MESSAGES)
-                    : allMessages;
-
-                let apiMessages = [
-                    {
-                        role: 'system',
-                        content: '你是一名多模态AI助手，需要结合整个对话的上下文进行连续回答。'
-                    },
-                    ...recentMessages.map(m => ({
-                        role: m.role,
-                        content: m.content
-                    }))
-                ];
-
-                const currentContent = [];
-                if (newUserMsg.content) currentContent.push({ type: "text", text: newUserMsg.content });
-
-                newUserMsg.files.forEach(f => {
-                    const isGeminiLike = (config?.modelName ?? '').toLowerCase().includes('gemini');
-
-                    if (f.isImage) {
-                        currentContent.push({
-                            type: "image_url",
-                            image_url: { url: f.content }
-                        });
-                    } else if (f.isVideo) {
-                        if (isGeminiLike) {
-                            // Gemini 视频分析：按官方规范也走 image_url，url 直接指向 mp4
-                            currentContent.push({
-                                type: "image_url",
-                                image_url: { url: f.content }
-                            });
-                        } else {
-                            currentContent.push({
-                                type: "text",
-                                text: `\n[User attached video: ${f.name}]\n`
-                            });
-                        }
-                    } else if (f.isAudio) {
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[User attached audio: ${f.name}]\n`
-                        });
-                    } else if (f.isPDF || f.isDoc || f.isExcel) {
-                        // PDF、Word、Excel 等文档文件，发送文件名和类型信息
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[User attached document: ${f.name} (${f.isPDF ? 'PDF' : f.isDoc ? 'Word' : 'Excel'})]\n`
-                        });
-                    } else if (f.isCode || (f.content && typeof f.content === 'string' && f.content.length < 50000)) {
-                        // 代码文件或文本文件，直接发送内容
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[File: ${f.name}]\n\`\`\`${f.fileExt || 'text'}\n${f.content}\n\`\`\`\n`
-                        });
-                    } else {
-                        // 其他文件或二进制文件
-                        currentContent.push({
-                            type: "text",
-                            text: `\n[User attached file: ${f.name}]\n`
-                        });
-                    }
-                });
-
-                apiMessages.push({ role: 'user', content: currentContent });
-
-                try {
-                    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: config?.modelName || 'gemini-3-pro-preview',
-                            messages: apiMessages,
-                            stream: false
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const errText = await response.text();
-                        throw new Error(errText || `API Error: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    // 支持多种响应格式
-                    let aiContent = null;
-                    if (data.choices && data.choices.length > 0) {
-                        // OpenAI 格式: data.choices[0].message.content
-                        aiContent = data.choices[0]?.message?.content;
-                    } else if (data.content) {
-                        // 直接 content 字段
-                        aiContent = data.content;
-                    } else if (data.text) {
-                        // text 字段
-                        aiContent = data.text;
-                    } else if (data.message) {
-                        // message 字段
-                        aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                    } else if (data.result) {
-                        // result 字段
-                        aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                    } else if (data.data?.choices?.[0]?.message?.content) {
-                        // 嵌套 data.choices 格式
-                        aiContent = data.data.choices[0].message.content;
-                    } else if (data.data?.content) {
-                        // 嵌套 data.content 格式
-                        aiContent = data.data.content;
-                    } else if (data.data?.text) {
-                        // 嵌套 data.text 格式
-                        aiContent = data.data.text;
-                    } else if (data.data?.message) {
-                        // 嵌套 data.message 格式
-                        aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                    } else if (data.data?.result) {
-                        // 嵌套 data.result 格式
-                        aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                    }
-
-                    if (!aiContent || aiContent.trim() === '') {
-                        console.error('[聊天] API 响应内容为空:', data);
-                        aiContent = "No response";
-                    }
-
-                    const newAssistantMsg = {
-                        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        role: 'assistant',
-                        content: aiContent,
-                        timestamp: Date.now(),
-                        modelId: chatModel // 保存回复消息时使用的模型ID
-                    };
-
-                    setChatSessions(prev => prev.map(s => {
-                        if (s.id === currentChatId) {
-                            return { ...s, messages: [...s.messages, newAssistantMsg] };
-                        }
-                        return s;
-                    }));
-
-                } catch (error) {
-                    console.error("Chat Error", error);
-                    const errorMsg = {
-                        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        role: 'assistant',
-                        content: `Error: ${error.message}`,
-                        isError: true,
-                        timestamp: Date.now()
-                    };
-
-                    setChatSessions(prev => prev.map(s => {
-                        if (s.id === currentChatId) {
-                            return { ...s, messages: [...s.messages, errorMsg] };
-                        }
-                        return s;
-                    }));
-                } finally {
-                    setIsChatSending(false);
-                }
-            };
-
             const disconnectConnection = useCallback((connectionId) => {
                 setConnections(prev => {
                     const filtered = prev.filter(conn => conn.id !== connectionId);
@@ -1697,305 +1273,12 @@ import {
                 });
             }, []);
 
-            const handleDrop = (nodeId, e) => {
-                e.preventDefault(); e.stopPropagation();
-                e.currentTarget.classList.remove('drag-over');
-                const files = Array.from(e.dataTransfer.files);
-                const imageFiles = files.filter(file => file.type.startsWith('image/'));
-                if (imageFiles.length > 0) {
-                    const file = imageFiles[0];
-                    const reader = new FileReader();
-                    reader.onload = async (ev) => {
-                        const content = ev.target.result;
-                        let dimensions = { w: 0, h: 0 };
-                        try { dimensions = await getImageDimensions(content); } catch (e) {}
-                        setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, content: content, dimensions } : n));
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('drag-over'); };
-            const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('drag-over'); };
-
-            // 优化后的复制粘贴逻辑
-            useEffect(() => {
-                // 复制功能（Ctrl+C / Cmd+C）
-                const handleCopy = async (e) => {
-                    const target = e.target;
-                    const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-
-                    // 优先级1：文本输入框 - 如果有选中文本，使用浏览器默认行为
-                    if (isTextInput) {
-                        const selection = window.getSelection();
-                        if (selection && selection.toString().trim()) {
-                            // 有选中文本，让浏览器默认处理
-                            return;
-                        }
-                        // 没有选中文本，不触发任何动作
-                        e.preventDefault();
-                        return;
-                    }
-
-                    // 优先级2和3：节点复制（包括所有类型的节点）
-                    const currentSelectedId = selectedNodeIdRef.current;
-                    const currentSelectedIds = selectedNodeIdsRef.current;
-                    const selectedIds = currentSelectedId ? [currentSelectedId] : (currentSelectedIds && currentSelectedIds.size > 0 ? Array.from(currentSelectedIds) : []);
-
-                    if (selectedIds.length > 0) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const selectedNodes = nodesRef.current.filter(n => selectedIds.includes(n.id));
-                        const relatedConnections = connectionsRef.current.filter(c =>
-                            selectedIds.includes(c.from) || selectedIds.includes(c.to)
-                        );
-
-                        // 只保存选中的节点之间的连接
-                        const internalConnections = relatedConnections.filter(c =>
-                            selectedIds.includes(c.from) && selectedIds.includes(c.to)
-                        );
-
-                        copiedNodesRef.current = {
-                            nodes: selectedNodes.map(n => ({ ...n })),
-                            connections: internalConnections.map(c => ({ ...c })),
-                            timestamp: Date.now()
-                        };
-
-                        // 可选：给用户反馈
-                        console.log(`已复制 ${selectedNodes.length} 个节点`);
-                    }
-                };
-
-                // 粘贴功能（Ctrl+V / Cmd+V）
-                const handlePaste = async (e) => {
-                    const target = e.target;
-                    const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-
-                    // 优先级1：文本输入框 - 使用浏览器默认行为
-                    if (isTextInput) {
-                        // 让浏览器默认处理文本粘贴
-                        return;
-                    }
-
-                    // 优先级2：图像节点截图粘贴
-                    const currentSelectedId = selectedNodeIdRef.current;
-                    let targetNode = null;
-                    if (currentSelectedId) {
-                        targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                    }
-                    // 如果选中了图像或视频节点，尝试粘贴图像/视频
-                    if (targetNode && (targetNode.type === 'input-image' || targetNode.type === 'video-input')) {
-                        const items = Array.from(e.clipboardData.items);
-                        const imageItem = items.find(item => item.type.startsWith('image/'));
-                        const videoItem = items.find(item => item.type.startsWith('video/'));
-
-                        if (imageItem && targetNode.type === 'input-image') {
-                            e.preventDefault();
-                            const file = imageItem.getAsFile();
-                            if (file) {
-                                const reader = new FileReader();
-                                reader.onload = async (ev) => {
-                                    const content = ev.target.result;
-                                    let dimensions = { w: 0, h: 0 };
-                                    try {
-                                        dimensions = await getImageDimensions(content);
-                                    } catch (e) {}
-                                    setNodes((prev) => prev.map((n) =>
-                                        n.id === targetNode.id
-                                            ? { ...n, content: content, dimensions }
-                                            : n
-                                    ));
-                                };
-                                reader.readAsDataURL(file);
-                            }
-                            return;
-                        } else if (videoItem && targetNode.type === 'video-input') {
-                            e.preventDefault();
-                            const file = videoItem.getAsFile();
-                            if (file) {
-                                handleVideoFileUpload(targetNode.id, file);
-                            }
-                            return;
-                        }
-                    }
-
-                    // 优先级3：节点粘贴
-                    if (copiedNodesRef.current && copiedNodesRef.current.nodes && copiedNodesRef.current.nodes.length > 0) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const copied = copiedNodesRef.current;
-
-                        // 计算粘贴位置：使用视图中心或鼠标位置
-                        const canvasElement = canvasRef.current;
-                        let pasteX = 0, pasteY = 0;
-                        if (canvasElement) {
-                            const rect = canvasElement.getBoundingClientRect();
-                            const centerX = (rect.left + rect.width / 2 - view.x) / view.zoom;
-                            const centerY = (rect.top + rect.height / 2 - view.y) / view.zoom;
-                            pasteX = centerX;
-                            pasteY = centerY;
-                        }
-
-                        // 计算原节点的中心点
-                        const originalNodes = copied.nodes;
-                        if (originalNodes.length === 0) return;
-
-                        const minX = Math.min(...originalNodes.map(n => n.x || 0));
-                        const minY = Math.min(...originalNodes.map(n => n.y || 0));
-                        const maxX = Math.max(...originalNodes.map(n => (n.x || 0) + (n.width || 0)));
-                        const maxY = Math.max(...originalNodes.map(n => (n.y || 0) + (n.height || 0)));
-                        const originalCenterX = (minX + maxX) / 2;
-                        const originalCenterY = (minY + maxY) / 2;
-
-                        // 计算偏移量，使新节点中心对齐到粘贴位置
-                        const offsetX = pasteX - originalCenterX;
-                        const offsetY = pasteY - originalCenterY;
-
-                        // 创建新节点ID映射
-                        const idMap = new Map();
-                        const baseTime = Date.now();
-                        copied.nodes.forEach((node, index) => {
-                            const newId = `node-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`;
-                            idMap.set(node.id, newId);
-                        });
-
-                        // 创建新节点
-                        const newNodes = copied.nodes.map(node => ({
-                            ...node,
-                            id: idMap.get(node.id),
-                            x: node.x + offsetX,
-                            y: node.y + offsetY
-                        }));
-
-                        // 创建新连接（只保留两个端点都在新节点中的连接）
-                        const newConnections = (copied.connections || [])
-                            .filter(conn => conn && idMap.has(conn.from) && idMap.has(conn.to))
-                            .map((conn, index) => ({
-                                ...conn,
-                                id: `conn-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-                                from: idMap.get(conn.from),
-                                to: idMap.get(conn.to)
-                            }));
-
-                        setNodes(prev => [...prev, ...newNodes]);
-                        setConnections(prev => [...prev, ...newConnections]);
-
-                        // 选中粘贴的节点
-                        if (newNodes.length === 1) {
-                            setSelectedNodeId(newNodes[0].id);
-                            setSelectedNodeIds(new Set([newNodes[0].id]));
-                        } else if (newNodes.length > 1) {
-                            setSelectedNodeId(null);
-                            setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
-                        }
-
-                        console.log(`已粘贴 ${newNodes.length} 个节点`);
-                    }
-                };
-
-                // 添加keydown事件监听，确保Ctrl+V/Cmd+V能触发节点粘贴
-                const handleKeyDown = (e) => {
-                    const target = e.target;
-                    const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-
-                    // 如果不在文本输入框中，且按下了Ctrl+V或Cmd+V
-                    if (!isTextInput && (e.ctrlKey || e.metaKey) && e.key === 'v') {
-                        // 先检查是否选中了图像节点，如果是，让paste事件处理图像粘贴
-                        const currentSelectedId = selectedNodeIdRef.current;
-                        if (currentSelectedId) {
-                            const targetNode = nodesRef.current.find(n => n.id === currentSelectedId);
-                            if (targetNode && (targetNode.type === 'input-image' || targetNode.type === 'video-input')) {
-                                // 选中了图像节点，让paste事件处理，不在这里处理
-                                return;
-                            }
-                        }
-
-                        // 检查是否有复制的节点
-                        if (copiedNodesRef.current && copiedNodesRef.current.nodes && copiedNodesRef.current.nodes.length > 0) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            // 直接调用粘贴逻辑
-                            const copied = copiedNodesRef.current;
-
-                            // 计算粘贴位置：使用视图中心
-                            const canvasElement = canvasRef.current;
-                            let pasteX = 0, pasteY = 0;
-                            if (canvasElement) {
-                                const rect = canvasElement.getBoundingClientRect();
-                                const centerX = (rect.left + rect.width / 2 - view.x) / view.zoom;
-                                const centerY = (rect.top + rect.height / 2 - view.y) / view.zoom;
-                                pasteX = centerX;
-                                pasteY = centerY;
-                            }
-
-                            // 计算原节点的中心点
-                            const originalNodes = copied.nodes;
-                            if (originalNodes.length === 0) return;
-
-                            const minX = Math.min(...originalNodes.map(n => n.x || 0));
-                            const minY = Math.min(...originalNodes.map(n => n.y || 0));
-                            const maxX = Math.max(...originalNodes.map(n => (n.x || 0) + (n.width || 0)));
-                            const maxY = Math.max(...originalNodes.map(n => (n.y || 0) + (n.height || 0)));
-                            const originalCenterX = (minX + maxX) / 2;
-                            const originalCenterY = (minY + maxY) / 2;
-
-                            // 计算偏移量
-                            const offsetX = pasteX - originalCenterX;
-                            const offsetY = pasteY - originalCenterY;
-
-                            // 创建新节点ID映射
-                            const idMap = new Map();
-                            const baseTime = Date.now();
-                            copied.nodes.forEach((node, index) => {
-                                const newId = `node-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`;
-                                idMap.set(node.id, newId);
-                            });
-
-                            // 创建新节点
-                            const newNodes = copied.nodes.map(node => ({
-                                ...node,
-                                id: idMap.get(node.id),
-                                x: node.x + offsetX,
-                                y: node.y + offsetY
-                            }));
-
-                        // 创建新连接（只保留两个端点都在新节点中的连接）
-                        const newConnections = (copied.connections || [])
-                            .filter(conn => conn && idMap.has(conn.from) && idMap.has(conn.to))
-                            .map((conn, index) => ({
-                                ...conn,
-                                id: `conn-${baseTime}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-                                from: idMap.get(conn.from),
-                                to: idMap.get(conn.to)
-                            }));
-
-                        setNodes(prev => [...prev, ...newNodes]);
-                        setConnections(prev => [...prev, ...newConnections]);
-
-                            // 选中粘贴的节点
-                            if (newNodes.length === 1) {
-                                setSelectedNodeId(newNodes[0].id);
-                                setSelectedNodeIds(new Set([newNodes[0].id]));
-                            } else if (newNodes.length > 1) {
-                                setSelectedNodeId(null);
-                                setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
-                            }
-
-                            console.log(`已粘贴 ${newNodes.length} 个节点`);
-                        }
-                    }
-                };
-
-                window.addEventListener('copy', handleCopy);
-                window.addEventListener('paste', handlePaste);
-                window.addEventListener('keydown', handleKeyDown);
-
-                return () => {
-                    window.removeEventListener('copy', handleCopy);
-                    window.removeEventListener('paste', handlePaste);
-                    window.removeEventListener('keydown', handleKeyDown);
-                };
-            }, [updateNodeSettings, setNodes, setConnections, setSelectedNodeId, setSelectedNodeIds, view]);
+            const {
+                handleDragLeave,
+                handleDragOver,
+                handleDrop,
+                handleFileUpload,
+            } = useImageNodeDrop({ getImageDimensions, setNodes });
 
             const pollVeoJob = async (jobId, taskId, baseUrl, apiKey, w, h, attempt = 0) => {
                 const maxAttempts = 90; // 增加到90次，支持最长360秒（6分钟）的生成时间
@@ -2134,7 +1417,7 @@ import {
                                                 // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                                 setNodes(prevNodes => prevNodes.map(n => {
                                                     if (n.id !== sourceNodeId) return n;
-                                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                                    if (isCharacterSceneVideoNodeType(n.type)) {
                                                         return {
                                                             ...n,
                                                             content: videoUrl,
@@ -2197,7 +1480,7 @@ import {
                                             // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                             setNodes(prevNodes => prevNodes.map(n => {
                                                 if (n.id !== sourceNodeId) return n;
-                                                if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                                if (isCharacterSceneVideoNodeType(n.type)) {
                                                     return {
                                                         ...n,
                                                         content: videoUrl,
@@ -2360,7 +1643,7 @@ import {
                                     // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                     setNodes(prevNodes => prevNodes.map(n => {
                                         if (n.id !== updatedItem.sourceNodeId) return n;
-                                        if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                        if (isCharacterSceneVideoNodeType(n.type)) {
                                             return {
                                                 ...n,
                                                 content: videoUrl,
@@ -2402,7 +1685,7 @@ import {
                             requestAnimationFrame(() => {
                                 setNodes(prevNodes => prevNodes.map(n => {
                                     if (n.id !== sourceNodeIdForNode) return n;
-                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                    if (isCharacterSceneVideoNodeType(n.type)) {
                                         return {
                                             ...n,
                                             settings: {
@@ -2430,7 +1713,7 @@ import {
                             requestAnimationFrame(() => {
                                 setNodes(prevNodes => prevNodes.map(n => {
                                     if (n.id !== sourceNodeIdForNode) return n;
-                                    if (n.type === 'generate-character-video' || n.type === 'generate-scene-video') {
+                                    if (isCharacterSceneVideoNodeType(n.type)) {
                                         return {
                                             ...n,
                                             settings: {
@@ -2470,11 +1753,11 @@ import {
             // 异步图像生成任务轮询函数
             const pollImageTask = (taskId, taskIdForPoll, baseUrl, apiKey, w, h, sourceNodeId, attempt = 0, isBananaModel = false) => {
                 // banana模型使用800秒超时（160次 * 5秒），其他模型使用25分钟（300次 * 5秒）
-                const maxAttempts = isBananaModel ? 160 : 300;
+                const maxAttempts = getAsyncImagePollMaxAttempts(isBananaModel);
                 const baseDelayMs = 5000; // 基础轮询间隔5秒
 
                 if (attempt > maxAttempts) {
-                    const timeoutSeconds = isBananaModel ? 800 : 1500;
+                    const timeoutSeconds = getAsyncImageTimeoutSeconds(isBananaModel);
                     setHistory((prev) => prev.map((hItem) =>
                         hItem.id === taskId
                             ? { ...hItem, status: 'failed', errorMsg: `图像生成轮询超时（已等待${timeoutSeconds}秒）` }
@@ -2483,8 +1766,7 @@ import {
                     return;
                 }
 
-                const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-                const pollUrl = `${cleanBaseUrl}/v1/images/tasks/${taskIdForPoll}`;
+                const pollUrl = buildAsyncImageTaskPollUrl({ baseUrl, taskIdForPoll });
 
                 fetch(pollUrl, {
                     method: 'GET',
@@ -2510,7 +1792,7 @@ import {
                     // 1. { code, message, data: { status, images: [...] } }
                     // 2. { status: "SUCCESS", data: { data: [{ url: "..." }] } }
                     // 3. { task_id: "...", status: "SUCCESS", data: { data: [{ url: "..." }] } }
-                    const status = (data?.data?.status || data?.status || '').toUpperCase();
+                    const status = normalizeGenerationStatus(data?.data?.status || data?.status);
                     console.log('[Async Image] 提取的状态:', status, '原始数据:', {
                         hasData: !!data?.data,
                         hasDataData: !!data?.data?.data,
@@ -2519,99 +1801,20 @@ import {
                         dataKeys: data ? Object.keys(data) : []
                     });
 
-                    let images = [];
-
-                    // 尝试多种方式提取图片数据（按优先级顺序）
-                    // 方式1：data.data.data（嵌套格式，最常见）
-                    if (data?.data?.data && Array.isArray(data.data.data) && data.data.data.length > 0) {
-                        images = data.data.data;
-                        console.log('[Async Image] 从 data.data.data 提取到图片:', images.length, '张');
-                    }
-                    // 方式2：data.data.images
-                    else if (data?.data?.images && Array.isArray(data.data.images) && data.data.images.length > 0) {
-                        images = data.data.images;
-                        console.log('[Async Image] 从 data.data.images 提取到图片:', images.length, '张');
-                    }
-                    // 方式3：data.images
-                    else if (data?.images && Array.isArray(data.images) && data.images.length > 0) {
-                        images = data.images;
-                        console.log('[Async Image] 从 data.images 提取到图片:', images.length, '张');
-                    }
-                    // 方式4：data.data（标准OpenAI格式）
-                    else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-                        images = data.data;
-                        console.log('[Async Image] 从 data.data 提取到图片:', images.length, '张');
+                    let { images, source: imageSource, url: revisedPromptUrl } = extractAsyncImageItems(data);
+                    if (images.length > 0) {
+                        console.log('[Async Image] 提取到图片:', imageSource, images.length, '张');
+                        if (revisedPromptUrl) {
+                            console.log('[Async Image] 从 revised_prompt 中提取到图片URL:', revisedPromptUrl);
+                        }
                     }
 
-                    // 如果还是没有找到图片，尝试从revised_prompt中提取URL（备用方案）
+                    // 如果还是没有找到图片，尝试深度搜索URL（备用方案）
                     if (images.length === 0) {
-                        // 尝试从data.data.data[0].revised_prompt中提取
-                        if (data?.data?.data && Array.isArray(data.data.data) && data.data.data.length > 0) {
-                            const firstItem = data.data.data[0];
-                            if (firstItem?.revised_prompt) {
-                                const urlMatch = firstItem.revised_prompt.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
-                                if (urlMatch && urlMatch[1]) {
-                                    images = [{ url: urlMatch[1] }];
-                                    console.log('[Async Image] 从 revised_prompt 中提取到图片URL:', urlMatch[1]);
-                                }
-                            }
-                        }
-                        // 尝试从data.data.revised_prompt中提取
-                        if (images.length === 0 && data?.data?.revised_prompt) {
-                            const urlMatch = data.data.revised_prompt.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
-                            if (urlMatch && urlMatch[1]) {
-                                images = [{ url: urlMatch[1] }];
-                                console.log('[Async Image] 从 data.data.revised_prompt 中提取到图片URL:', urlMatch[1]);
-                            }
-                        }
-                        // 最后尝试：如果data.data.data存在但images为空，可能是数据结构问题，直接使用data.data.data
-                        if (images.length === 0 && data?.data?.data && Array.isArray(data.data.data) && data.data.data.length > 0) {
-                            // 检查每个元素是否有url字段
-                            const itemsWithUrl = data.data.data.filter(item => item?.url || item?.image_url || item?.imageUrl);
-                            if (itemsWithUrl.length > 0) {
-                                images = itemsWithUrl;
-                                console.log('[Async Image] 从 data.data.data 中重新提取到图片（二次尝试）:', images.length, '张');
-                            }
-                        }
-
                         // 如果任务状态是SUCCESS但还没找到图片，立即执行深度搜索（不等待后续处理）
-                        if (images.length === 0 && (status === 'COMPLETED' || status === 'SUCCESS' || status === 'FINISHED' || status === 'DONE')) {
+                        if (images.length === 0 && isAsyncImageSuccessStatus(status)) {
                             console.log('[Async Image] 任务状态为成功但图片数量为0，立即执行深度搜索');
-                            // 优化后的深度搜索函数：优先检查常见路径，减少递归深度
-                            const deepSearchForUrl = (obj, depth = 0, visited = new WeakSet()) => {
-                                if (depth > 5) return null; // 防止无限递归
-                                if (!obj || typeof obj !== 'object') return null;
-
-                                // 防止循环引用
-                                if (visited.has(obj)) return null;
-                                visited.add(obj);
-
-                                // 优先检查当前对象的常见字段（避免不必要的递归）
-                                const urlFields = ['url', 'image_url', 'imageUrl', 'image', 'src', 'link', 'href'];
-                                for (const field of urlFields) {
-                                    if (obj[field] && typeof obj[field] === 'string' && obj[field].startsWith('http')) {
-                                        return obj[field];
-                                    }
-                                }
-
-                                // 如果是数组，优先检查第一个元素
-                                if (Array.isArray(obj) && obj.length > 0) {
-                                    const result = deepSearchForUrl(obj[0], depth + 1, visited);
-                                    if (result) return result;
-                                }
-
-                                // 递归搜索所有属性（但跳过已检查的常见字段）
-                                for (const key in obj) {
-                                    if (obj.hasOwnProperty(key) && !urlFields.includes(key)) {
-                                        const result = deepSearchForUrl(obj[key], depth + 1, visited);
-                                        if (result) return result;
-                                    }
-                                }
-
-                                return null;
-                            };
-
-                            const foundUrl = deepSearchForUrl(data);
+                            const foundUrl = findFirstHttpUrlDeep(data);
                             if (foundUrl) {
                                 images = [{ url: foundUrl }];
                                 console.log('[Async Image] 通过立即深度搜索找到图片URL:', foundUrl);
@@ -2628,7 +1831,7 @@ import {
                         const updated = prev.map((hItem) => {
                             if (hItem.id === taskId) {
                                 // 支持多种成功状态值
-                                if (status === 'COMPLETED' || status === 'SUCCESS' || status === 'FINISHED' || status === 'DONE') {
+                                if (isAsyncImageSuccessStatus(status)) {
                                     console.log('[Async Image] 任务状态为成功:', status, '图片数量:', images.length);
 
                                     // 保存sourceNodeId，用于后续更新预览窗口
@@ -2637,48 +1840,17 @@ import {
                                     // 任务完成
                                     if (images && images.length > 0) {
                                         // 提取图片URL，支持多种字段名和格式
-                                        const imageUrls = images.map(img => {
-                                            if (typeof img === 'string') return img;
-                                            return img?.url || img?.image_url || img?.imageUrl || '';
-                                        }).filter(Boolean);
+                                        const imageUrls = extractImageUrlsFromItems(images);
 
                                         console.log('[Async Image] 提取到的图片URLs:', imageUrls);
 
                                         if (imageUrls.length > 0) {
                                             const primaryUrl = imageUrls[0];
 
-                                            // 优先使用后端返回的实际花费时间（如果存在）
-                                            // 后端可能返回的字段：duration, cost_time, elapsed_time, time_cost, spent_time 等（单位可能是秒或毫秒）
-                                            let durationMs = null;
-                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time ||
-                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration ||
-                                                                  data?.cost_time || data?.elapsed_time || data?.time_cost || data?.spent_time;
-
-                                            if (backendDuration !== null && backendDuration !== undefined) {
-                                                // 如果后端返回的是秒（数字<10000），转换为毫秒；否则认为是毫秒
-                                                if (typeof backendDuration === 'number') {
-                                                    durationMs = backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
-                                                } else if (typeof backendDuration === 'string') {
-                                                    // 尝试解析字符串格式的时间（如 "49.0s", "107.0s"）
-                                                    const match = backendDuration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
-                                                    if (match) {
-                                                        const value = parseFloat(match[1]);
-                                                        const unit = match[2].toLowerCase();
-                                                        durationMs = (unit === 's' || unit === '秒') ? value * 1000 : value;
-                                                    } else {
-                                                        const parsed = parseFloat(backendDuration);
-                                                        if (!isNaN(parsed)) {
-                                                            durationMs = parsed < 10000 ? parsed * 1000 : parsed;
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // 如果后端没有返回时间，使用前端计算的时间
-                                            if (durationMs === null) {
-                                                const endTime = Date.now();
-                                                durationMs = endTime - (hItem.startTime || endTime);
-                                            }
+                                            const { backendDuration, durationMs } = resolveGenerationDurationMs({
+                                                data,
+                                                startTime: hItem.startTime,
+                                            });
 
                                             console.log('[Async Image] 任务完成，准备更新UI:', {
                                                 taskId,
@@ -2708,7 +1880,7 @@ import {
                                                 if (nodeIdToUse) {
                                                     setNodes(prevNodes => prevNodes.map(n => {
                                                         if (n.id !== nodeIdToUse) return n;
-                                                        if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                                        if (isCharacterSceneImageNodeType(n.type)) {
                                                             return {
                                                                 ...n,
                                                                 content: primaryUrl,
@@ -2752,65 +1924,14 @@ import {
                                         });
 
                                         // 最后备用方案：深度搜索整个响应对象，查找任何包含url的字段
-                                        const deepSearchForUrl = (obj, depth = 0) => {
-                                            if (depth > 5) return null; // 防止无限递归
-                                            if (!obj || typeof obj !== 'object') return null;
-
-                                            // 检查当前对象是否有url字段
-                                            if (obj.url && typeof obj.url === 'string' && obj.url.startsWith('http')) {
-                                                return obj.url;
-                                            }
-                                            if (obj.image_url && typeof obj.image_url === 'string' && obj.image_url.startsWith('http')) {
-                                                return obj.image_url;
-                                            }
-                                            if (obj.imageUrl && typeof obj.imageUrl === 'string' && obj.imageUrl.startsWith('http')) {
-                                                return obj.imageUrl;
-                                            }
-
-                                            // 递归搜索所有属性
-                                            for (const key in obj) {
-                                                if (obj.hasOwnProperty(key)) {
-                                                    const result = deepSearchForUrl(obj[key], depth + 1);
-                                                    if (result) return result;
-                                                }
-                                            }
-
-                                            return null;
-                                        };
-
-                                        const foundUrl = deepSearchForUrl(data);
+                                        const foundUrl = findFirstHttpUrlDeep(data);
                                         if (foundUrl) {
                                             console.log('[Async Image] 通过深度搜索找到图片URL:', foundUrl);
 
-                                            // 优先使用后端返回的实际花费时间（如果存在）
-                                            let durationMs = null;
-                                            const backendDuration = data?.data?.duration || data?.data?.cost_time || data?.data?.elapsed_time ||
-                                                                  data?.data?.time_cost || data?.data?.spent_time || data?.duration ||
-                                                                  data?.cost_time || data?.elapsed_time || data?.time_cost || data?.spent_time;
-
-                                            if (backendDuration !== null && backendDuration !== undefined) {
-                                                if (typeof backendDuration === 'number') {
-                                                    durationMs = backendDuration < 10000 ? backendDuration * 1000 : backendDuration;
-                                                } else if (typeof backendDuration === 'string') {
-                                                    const match = backendDuration.match(/(\d+\.?\d*)\s*(s|ms|秒|毫秒)/i);
-                                                    if (match) {
-                                                        const value = parseFloat(match[1]);
-                                                        const unit = match[2].toLowerCase();
-                                                        durationMs = (unit === 's' || unit === '秒') ? value * 1000 : value;
-                                                    } else {
-                                                        const parsed = parseFloat(backendDuration);
-                                                        if (!isNaN(parsed)) {
-                                                            durationMs = parsed < 10000 ? parsed * 1000 : parsed;
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // 如果后端没有返回时间，使用前端计算的时间
-                                            if (durationMs === null) {
-                                                const endTime = Date.now();
-                                                durationMs = endTime - (hItem.startTime || endTime);
-                                            }
+                                            const { durationMs } = resolveGenerationDurationMs({
+                                                data,
+                                                startTime: hItem.startTime,
+                                            });
 
                                             // 更新预览窗口（立即执行，不等待）
                                             // 即使savedSourceNodeId为空，也尝试调用updatePreviewFromTask，它会从history中查找
@@ -2829,7 +1950,7 @@ import {
                                                 if (nodeIdToUse) {
                                                     setNodes(prevNodes => prevNodes.map(n => {
                                                         if (n.id !== nodeIdToUse) return n;
-                                                        if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                                        if (isCharacterSceneImageNodeType(n.type)) {
                                                             return {
                                                                 ...n,
                                                                 content: foundUrl,
@@ -2869,35 +1990,16 @@ import {
                                         status: 'failed',
                                         errorMsg: errorMsg || '任务完成但未返回图片，请检查控制台日志查看详细响应数据'
                                     };
-                                } else if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED' || status === 'FAILURE') {
+                                } else if (isAsyncImageFailureStatus(status)) {
                                 // 任务失败
                                 return {
                                     ...hItem,
                                     status: 'failed',
                                     errorMsg: errorMsg || `任务失败: ${status}`
                                 };
-                            } else if (status === 'PENDING' || status === 'PROCESSING' || status === 'GENERATING' || status === 'IN_PROGRESS' || status === 'RUNNING') {
+                            } else if (isAsyncImageRunningStatus(status)) {
                                 // 任务进行中，根据轮询次数和进度信息计算进度
-                                let progress = 10 + (attempt * 2); // 基础进度
-
-                                // 如果有进度百分比，使用实际进度
-                                if (data?.data?.progress) {
-                                    const progressStr = String(data.data.progress);
-                                    if (progressStr.includes('%')) {
-                                        progress = parseInt(progressStr.replace('%', ''), 10) || progress;
-                                    } else if (typeof data.data.progress === 'number') {
-                                        progress = data.data.progress;
-                                    }
-                                } else if (data?.progress) {
-                                    const progressStr = String(data.progress);
-                                    if (progressStr.includes('%')) {
-                                        progress = parseInt(progressStr.replace('%', ''), 10) || progress;
-                                    } else if (typeof data.progress === 'number') {
-                                        progress = data.progress;
-                                    }
-                                }
-
-                                progress = Math.min(95, Math.max(10, progress)); // 限制在10-95%之间
+                                const progress = resolveAsyncImageRunningProgress({ data, attempt });
 
                                 return {
                                     ...hItem,
@@ -2907,7 +2009,7 @@ import {
                                 };
                             } else {
                                 // 未知状态，继续轮询，但进度缓慢增加
-                                const progress = Math.min(90, 10 + (attempt * 1.5));
+                                const progress = resolveAsyncImageUnknownProgress({ attempt });
                                 return {
                                     ...hItem,
                                     status: 'generating',
@@ -2930,7 +2032,7 @@ import {
                         requestAnimationFrame(() => {
                             setNodes(prevNodes => prevNodes.map(n => {
                                 if (n.id !== sourceNodeId) return n;
-                                if (n.type === 'generate-character-image' || n.type === 'generate-scene-image') {
+                                if (isCharacterSceneImageNodeType(n.type)) {
                                     return {
                                         ...n,
                                         settings: {
@@ -2951,9 +2053,9 @@ import {
 
                     // 如果任务未完成，继续轮询
                     // 动态调整轮询间隔：任务接近完成时缩短间隔，确保能快速检测到完成状态
-                    const currentStatus = (data?.data?.status || data?.status || '').toUpperCase();
-                    const isCompleted = currentStatus === 'COMPLETED' || currentStatus === 'SUCCESS' || currentStatus === 'FINISHED' || currentStatus === 'DONE';
-                    const isFailed = currentStatus === 'FAILED' || currentStatus === 'ERROR' || currentStatus === 'CANCELLED' || currentStatus === 'FAILURE';
+                    const currentStatus = normalizeGenerationStatus(data?.data?.status || data?.status);
+                    const isCompleted = isAsyncImageSuccessStatus(currentStatus);
+                    const isFailed = isAsyncImageFailureStatus(currentStatus);
 
                     if (!isCompleted && !isFailed) {
                         // 动态轮询间隔策略：
@@ -2968,16 +2070,12 @@ import {
                             const latestItem = prev.find(h => h.id === taskId);
                             const progress = latestItem?.progress || 10;
 
-                            let adjustedDelay = baseDelayMs;
-                            if (progress >= 90) {
-                                adjustedDelay = 1000; // 1秒：任务接近完成，快速检测
-                            } else if (progress >= 70) {
-                                adjustedDelay = 2000; // 2秒：任务进行中后期，加快检测
-                            } else if (progress >= 50) {
-                                adjustedDelay = 3000; // 3秒：任务进行中，中等速度
-                            } else if (attempt > 50 && !isBananaModel) {
-                                adjustedDelay = 10000; // 10秒：长时间运行，节省资源
-                            }
+                            const adjustedDelay = resolveAsyncImagePollDelayMs({
+                                progress,
+                                attempt,
+                                isBananaModel,
+                                baseDelayMs,
+                            });
 
                             // 在回调外执行setTimeout，避免闭包问题
                             setTimeout(() => {
@@ -3900,7 +2998,7 @@ import {
                                             // 同时更新“生成角色/场景图片”节点本身（同步返回也要回填，避免节点区域不显示）
                                             setNodes(prevNodes => {
                                                 const node = prevNodes.find(n => n.id === updatedItem.sourceNodeId);
-                                                if (node && (node.type === 'generate-character-image' || node.type === 'generate-scene-image')) {
+                                                if (node && isCharacterSceneImageNodeType(node.type)) {
                                                     return prevNodes.map(n =>
                                                         n.id === updatedItem.sourceNodeId
                                                             ? {
@@ -4450,115 +3548,41 @@ import {
                 setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
             };
 
-            // 功能1：批量下载选中的图片/视频节点
-            const handleBatchDownload = async () => {
-                // 使用ref获取最新的状态，避免闭包问题
-                const currentNodes = nodesRef.current;
-                const currentSelectedId = selectedNodeIdRef.current;
-                const currentSelectedIds = selectedNodeIdsRef.current;
+            const handleBatchDownload = useBatchDownload({
+                isVideoUrl,
+                nodesRef,
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+            });
 
-                const selectedNodes = currentNodes.filter(node =>
-                    (currentSelectedId === node.id || (currentSelectedIds && currentSelectedIds.has(node.id))) &&
-                    (node.type === 'input-image' || node.type === 'video-input' || node.type === 'preview') &&
-                    node.content
-                );
-
-                if (selectedNodes.length === 0) {
-                    alert('请先选择要下载的图片或视频节点');
-                    return;
-                }
-
-                for (const node of selectedNodes) {
-                    try {
-                        const url = node.content;
-                        // 检查URL是否有效
-                        if (!url || (typeof url !== 'string' && !url.startsWith('data:'))) {
-                            console.warn(`节点 ${node.id} 的内容URL无效:`, url);
-                            continue;
-                        }
-                        const response = await fetch(url);
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        const blob = await response.blob();
-                        const blobUrl = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = blobUrl;
-
-                        // 判断文件扩展名：对于预览窗口，根据previewType判断；对于其他节点，根据URL或节点类型判断
-                        let extension = '.png';
-                        if (node.type === 'preview') {
-                            // 预览窗口：根据previewType判断
-                            if (node.previewType === 'video') {
-                                extension = '.mp4';
-                            } else {
-                                extension = isVideoUrl(url) ? '.mp4' : '.png';
-                            }
-                        } else if (node.type === 'video-input') {
-                            extension = '.mp4';
-                        } else {
-                            extension = isVideoUrl(url) ? '.mp4' : '.png';
-                        }
-
-                        const filename = `${node.id}${extension}`;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(blobUrl);
-                        // 添加小延迟避免浏览器阻止多个下载
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    } catch (error) {
-                        console.error(`下载节点 ${node.id} 失败:`, error);
-                        // 不中断其他节点的下载，继续处理下一个
-                    }
-                }
-            };
-
-            // 功能5：保存项目到JSON文件（流式写入，支持超大文件）
-            const handleSaveProject = async () => {
-                try {
-                    const saved = await saveProject({
-                        projectName,
-                        nodes,
-                        connections,
-                        view,
-                        history,
-                        chatSessions,
-                        characterLibrary
-                    });
-                    if (saved) alert('项目保存成功！');
-                } catch (error) {
-                    console.error('保存项目失败:', error);
-                    if (error.name === 'AbortError') return;
-                    alert('保存失败: ' + (error.message || '未知错误'));
-                }
-            };
-
-            // 保存选中的工作流（框选节点后右键保存）
-            const handleSaveSelectedWorkflow = async () => {
-                try {
-                    setSelectionContextMenu({ visible: false, x: 0, y: 0 });
-
-                    const selectedIds = selectedNodeIds.size > 0 ? selectedNodeIds : (selectedNodeId ? new Set([selectedNodeId]) : new Set());
-                    if (selectedIds.size === 0) {
-                        alert('请先选择要保存的节点');
-                        return;
-                    }
-
-                    const selectedNodes = nodes.filter(n => selectedIds.has(n.id));
-                    const selectedConnections = connections.filter(
-                        conn => selectedIds.has(conn.from) && selectedIds.has(conn.to)
-                    );
-
-                    const saved = await saveSelectedWorkflow({ selectedNodes, selectedConnections });
-                    if (saved) alert('工作流保存成功！');
-                } catch (error) {
-                    console.error('保存工作流失败:', error);
-                    if (error.name === 'AbortError') return;
-                    alert('保存失败: ' + (error.message || '未知错误'));
-                }
-            };
+            const {
+                handleImportWorkflow,
+                handleLoadProject,
+                handleSaveProject,
+                handleSaveSelectedWorkflow,
+            } = useProjectWorkflowActions({
+                canvasRef,
+                characterLibrary,
+                chatSessions,
+                connections,
+                history,
+                nodes,
+                projectName,
+                screenToWorld,
+                selectedNodeId,
+                selectedNodeIds,
+                setConnections,
+                setCharacterLibrary,
+                setChatSessions,
+                setHistory,
+                setNodes,
+                setProgressState,
+                setProjectName,
+                setSelectedNodeIds,
+                setSelectionContextMenu,
+                setView,
+                view,
+            });
 
             // 处理画布右键菜单（框选节点后）
             const handleCanvasContextMenu = (e) => {
@@ -4574,81 +3598,6 @@ import {
                         y: e.clientY
                     });
                 }
-            };
-
-            // 导入工作流（将工作流节点添加到当前画布）
-            const handleImportWorkflow = async () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    try {
-                        const canvasElement = canvasRef.current;
-                        let importPosition = { x: 100, y: 100 };
-                        if (canvasElement) {
-                            const rect = canvasElement.getBoundingClientRect();
-                            const centerX = rect.width / 2;
-                            const centerY = rect.height / 2;
-                            importPosition = screenToWorld(centerX + rect.left, centerY + rect.top);
-                        }
-
-                        const { newNodes, newConnections } = await importWorkflowFromFile({ file, importPosition });
-                        setNodes(prev => [...prev, ...newNodes]);
-                        setConnections(prev => [...prev, ...newConnections]);
-                        setSelectedNodeIds(new Set(newNodes.map(n => n.id)));
-
-                        alert(`工作流导入成功！\n\n导入了 ${newNodes.length} 个节点和 ${newConnections.length} 个连接。`);
-                    } catch (error) {
-                        console.error('导入工作流失败:', error);
-                        alert('导入失败: ' + (error.message || '无效的JSON文件'));
-                    }
-                };
-                input.click();
-            };
-
-            // 功能5：从JSON文件加载项目（流式读取，支持超大文件，修复多行JSON解析问题，解决内存泄露）
-            const handleLoadProject = () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    setProgressState({ visible: true, progress: 0, status: 'INITIALIZING...', type: 'import' });
-
-                    try {
-                        const tempState = await loadProjectFromFile({
-                            file,
-                            onProgress: ({ progress, status }) => {
-                                setProgressState(prev => ({ ...prev, progress, status }));
-                            }
-                        });
-
-                        setProgressState(prev => ({ ...prev, progress: 100, status: 'FINALIZING...' }));
-
-                        setTimeout(() => {
-                            if (tempState.projectName) setProjectName(tempState.projectName);
-                            if (tempState.view) setView(tempState.view);
-                            if (tempState.connections.length > 0) setConnections(tempState.connections);
-                            if (tempState.chatSessions.length > 0) setChatSessions(tempState.chatSessions);
-                            if (tempState.characterLibrary.length > 0) setCharacterLibrary(tempState.characterLibrary);
-                            if (tempState.nodes.length > 0) setNodes(tempState.nodes);
-                            if (tempState.history.length > 0) setHistory(tempState.history);
-
-                            setProgressState(prev => ({ ...prev, visible: false }));
-                            alert(`加载成功！\n${tempState.nodes.length} 个节点`);
-                        }, 200);
-                    } catch (error) {
-                        console.error('加载失败:', error);
-                        setProgressState(prev => ({ ...prev, visible: false }));
-                        alert(`加载失败: ${error.message}`);
-                    }
-                };
-                input.click();
             };
 
             // --- 节点操作 ---
@@ -4704,19 +3653,13 @@ import {
                 if (selectedNodeId === id) setSelectedNodeId(null);
             }, [selectedNodeId]);
 
-            // 获取连接的 gen-image 或 gen-video 节点（用于 storyboard-node 节点）
-            const getConnectedGenNodes = useCallback((sourceNodeId) => {
-                const genNodes = [];
-                for (const conn of connections) {
-                    if (conn.from === sourceNodeId) {
-                        const targetNode = nodesMap.get(conn.to);
-                        if (targetNode && (targetNode.type === 'gen-image' || targetNode.type === 'gen-video')) {
-                            genNodes.push(targetNode);
-                        }
-                    }
-                }
-                return genNodes;
-            }, [connections, nodesMap]);
+            useDeleteKeyHandler({
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+                deleteNode,
+                setSelectedNodeId,
+                setSelectedNodeIds,
+            });
 
             // 获取模型的默认时长
             // 获取风格前缀
@@ -5124,100 +4067,20 @@ import {
                 }
             }, [nodesMap, generateCharacterPrompt, generateScenePrompt]);
 
-            // 分镜表节点功能函数
-            const addEmptyShot = (nodeId) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || node.type !== 'storyboard-node') return;
-                // 获取默认视频模型（优先使用 sora-2，否则使用第一个视频模型）
-                const defaultModel = apiConfigs.find(c => c.type === 'Video' && c.id === 'sora-2')?.id || apiConfigs.find(c => c.type === 'Video')?.id || '';
-                const newShot = createEmptyStoryboardShot({
-                    shotCount: node.settings?.shots?.length || 0,
-                    defaultModel,
-                });
-                updateNodeSettings(nodeId, {
-                    shots: [...(node.settings?.shots || []), newShot]
-                });
-            };
-
-            const deleteShot = (nodeId, shotId) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = renumberStoryboardShots((node.settings?.shots || []).filter(s => s.id !== shotId));
-                updateNodeSettings(nodeId, { shots: updatedShots });
-            };
-
-            const updateShot = (nodeId, shotId, updates) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || node.type !== 'storyboard-node') return;
-                const updatedShots = updateStoryboardShot(node.settings?.shots || [], shotId, updates);
-                updateNodeSettings(nodeId, { shots: updatedShots });
-            };
-
-            // 从 video-analyze 节点导入分析结果
-            const importShotsFromAnalysis = (nodeId) => {
-                const storyboardNode = nodesMap.get(nodeId);
-                if (!storyboardNode || storyboardNode.type !== 'storyboard-node') return;
-
-                const analyzeNode = getConnectedVideoAnalyzeNode(nodeId);
-                if (!analyzeNode) {
-                    alert('请先连接一个视频拆解节点');
-                    return;
-                }
-
-                // 获取分析结果（优先使用 settings.analysisResults，其次使用 analysisResults）
-                const analysisResults = analyzeNode.settings?.analysisResults || analyzeNode.analysisResults || [];
-                if (analysisResults.length === 0) {
-                    alert('视频拆解节点没有分析结果，请先执行分析');
-                    return;
-                }
-
-                const newShots = createShotsFromAnalysisResults(analysisResults);
-
-                updateNodeSettings(nodeId, { shots: newShots });
-            };
-
-            // 自动从分析结果创建分镜表节点
-            const createStoryboardFromAnalysisResult = (analyzeNodeId, analysisResults) => {
-                const analyzeNode = nodesMap.get(analyzeNodeId);
-                if (!analyzeNode || !analysisResults || analysisResults.length === 0) {
-                    console.warn('[自动生成分镜表] 分析节点不存在或分析结果为空');
-                    return;
-                }
-
-                // 1. 数据转换 (复用现有逻辑)
-                const newShots = createShotsFromAnalysisResults(analysisResults, {
-                    includeGlobalCamera: true,
-                });
-
-                // 2. 计算新节点位置（放在源节点右侧）
-                const newX = analyzeNode.x + analyzeNode.width + 100;
-                const newY = analyzeNode.y;
-                const storyboardId = `node-storyboard-${Date.now()}`;
-
-                // 3. 创建节点
-                const newNode = {
-                    id: storyboardId,
-                    type: 'storyboard-node',
-                    x: newX,
-                    y: newY,
-                    width: 600,
-                    height: 500,
-                    settings: {
-                        projectTitle: 'AI 拆解结果',
-                        shots: newShots
-                    }
-                };
-
-                // 4. 更新状态
-                setNodes(prev => [...prev, newNode]);
-                setConnections(prev => [...prev, {
-                    id: `conn-${Date.now()}`,
-                    from: analyzeNodeId,
-                    to: storyboardId
-                }]);
-
-                console.log('[自动生成分镜表] 已创建分镜表节点，包含', newShots.length, '个镜头');
-            };
+            const {
+                addEmptyShot,
+                createStoryboardFromAnalysisResult,
+                deleteShot,
+                importShotsFromAnalysis,
+                updateShot,
+            } = useStoryboardActions({
+                apiConfigs,
+                getConnectedVideoAnalyzeNode,
+                nodesMap,
+                setConnections,
+                setNodes,
+                updateNodeSettings,
+            });
 
             // 分镜表任务映射：用于追踪从分镜表触发的生成任务
             const storyboardTaskMapRef = useRef(new Map()); // taskId -> { storyboardNodeId, shotId }
@@ -5225,136 +4088,15 @@ import {
             // 跟踪当前聚焦的提示词文本框
             const focusedPromptTextareaRef = useRef(null);
 
-            // 生成单个镜头
-            // 重构后的生成单个镜头函数：原地生成，不依赖外部节点
-            // 创建角色
-            const createCharacter = async (videoUrl, startSecond, endSecond, fromTaskId = null, customEndpoint = null) => {
-                try {
-                    // 1. 获取配置
-                    const soraConfig = apiConfigs.find(c => c.type === 'Video' && (c.id === 'sora-2' || c.id === 'sora-2-pro'));
-                    if (!soraConfig) {
-                        alert('未找到 Sora 2 模型配置，请先在设置中配置 Sora 2 或 Sora 2 Pro');
-                        setCreateCharacterSubmitting(false);
-                        return;
-                    }
-
-                    const apiKey = soraConfig.key || globalApiKey;
-
-                    if (!apiKey) {
-                        alert('请先配置 API Key');
-                        setCreateCharacterSubmitting(false);
-                        return;
-                    }
-
-                    // 验证时间范围
-                    if (endSecond - startSecond < 1 || endSecond - startSecond > 3) {
-                        alert('时间范围必须在 1-3 秒之间');
-                        setCreateCharacterSubmitting(false);
-                        return;
-                    }
-
-                    // 2. 使用用户提供的 endpoint 或自动构造
-                    const timestamps = `${startSecond},${endSecond}`;
-                    let endpoint;
-                    if (customEndpoint && customEndpoint.trim()) {
-                        endpoint = customEndpoint.trim();
-                    } else {
-                        // 如果没有提供，使用默认路径
-                        const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                        endpoint = `${baseUrl}/sora/v1/characters`;
-                    }
-
-                    // 3. 构造 Body
-                    const payload = fromTaskId
-                        ? { from_task: fromTaskId, timestamps }
-                        : { url: videoUrl, timestamps };
-
-                    // 4. 详细调试日志
-                    console.log('[Create Character] Request Details:', {
-                        endpoint,
-                        apiKey: apiKey ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}` : 'EMPTY',
-                        payload,
-                        fromTaskId,
-                        videoUrl: fromTaskId ? 'N/A (using from_task)' : videoUrl,
-                        customEndpoint: customEndpoint || 'N/A (using default)'
-                    });
-
-                    // 5. 发送请求
-                    const resp = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    // 6. 错误处理
-                    if (!resp.ok) {
-                        const errText = await resp.text();
-                        console.error('[Create Character] API Error:', {
-                            status: resp.status,
-                            statusText: resp.statusText,
-                            errorText: errText,
-                            endpoint
-                        });
-
-                        // 尝试解析错误响应
-                        let errorData = null;
-                        try {
-                            errorData = JSON.parse(errText);
-                        } catch (e) {
-                            // 如果不是 JSON，使用原始文本
-                        }
-
-                        // 特殊处理 500 错误和 get_origin_task_failed
-                        if (resp.status === 500 || (errorData && (errorData.code === 'get_origin_task_failed' || errorData.message?.includes('get_origin_task_failed')))) {
-                            throw new Error('TASK_NOT_FOUND');
-                        }
-
-                        throw new Error(`API错误 (${resp.status}): ${errText || resp.statusText}`);
-                    }
-
-                    const data = await resp.json();
-                    console.log('[Create Character] Success:', data);
-
-                    // 7. 保存到角色库
-                    if (data.id && data.username) {
-                        const newCharacter = {
-                            id: data.id,
-                            username: data.username,
-                            profile_picture_url: data.profile_picture_url || '',
-                            permalink: data.permalink || ''
-                        };
-
-                        const updated = [...characterLibrary, newCharacter];
-                        setCharacterLibrary(updated);
-                        alert(`角色 "${data.username}" 创建成功！`);
-                        setCreateCharacterOpen(false);
-                        resetCreateCharacterForm();
-                    } else {
-                        throw new Error('返回数据缺少 id 或 username');
-                    }
-                } catch (err) {
-                    console.error('[Create Character] Failed:', err);
-                    let msg = err.message;
-
-                    // 特殊处理：原任务已过期或无法访问
-                    if (msg === 'TASK_NOT_FOUND') {
-                        alert('创建失败：原任务已过期或无法访问。\n\n请尝试获取该视频的下载链接，使用"输入视频 URL"方式重新创建。');
-                        return;
-                    }
-
-                    // 处理网络错误
-                    if (msg.includes('Failed to fetch') || err.name === 'TypeError' || err.message.includes('NetworkError')) {
-                        msg = '连接失败。可能原因：\n\n1. API 地址填写错误\n   - 请检查 API 接口地址是否多余了 "/sora" 前缀\n   - 有些服务商的路径可能不同，请询问服务商 Sora 角色创建接口的准确路径\n\n2. 跨域限制 (CORS)\n   - 请尝试安装 Allow CORS 浏览器插件\n\n3. 网络问题\n   - 请检查网络连接';
-                    }
-
-                    alert(`创建角色失败: ${msg}`);
-                } finally {
-                    setCreateCharacterSubmitting(false);
-                }
-            };
+            const { createCharacter } = useCreateCharacterAction({
+                apiConfigs,
+                characterLibrary,
+                globalApiKey,
+                resetCreateCharacterForm,
+                setCharacterLibrary,
+                setCreateCharacterOpen,
+                setCreateCharacterSubmitting,
+            });
 
             const generateSingleShot = (nodeId, shot) => {
                 // 1. 构建更加丰富的 Prompt
@@ -5419,256 +4161,6 @@ import {
 
                 // 调用核心生成函数
                 startGeneration(finalPrompt, 'video', sourceImages, virtualNodeId, overrideOptions);
-            };
-
-            // 拓展图片 Zoom Out 功能
-            const handleExpandImageZoom = async (nodeId, zoomLevel) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || !node.content) {
-                    console.warn('拓展图片: 节点不存在或没有图片内容');
-                    return;
-                }
-
-                // 查找 Midjourney 配置（优先使用节点设置中选择的模型）
-                const selectedMjModelId = node.settings?.mjModel || 'mj-v7';
-                let mjConfig = apiConfigs.find(c => c.id === selectedMjModelId);
-
-                // 如果找不到，尝试查找任何 Midjourney 配置
-                if (!mjConfig) {
-                    mjConfig = apiConfigs.find(c => c.id.includes('mj') || c.provider.toLowerCase().includes('midjourney'));
-                }
-
-                if (!mjConfig) {
-                    alert('请先配置 Midjourney API');
-                    setSettingsOpen(true);
-                    return;
-                }
-
-                const apiKey = mjConfig.key || globalApiKey;
-                const baseUrl = (mjConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-                if (!apiKey) {
-                    alert('请先配置 Midjourney API Key');
-                    setSettingsOpen(true);
-                    return;
-                }
-
-                try {
-                    // 1. 上传图片获取 HTTP URL（如果是 data URL）
-                    let imageUrl = node.content;
-                    if (imageUrl.startsWith('data:')) {
-                        console.log('拓展图片: 开始上传图片获取 HTTP URL...', 'baseUrl:', baseUrl, 'apiKey存在:', !!apiKey);
-                        const httpUrl = await uploadImageToGetHttpUrl(imageUrl, baseUrl, apiKey);
-                        if (!httpUrl) {
-                            console.error('拓展图片: 图片上传失败，所有方法都失败');
-                            alert('图片上传失败，无法进行拓展。请检查网络连接和API配置。');
-                            return;
-                        }
-                        console.log('拓展图片: 图片上传成功，HTTP URL:', httpUrl);
-                        imageUrl = httpUrl;
-                    } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                        console.log('拓展图片: 图片已经是HTTP URL，直接使用:', imageUrl);
-                    } else {
-                        console.warn('拓展图片: 图片URL格式未知:', imageUrl.substring(0, 50));
-                    }
-
-                    // 2. 先提交图片到 Midjourney 获取原始任务ID
-                    const taskId = Date.now().toString();
-                    const now = Date.now();
-
-                    setHistory((prev) => [{
-                        id: taskId,
-                        type: 'image',
-                        url: '',
-                        prompt: `Zoom Out ${zoomLevel}x`,
-                        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        status: 'generating',
-                        progress: 5,
-                        modelName: 'Midjourney Zoom',
-                        width: 0,
-                        height: 0,
-                        remoteTaskId: null,
-                        apiConfig: { modelId: 'mj-zoom', baseUrl, apiKey },
-                        sourceNodeId: nodeId,
-                        startTime: now,
-                        durationMs: null
-                    }, ...prev]);
-                    // 交互要求：生成任务不自动弹出“生成历史”面板，只允许用户手动打开/关闭
-
-                    // 3. 提交图片到 Midjourney（使用 imagine 接口，不包含 zoom 参数）
-                    const mjMode = 'fast';
-                    const imagineEndpoint = `${baseUrl}/${mjMode}/mj/submit/imagine`;
-                    const imaginePayload = {
-                        prompt: imageUrl,
-                        notifyHook: '',
-                        state: ''
-                    };
-
-                    const imagineResp = await fetch(imagineEndpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify(imaginePayload)
-                    });
-
-                    const imagineText = await imagineResp.text();
-                    if (!imagineResp.ok) {
-                        throw new Error(imagineText || `Imagine API error: ${imagineResp.status}`);
-                    }
-
-                    const imagineData = JSON.parse(imagineText);
-                    if (imagineData.code !== 1 && imagineData.code !== 22) {
-                        throw new Error(imagineData.description || `Midjourney提交失败: code ${imagineData.code}`);
-                    }
-
-                    const originalTaskId = imagineData.result;
-                    if (!originalTaskId) throw new Error('未获取到任务ID');
-
-                    console.log('拓展图片: 获取到原始任务ID', originalTaskId);
-
-                    // 4. 等待原始任务完成（ZOOM操作需要原始任务完成）
-                    console.log('拓展图片: 等待原始任务完成...', originalTaskId);
-                    let originalTaskCompleted = false;
-                    let pollCount = 0;
-                    const maxPolls = 120; // 最多轮询120次（约10分钟）
-
-                    while (!originalTaskCompleted && pollCount < maxPolls) {
-                        await new Promise(resolve => setTimeout(resolve, 5000)); // 每5秒检查一次
-                        pollCount++;
-
-                        try {
-                            const statusResp = await fetch(`${baseUrl}/${mjMode}/mj/task/${originalTaskId}/fetch`, {
-                                method: 'GET',
-                                headers: {
-                                    'Authorization': `Bearer ${apiKey}`,
-                                    'Content-Type': 'application/json'
-                                }
-                            });
-
-                            const statusText = await statusResp.text();
-                            const statusData = JSON.parse(statusText);
-                            const status = statusData?.status || '';
-
-                            console.log('拓展图片: 原始任务状态检查', { status, pollCount });
-
-                        if (status === 'SUCCESS' || status === 'FINISHED') {
-                            originalTaskCompleted = true;
-                            console.log('拓展图片: 原始任务已完成，可以执行ZOOM操作');
-                        } else if (status === 'FAILURE' || status === 'ERROR' || status === 'CANCELLED') {
-                            throw new Error(`原始任务失败: ${status}`);
-                        }
-                    } catch (error) {
-                        if (pollCount >= maxPolls) {
-                            throw new Error('原始任务状态检查超时');
-                        }
-                        console.warn('拓展图片: 状态检查出错，继续重试', error);
-                    }
-                }
-
-                if (!originalTaskCompleted) {
-                    throw new Error('原始任务超时，无法执行ZOOM操作');
-                }
-
-                // 5. 使用 modal 接口提交 ZOOM 操作
-                const modalEndpoint = `${baseUrl}/mj/submit/modal`;
-                // ZOOM操作的prompt格式：根据Midjourney文档，使用 --zoomout 参数
-                const zoomPrompt = `--zoomout ${zoomLevel}`;
-                const modalPayload = {
-                    taskId: originalTaskId,
-                    prompt: zoomPrompt
-                    // maskBase64 可选，ZOOM 不需要蒙版
-                };
-
-                console.log('拓展图片: 调用 ZOOM modal 接口', { taskId: originalTaskId, prompt: zoomPrompt });
-
-                const modalResp = await fetch(modalEndpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify(modalPayload)
-                });
-
-                const modalText = await modalResp.text();
-                if (!modalResp.ok) {
-                    throw new Error(modalText || `Modal API error: ${modalResp.status}`);
-                }
-
-                const modalData = JSON.parse(modalText);
-                if (modalData.code !== 1 && modalData.code !== 22) {
-                    throw new Error(modalData.description || `ZOOM提交失败: code ${modalData.code}`);
-                }
-
-                const zoomTaskId = modalData.result;
-                if (!zoomTaskId) throw new Error('未获取到ZOOM任务ID');
-
-                console.log('拓展图片: 获取到ZOOM任务ID', zoomTaskId);
-
-                // 6. 更新历史记录，保存ZOOM任务ID
-                setHistory((prev) => prev.map((hItem) =>
-                    hItem.id === taskId
-                        ? { ...hItem, remoteTaskId: zoomTaskId, status: 'generating', progress: 20 }
-                        : hItem
-                ));
-
-                // 7. 开始轮询ZOOM任务状态
-                pollMidjourneyJob(zoomTaskId, taskId, baseUrl, apiKey, mjMode, 0, 0);
-                } catch (error) {
-                    console.error('拓展图片: 处理失败', error);
-                    const taskId = Date.now().toString();
-                    setHistory((prev) => {
-                        const existing = prev.find(h => h.sourceNodeId === nodeId && h.prompt === `Zoom Out ${zoomLevel}x`);
-                        if (existing) {
-                            return prev.map((hItem) =>
-                                hItem.id === existing.id
-                                    ? { ...hItem, status: 'failed', errorMsg: error.message || '拓展失败' }
-                                    : hItem
-                            );
-                        }
-                        return prev;
-                    });
-                }
-            };
-
-            const handleFileUpload = (nodeId, e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = async (ev) => {
-                         const content = ev.target.result;
-                         let dimensions = { w: 0, h: 0 };
-                         try { dimensions = await getImageDimensions(content); } catch (e) {}
-                         setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, content: content, dimensions } : n));
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            // 按时间段分组关键帧
-            const groupKeyframesByTime = (keyframes, segmentDuration) => {
-                if (!keyframes || keyframes.length === 0) return [];
-                const sorted = [...keyframes].sort((a, b) => a.time - b.time);
-                const groups = [];
-                let currentGroup = [];
-                let currentGroupStart = sorted[0].time;
-
-                sorted.forEach((frame, idx) => {
-                    if (frame.time - currentGroupStart >= segmentDuration && currentGroup.length > 0) {
-                        groups.push([...currentGroup]);
-                        currentGroup = [frame];
-                        currentGroupStart = frame.time;
-                    } else {
-                        currentGroup.push(frame);
-                    }
-                });
-
-                if (currentGroup.length > 0) {
-                    groups.push(currentGroup);
-                }
-
-                return groups;
             };
 
             // 为选中关键帧生成提示词
@@ -5840,86 +4332,18 @@ import {
                             model: config?.modelName || config?.id
                         });
 
-                        // 支持多种响应格式
-                        let aiContent = null;
-                        if (data.choices && data.choices.length > 0) {
-                            // OpenAI 格式: data.choices[0].message.content
-                            aiContent = data.choices[0]?.message?.content;
-                        } else if (data.data?.choices && data.data.choices.length > 0) {
-                            // 嵌套 data.choices 格式
-                            aiContent = data.data.choices[0]?.message?.content;
-                        } else if (data.content) {
-                            // 直接 content 字段
-                            aiContent = data.content;
-                        } else if (data.data?.content) {
-                            // 嵌套 data.content 格式
-                            aiContent = data.data.content;
-                        } else if (data.text) {
-                            // text 字段
-                            aiContent = data.text;
-                        } else if (data.data?.text) {
-                            // 嵌套 data.text 格式
-                            aiContent = data.data.text;
-                        } else if (data.message) {
-                            // message 字段
-                            aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                        } else if (data.data?.message) {
-                            // 嵌套 data.message 格式
-                            aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                        } else if (data.result) {
-                            // result 字段
-                            aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                        } else if (data.data?.result) {
-                            // 嵌套 data.result 格式
-                            aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                        }
-
-                        if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
-                            console.error('[视频拆解] API 响应内容为空:', data);
-                            throw new Error(`API 返回内容为空。响应数据: ${JSON.stringify(data).substring(0, 200)}`);
-                        }
-
-                        console.log('[视频拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
-
-                        // 尝试解析 JSON（可能包含 markdown 代码块）
-                        let jsonStr = aiContent.trim();
-                        if (jsonStr.startsWith('```')) {
-                            jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                        }
-
-                        let result;
-                        try {
-                            result = JSON.parse(jsonStr);
-                            console.log('[视频拆解] JSON 解析成功，场景索引:', result.scene_index || sceneIndex + 1);
-                        } catch (e) {
-                            console.error('[视频拆解] 解析 JSON 失败:', e, '内容前500字符:', jsonStr.substring(0, 500));
-                            // 尝试修复常见的JSON格式问题
-                            try {
-                                // 移除可能的注释
-                                jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                                // 尝试修复尾随逗号
-                                jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                                result = JSON.parse(jsonStr);
-                                console.log('[视频拆解] JSON 修复后解析成功');
-                            } catch (e2) {
-                                console.error('[视频拆解] JSON修复后仍解析失败:', e2, '原始内容:', jsonStr);
-                                // 如果还是失败，创建一个默认结构
-                                result = {
-                                    video_id: videoFileName,
-                                    scene_index: sceneIndex + 1,
-                                    time_range: timeRange,
-                                    keyframes: group.map((frame, fIdx) => ({
-                                        type: fIdx === 0 ? 'prev' : fIdx === 1 ? 'current' : 'next',
-                                        time: frame.time,
-                                        description: `视频帧 ${frame.time.toFixed(1)}s`,
-                                        mj_prompt: 'A detailed scene from the video',
-                                        jimeng_prompt: '视频场景描述'
-                                    })),
-                                    global_tags: { style: [], camera: [], color: [] }
-                                };
-                                console.warn('[视频拆解] 使用默认结构，原始内容:', jsonStr.substring(0, 200));
-                            }
-                        }
+                        const aiContent = extractRequiredAnalysisContent({ data, label: '视频拆解' });
+                        const result = parseAnalysisJson({
+                            aiContent,
+                            label: '视频拆解',
+                            successMessage: (parsed) => `[视频拆解] JSON 解析成功，场景索引: ${parsed.scene_index || sceneIndex + 1}`,
+                            fallbackFactory: () => createDefaultFrameAnalysisResult({
+                                group,
+                                sceneIndex,
+                                timeRange,
+                                videoFileName,
+                            }),
+                        });
 
                         allResults.push(result);
                         console.log('[视频拆解] 场景处理完成，当前结果数:', allResults.length);
@@ -6140,95 +4564,15 @@ import {
                         model: config?.modelName || config?.id
                     });
 
-                    // 支持多种响应格式
-                    let aiContent = null;
-                    if (data.choices && data.choices.length > 0) {
-                        // OpenAI 格式: data.choices[0].message.content
-                        aiContent = data.choices[0]?.message?.content;
-                    } else if (data.data?.choices && data.data.choices.length > 0) {
-                        // 嵌套 data.choices 格式
-                        aiContent = data.data.choices[0]?.message?.content;
-                    } else if (data.content) {
-                        // 直接 content 字段
-                        aiContent = data.content;
-                    } else if (data.data?.content) {
-                        // 嵌套 data.content 格式
-                        aiContent = data.data.content;
-                    } else if (data.text) {
-                        // text 字段
-                        aiContent = data.text;
-                    } else if (data.data?.text) {
-                        // 嵌套 data.text 格式
-                        aiContent = data.data.text;
-                    } else if (data.message) {
-                        // message 字段
-                        aiContent = typeof data.message === 'string' ? data.message : data.message.content;
-                    } else if (data.data?.message) {
-                        // 嵌套 data.message 格式
-                        aiContent = typeof data.data.message === 'string' ? data.data.message : data.data.message.content;
-                    } else if (data.result) {
-                        // result 字段
-                        aiContent = typeof data.result === 'string' ? data.result : data.result.content;
-                    } else if (data.data?.result) {
-                        // 嵌套 data.result 格式
-                        aiContent = typeof data.data.result === 'string' ? data.data.result : data.data.result.content;
-                    }
+                    const aiContent = extractRequiredAnalysisContent({ data, label: 'AI导演拆解' });
+                    const result = parseAnalysisJson({
+                        aiContent,
+                        label: 'AI导演拆解',
+                        successMessage: (parsed) => `[AI导演拆解] JSON 解析成功，场景数: ${parsed.scenes?.length || 0}`,
+                    });
 
-                    if (!aiContent || aiContent.trim() === '' || aiContent === '{}') {
-                        console.error('[AI导演拆解] API 响应内容为空:', data);
-                        throw new Error(`API 返回内容为空。响应数据: ${JSON.stringify(data).substring(0, 200)}`);
-                    }
-
-                    console.log('[AI导演拆解] 提取的内容长度:', aiContent.length, '前100字符:', aiContent.substring(0, 100));
-
-                    // 解析 JSON
-                    let jsonStr = aiContent.trim();
-                    if (jsonStr.startsWith('```')) {
-                        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                    }
-
-                    let result;
-                    try {
-                        result = JSON.parse(jsonStr);
-                        console.log('[AI导演拆解] JSON 解析成功，场景数:', result.scenes?.length || 0);
-                    } catch (e) {
-                        console.error('[AI导演拆解] 解析 JSON 失败:', e, '内容前500字符:', jsonStr.substring(0, 500));
-                        // 尝试修复
-                        try {
-                            jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                            jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                            result = JSON.parse(jsonStr);
-                            console.log('[AI导演拆解] JSON 修复后解析成功');
-                        } catch (e2) {
-                            console.error('[AI导演拆解] JSON修复后仍解析失败:', e2, '原始内容:', jsonStr.substring(0, 500));
-                            throw new Error(`模型返回的不是有效的 JSON 格式。原始内容: ${jsonStr.substring(0, 200)}`);
-                        }
-                    }
-
-                    // 处理 voiceover_script，转换为 voiceoverResults 格式
-                    const voiceoverResults = (result.voiceover_script || []).map((v, idx) => ({
-                        time: idx,
-                        text: v.text || ''
-                    }));
+                    const { analysisResults, voiceoverResults } = normalizeAutoDirectorResult(result);
                     console.log('[AI导演拆解] 口播文案数:', voiceoverResults.length);
-
-                    // 处理 scenes，转换为 analysisResults 格式
-                    const analysisResults = (result.scenes || []).map((scene, idx) => ({
-                        scene_index: scene.scene_id || idx + 1,
-                        time_range: scene.time_range || '',
-                        keyframes: [{
-                            type: 'current',
-                            time: 0,
-                            description: `${scene.visual_analysis?.camera_movement || ''} ${scene.visual_analysis?.subject_dynamics || ''}`.trim(),
-                            mj_prompt: scene.prompts?.mj_prompt || '',
-                            jimeng_prompt: scene.prompts?.jimeng_prompt || ''
-                        }],
-                        global_tags: {
-                            style: scene.visual_analysis?.atmosphere ? [scene.visual_analysis.atmosphere] : [],
-                            camera: scene.visual_analysis?.camera_movement ? [scene.visual_analysis.camera_movement] : [],
-                            color: []
-                        }
-                    }));
                     console.log('[AI导演拆解] 场景数:', analysisResults.length);
 
                     // 更新节点状态
@@ -6268,1228 +4612,98 @@ import {
                 }
             };
 
-            const addPromptLibraryItem = () => {
-                const name = promptLibraryForm.name.trim();
-                const prompt = promptLibraryForm.prompt.trim();
-                if (!name || !prompt) {
-                    alert('请输入名称和提示词内容');
-                    return;
-                }
-                setPromptLibrary((prev) => [
-                    { id: `custom-${Date.now()}`, name, prompt },
-                    ...prev
-                ]);
-                setPromptLibraryForm({ name: '', prompt: '' });
-            };
-            const removePromptLibraryItem = (id) => {
-                setPromptLibrary((prev) => prev.filter((p) => p.id !== id));
-            };
-            const applyLibraryPrompt = (nodeId, promptText) => {
-                if (!nodeId || !promptText) return;
-                updateNodeSettings(nodeId, { prompt: promptText });
-            };
-
-            const handleSplitGridFromUrl = async (imageUrl, options = {}) => {
-                if (!imageUrl) return;
-                const {
-                    originX,
-                    originY,
-                    cols = 3,
-                    spacing = 20,
-                    nodeWidth = 260,
-                    nodeHeight = 260,
-                    replaceSelected = false, // 是否替换已选中的节点
-                } = options;
-
-                try {
-                    const croppedImages = await splitGridImage(imageUrl);
-                    if (croppedImages.length !== 9) {
-                        alert('切割失败：未能生成9张图片');
-                        return;
-                    }
-
-                    // 检查是否有框选的节点需要替换
-                    const currentSelectedIds = selectedNodeIdsRef.current;
-                    if (replaceSelected && currentSelectedIds && currentSelectedIds.size === 9) {
-                        // 替换模式：更新已选中的9个节点
-                        const selectedIdsArray = Array.from(currentSelectedIds);
-                        setNodes(prev => prev.map(node => {
-                            const index = selectedIdsArray.indexOf(node.id);
-                            if (index !== -1 && index < croppedImages.length) {
-                                // 替换节点内容，保持位置和大小
-                                return {
-                                    ...node,
-                                    content: croppedImages[index].url,
-                                    dimensions: {
-                                        w: croppedImages[index].width,
-                                        h: croppedImages[index].height
-                                    }
-                                };
-                            }
-                            return node;
-                        }));
-                        // 静默替换，不显示提示
-                        return;
-                    }
-
-                    // 创建新节点模式（原有逻辑）
-                    const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-                    const startX = originX !== undefined ? originX : world.x;
-                    const startY = originY !== undefined ? originY : world.y;
-                    const newNodes = createGridImageNodes(croppedImages, {
-                        startX,
-                        startY,
-                        cols,
-                        spacing,
-                        nodeWidth,
-                        nodeHeight,
-                    });
-                    setNodes(prev => [...prev, ...newNodes]);
-                    // 静默创建，不显示成功提示
-                } catch (e) {
-                    alert('切割失败: ' + e.message);
-                }
-            };
-
-            // 智能整理节点：DAG 层级布局 + 交叉最小化 (Barycenter Heuristic)
-            const autoArrangeNodes = () => {
-                // 1. 获取选中的节点
-                const currentSelectedId = selectedNodeIdRef.current;
-                const currentSelectedIds = selectedNodeIdsRef.current;
-
-                let nodesToArrange = [];
-
-                if (currentSelectedId) {
-                    const node = nodesRef.current.find(n => n.id === currentSelectedId);
-                    if (node) nodesToArrange = [node];
-                } else if (currentSelectedIds && currentSelectedIds.size > 0) {
-                    nodesToArrange = nodesRef.current.filter(n => currentSelectedIds.has(n.id));
-                }
-
-                if (nodesToArrange.length < 2) {
-                     alert('请至少选中两个节点进行智能整理');
-                     return;
-                }
-
-                const targetNodeIds = new Set(nodesToArrange.map(n => n.id));
-
-                // 2. 构建图结构
-                // map: id -> graphNode
-                const graph = {};
-                nodesToArrange.forEach(n => {
-                    graph[n.id] = {
-                        id: n.id,
-                        node: n,
-                        parents: [],
-                        children: [],
-                        level: 0,
-                        rank: 0 // 用于层内排序
-                    };
-                });
-
-                connectionsRef.current.forEach(conn => {
-                    if (targetNodeIds.has(conn.from) && targetNodeIds.has(conn.to)) {
-                        graph[conn.from].children.push(conn.to);
-                        graph[conn.to].parents.push(conn.from);
-                    }
-                });
-
-                // 3. 计算层级 (Assign Layers) - Longest Path Layering
-                // 找出入度为0的节点
-                let roots = Object.values(graph).filter(n => n.parents.length === 0);
-
-                // 处理环路或纯独立节点：如果没有根，取第一个
-                if (roots.length === 0 && nodesToArrange.length > 0) {
-                    roots = [Object.values(graph)[0]];
-                }
-
-                // 计算每个节点的深度 level
-                const calcLevels = () => {
-                    const queue = roots.map(r => ({ node: r, lvl: 0 }));
-                    const visited = new Set();
-
-                    while(queue.length > 0) {
-                        const { node, lvl } = queue.shift();
-                        // 只有当该节点未访问，或者发现了更长的路径时更新
-                        if (lvl >= node.level) {
-                            node.level = lvl;
-                            // 只有当该节点的所有父节点都处理过，或者它是根节点时，才继续往下（简化版拓扑排序）
-                            // 这里为了简单，直接遍历子节点
-                            node.children.forEach(childId => {
-                                const childNode = graph[childId];
-                                if (childNode) {
-                                    // 避免环路无限循环：限制最大深度
-                                    if (lvl < 20) {
-                                        queue.push({ node: childNode, lvl: lvl + 1 });
-                                    }
-                                }
-                            });
-                        }
-                    }
-                };
-                calcLevels();
-
-                // 4. 构建层级数组
-                // layers: [ [node, node], [node], ... ]
-                const maxLevel = Math.max(...Object.values(graph).map(n => n.level));
-                const layers = Array.from({ length: maxLevel + 1 }, () => []);
-
-                Object.values(graph).forEach(n => {
-                    layers[n.level].push(n);
-                });
-
-                // 5. 交叉最小化 (Crossing Minimization) - Iterative Barycenter Method
-                // 初始排序：保持目前的相对顺序或ID顺序
-                layers.forEach(layer => {
-                    layer.sort((a, b) => a.node.y - b.node.y);
-                });
-
-                // 迭代次数，比如做 3 次往返扫描
-                const iterations = 3;
-
-                for (let i = 0; i < iterations; i++) {
-                    // Forward Sweep (从左往右): 子节点跟随父节点的重心
-                    for (let l = 1; l < layers.length; l++) {
-                        const layer = layers[l];
-                        layer.forEach(n => {
-                            if (n.parents.length > 0) {
-                                let sumRank = 0;
-                                n.parents.forEach(pid => {
-                                    // 找到父节点在上一层中的索引位置(rank)
-                                    const parentNode = graph[pid];
-                                    const parentLayerIndex = layers[l-1].indexOf(parentNode);
-                                    if (parentLayerIndex !== -1) sumRank += parentLayerIndex;
-                                });
-                                n.barycenter = sumRank / n.parents.length;
-                            } else {
-                                n.barycenter = layers[l].indexOf(n); // 保持原位
-                            }
-                        });
-                        // 根据重心排序
-                        layer.sort((a, b) => (a.barycenter || 0) - (b.barycenter || 0));
-                    }
-
-                    // Backward Sweep (从右往左): 父节点跟随子节点的重心
-                    // 这一步对于解决图中的那种"输入节点乱序导致连线交叉"非常关键
-                    for (let l = layers.length - 2; l >= 0; l--) {
-                        const layer = layers[l];
-                        layer.forEach(n => {
-                            if (n.children.length > 0) {
-                                let sumRank = 0;
-                                n.children.forEach(cid => {
-                                    const childNode = graph[cid];
-                                    const childLayerIndex = layers[l+1].indexOf(childNode);
-                                    if (childLayerIndex !== -1) sumRank += childLayerIndex;
-                                });
-                                n.barycenter = sumRank / n.children.length;
-                            } else {
-                                n.barycenter = layers[l].indexOf(n);
-                            }
-                        });
-                        layer.sort((a, b) => (a.barycenter || 0) - (b.barycenter || 0));
-                    }
-                }
-
-                // 6. 计算最终坐标 (Coordinate Assignment)
-                const startX = Math.min(...nodesToArrange.map(n => n.x));
-                const startY = Math.min(...nodesToArrange.map(n => n.y));
-                const H_SPACING = 150; // 加宽一点水平间距，给连线留空间
-                const V_SPACING = 40;  // 垂直间距
-
-                let currentX = startX;
-                const updatedNodesMap = new Map();
-
-                layers.forEach((layer, lIndex) => {
-                    if (layer.length === 0) return;
-
-                    // 计算该层最宽的节点，用于推算下一层的X
-                    const maxW = Math.max(...layer.map(n => n.node.width || 260));
-
-                    // 计算该层总高度，用于垂直居中对齐整个层
-                    const totalH = layer.reduce((sum, n) => sum + (n.node.height || 200), 0) + (layer.length - 1) * V_SPACING;
-
-                    // 简单的垂直排列，从 startY 开始
-                    // 进阶优化：可以让层与层之间垂直中心对齐，但这里简单排列通常就够了
-                    let currentY = startY;
-
-                    layer.forEach(graphNode => {
-                        updatedNodesMap.set(graphNode.id, {
-                            ...graphNode.node,
-                            x: currentX,
-                            y: currentY
-                        });
-                        currentY += (graphNode.node.height || 200) + V_SPACING;
-                    });
-
-                    currentX += maxW + H_SPACING;
-                });
-
-                // 7. 应用更新
-                setNodes(prev => prev.map(node => {
-                    if (updatedNodesMap.has(node.id)) {
-                        return updatedNodesMap.get(node.id);
-                    }
-                    return node;
-                }));
-            };
-
-            const handleVideoFileUpload = (nodeId, file) => {
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = async (ev) => {
-                    const content = ev.target.result;
-                    let videoMeta = { duration: 0, w: 0, h: 0 };
-                    try { videoMeta = await getVideoMetadata(content); } catch (e) { console.warn('读取视频元信息失败', e); }
-                    setNodes((prev) => prev.map((n) =>
-                        n.id === nodeId
-                            ? { ...n, content, videoMeta, frames: [], selectedKeyframes: [], extractingFrames: false, videoFileName: file.name }
-                            : n
-                    ));
-                };
-                reader.readAsDataURL(file);
-            };
-
-            const handleVideoDrop = (nodeId, e) => {
-                e.preventDefault(); e.stopPropagation();
-                e.currentTarget.classList.remove('drag-over');
-                const files = Array.from(e.dataTransfer.files);
-                const videoFile = files.find(file => file.type.startsWith('video/'));
-                if (videoFile) {
-                    handleVideoFileUpload(nodeId, videoFile);
-                }
-            };
-
-            // 智能抽帧：场景检测算法
-            const detectScenesAndCapture = async (videoUrl, threshold = 30) => {
-                return new Promise((resolve, reject) => {
-                    const video = document.createElement('video');
-                    video.crossOrigin = "anonymous";
-                    video.src = videoUrl;
-                    video.muted = true;
-
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-                    const keyframes = [];
-                    let prevData = null;
-
-                    video.onloadeddata = async () => {
-                        canvas.width = 320;
-                        canvas.height = Math.floor(320 * (video.videoHeight / video.videoWidth));
-
-                        const duration = video.duration;
-                        const sampleRate = 2;
-
-                        video.currentTime = 0;
-
-                        const scan = async () => {
-                            // 检查是否已经扫描完成
-                            const currentTime = video.currentTime;
-                            if (currentTime >= duration || Math.abs(currentTime - duration) < 0.01) {
-                                // 确保最后一帧也被包含
-                                if (keyframes.length === 0 || parseFloat(keyframes[keyframes.length - 1].time) < duration - 0.5) {
-                                    const hdCanvas = document.createElement('canvas');
-                                    hdCanvas.width = video.videoWidth;
-                                    hdCanvas.height = video.videoHeight;
-                                    const hdCtx = hdCanvas.getContext('2d');
-                                    video.currentTime = Math.max(0, duration - 0.1);
-                                    await new Promise(r => {
-                                        const timeout = setTimeout(() => r(), 200);
-                                        video.onseeked = () => {
-                                            clearTimeout(timeout);
-                                            hdCtx.drawImage(video, 0, 0);
-                                            const lastTime = Math.max(0, duration - 0.1);
-                                            keyframes.push({
-                                                time: lastTime.toFixed(2),
-                                                image: hdCanvas.toDataURL('image/jpeg', 0.8)
-                                            });
-                                            r();
-                                        };
-                                    });
-                                }
-                                resolve(keyframes.map(kf => ({ time: parseFloat(kf.time), url: kf.image })));
-                                return;
-                            }
-
-                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                            const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-
-                            if (prevData) {
-                                let diff = 0;
-                                for (let i = 0; i < frameData.length; i += 4) {
-                                    diff += Math.abs(frameData[i] - prevData[i]) +
-                                            Math.abs(frameData[i+1] - prevData[i+1]) +
-                                            Math.abs(frameData[i+2] - prevData[i+2]);
-                                }
-                                const avgDiff = diff / (frameData.length / 4 * 3);
-
-                                if (avgDiff > threshold) {
-                                    const hdCanvas = document.createElement('canvas');
-                                    hdCanvas.width = video.videoWidth;
-                                    hdCanvas.height = video.videoHeight;
-                                    hdCanvas.getContext('2d').drawImage(video, 0, 0);
-                                    const dataUrl = hdCanvas.toDataURL('image/jpeg', 0.8);
-
-                                    // 确保使用实际的currentTime，而不是字符串
-                                    const captureTime = video.currentTime;
-                                    keyframes.push({
-                                        time: captureTime.toFixed(2),
-                                        image: dataUrl
-                                    });
-                                    prevData = null;
-                                } else {
-                                    prevData = frameData;
-                                }
-                            } else {
-                                // 第一帧，记录当前时间（确保使用实际的currentTime）
-                                prevData = frameData;
-                                const currentTime = video.currentTime;
-                                const hdCanvas = document.createElement('canvas');
-                                hdCanvas.width = video.videoWidth;
-                                hdCanvas.height = video.videoHeight;
-                                hdCanvas.getContext('2d').drawImage(video, 0, 0);
-                                keyframes.push({
-                                    time: currentTime.toFixed(2),
-                                    image: hdCanvas.toDataURL('image/jpeg', 0.8)
-                                });
-                            }
-
-                            // 更新到下一个采样点
-                            const nextTime = video.currentTime + (1 / sampleRate);
-                            if (nextTime >= duration) {
-                                // 确保最后一帧也被包含
-                                if (keyframes.length === 0 || parseFloat(keyframes[keyframes.length - 1].time) < duration - 0.5) {
-                                    const hdCanvas = document.createElement('canvas');
-                                    hdCanvas.width = video.videoWidth;
-                                    hdCanvas.height = video.videoHeight;
-                                    const hdCtx = hdCanvas.getContext('2d');
-                                    video.currentTime = Math.max(0, duration - 0.1);
-                                    await new Promise(r => {
-                                        const timeout = setTimeout(() => r(), 200);
-                                        video.onseeked = () => {
-                                            clearTimeout(timeout);
-                                            hdCtx.drawImage(video, 0, 0);
-                                            const lastTime = Math.max(0, duration - 0.1);
-                                            keyframes.push({
-                                                time: lastTime.toFixed(2),
-                                                image: hdCanvas.toDataURL('image/jpeg', 0.8)
-                                            });
-                                            r();
-                                        };
-                                    });
-                                }
-                                resolve(keyframes.map(kf => ({ time: parseFloat(kf.time), url: kf.image })));
-                                return;
-                            }
-                            video.currentTime = nextTime;
-                            await new Promise(r => {
-                                const timeout = setTimeout(() => r(), 200); // 超时保护
-                                video.onseeked = () => {
-                                    clearTimeout(timeout);
-                                    r();
-                                };
-                            });
-                            scan();
-                        };
-
-                        scan();
-                    };
-
-                    video.onerror = (e) => reject(new Error("视频加载失败，请检查格式或跨域设置"));
-                });
-            };
-
-            const handleAutoExtractKeyframes = async (nodeId, fps = 2) => {
-                const node = nodesMap.get(nodeId);
-                if (!node?.content) return;
-                setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, extractingFrames: true } : n));
-                try {
-                    const frames = await extractKeyFrames(node.content, { fps });
-                    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, frames, selectedKeyframes: [], extractingFrames: false } : n));
-                } catch (error) {
-                    console.error('视频抽帧失败', error);
-                    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, extractingFrames: false } : n));
-                }
-            };
-
-            const handleSmartExtractKeyframes = async (nodeId, threshold = 30) => {
-                const node = nodesMap.get(nodeId);
-                if (!node?.content) return;
-                setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, extractingFrames: true } : n));
-                try {
-                    const frames = await detectScenesAndCapture(node.content, threshold);
-                    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, frames, selectedKeyframes: [], extractingFrames: false } : n));
-                } catch (error) {
-                    console.error('智能抽帧失败', error);
-                    alert(`智能抽帧失败: ${error.message}`);
-                    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, extractingFrames: false } : n));
-                }
-            };
-
-            // 提取口播文案
-            const handleExtractVoiceover = async (nodeId) => {
-                const node = nodesMap.get(nodeId);
-                if (!node || node.type !== 'video-analyze') return;
-
-                const videoInputNode = getConnectedVideoInputNode(nodeId);
-                if (!videoInputNode || !videoInputNode.content) {
-                    alert('请先连接一个包含视频的视频输入节点');
-                    return;
-                }
-
-                const config = apiConfigs.find((c) => c.id === node.settings?.model || 'gemini-3-pro');
-                const apiKey = config?.key || globalApiKey;
-                const baseUrl = (config?.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
-
-                if (!apiKey) {
-                    alert('请先在 API 设置中配置 Key');
-                    setSettingsOpen(true);
-                    return;
-                }
-
-                setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, isExtractingVoiceover: true, voiceoverResults: [] } : n));
-
-                const videoFileName = videoInputNode.videoFileName || 'video.mp4';
-                const videoDuration = videoInputNode.videoMeta?.duration || 0;
-
-                try {
-                    // 构建多模态消息，请求提取口播文案
-                    const systemPrompt = `你是一个专业的视频口播文案提取助手。请分析提供的视频，提取每一秒的口播内容。
-
-请返回严格的 JSON 格式，结构如下：
-{
-  "video_id": "${videoFileName}",
-  "duration": ${videoDuration},
-  "voiceover": [
-    {
-      "time": 0,
-      "text": "第一秒的口播内容"
-    },
-    {
-      "time": 1,
-      "text": "第二秒的口播内容"
-    },
-    {
-      "time": 2,
-      "text": "第三秒的口播内容"
-    }
-  ]
-}
-
-要求：
-1. 按秒为单位提取口播内容
-2. 如果某一秒没有口播，text 字段为空字符串
-3. 准确记录每一秒的说话内容
-4. 只提取口播文案，不要添加其他描述`;
-
-                    // 从视频中提取关键帧用于分析（每5秒一帧，避免太多）
-                    const sampleFrames = [];
-                    const video = document.createElement('video');
-                    video.crossOrigin = 'anonymous';
-                    video.src = videoInputNode.content;
-                    video.muted = true;
-
-                    await new Promise((resolve) => {
-                        video.onloadedmetadata = () => {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            const ctx = canvas.getContext('2d');
-
-                            let currentTime = 0;
-                            const extractFrame = async () => {
-                                if (currentTime >= videoDuration) {
-                                    resolve();
-                                    return;
-                                }
-
-                                video.currentTime = currentTime;
-                                await new Promise((r) => {
-                                    video.onseeked = () => {
-                                        ctx.drawImage(video, 0, 0);
-                                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                                        sampleFrames.push({
-                                            time: currentTime,
-                                            url: dataUrl
-                                        });
-                                        currentTime += 5; // 每5秒一帧
-                                        setTimeout(r, 50);
-                                    };
-                                });
-                                extractFrame();
-                            };
-                            extractFrame();
-                        };
-                    });
-
-                    // 构建用户消息，包含视频帧
-                    const userContent = [
-                        { type: "text", text: `请分析以下视频，提取每一秒的口播文案。视频总时长：${videoDuration.toFixed(1)}秒。` }
-                    ];
-
-                    // 添加关键帧（每5秒一帧，避免太多）
-                    sampleFrames.forEach((frame) => {
-                        userContent.push({
-                            type: "image_url",
-                            image_url: { url: frame.url }
-                        });
-                        userContent.push({
-                            type: "text",
-                            text: `时间点：${frame.time.toFixed(1)}秒`
-                        });
-                    });
-
-                    const apiMessages = [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userContent }
-                    ];
-
-                    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: config?.modelName || 'gemini-3-pro-preview',
-                            messages: apiMessages,
-                            stream: false
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const errText = await response.text();
-                        throw new Error(errText || `API Error: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    const aiContent = data.choices?.[0]?.message?.content || "{}";
-
-                    // 解析 JSON
-                    let jsonStr = aiContent.trim();
-                    if (jsonStr.startsWith('```')) {
-                        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-                    }
-
-                    let result;
-                    try {
-                        result = JSON.parse(jsonStr);
-                    } catch (e) {
-                        console.error('解析 JSON 失败:', e, jsonStr);
-                        // 尝试修复
-                        try {
-                            jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-                            jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-                            result = JSON.parse(jsonStr);
-                        } catch (e2) {
-                            throw new Error('模型返回的不是有效的 JSON 格式');
-                        }
-                    }
-
-                    // 更新节点状态
-                    setNodes((prev) => prev.map((n) =>
-                        n.id === nodeId
-                            ? { ...n, isExtractingVoiceover: false, voiceoverResults: result.voiceover || [] }
-                            : n
-                    ));
-
-                } catch (error) {
-                    console.error('提取口播文案失败', error);
-                    setNodes((prev) => prev.map((n) =>
-                        n.id === nodeId
-                            ? { ...n, isExtractingVoiceover: false, errorMsg: error.message || '提取口播文案失败' }
-                            : n
-                    ));
-                }
-            };
-
-            const handleToggleKeyframe = (nodeId, frame, index = 0, event = null) => {
-                const shiftKey = !!event?.shiftKey;
-                setNodes(prev => prev.map(n => {
-                    if (n.id !== nodeId) return n;
-                    const frames = n.frames || [];
-                    const keyOf = (f) => `${f.time}-${f.url}`;
-                    const frameMap = new Map(frames.map(f => [keyOf(f), f]));
-                    const currentSelected = n.selectedKeyframes || [];
-                    let nextSelected = [...currentSelected];
-
-                    if (shiftKey && frameSelectionRef.current[nodeId] !== undefined && frameSelectionRef.current[nodeId] !== null && frames.length > 0) {
-                        const lastIndex = frameSelectionRef.current[nodeId];
-                        const start = Math.min(lastIndex, index);
-                        const end = Math.max(lastIndex, index);
-                        const rangeFrames = frames.slice(start, end + 1);
-                        const selectedKeys = new Set(nextSelected.map(keyOf));
-                        rangeFrames.forEach(f => selectedKeys.add(keyOf(f)));
-                        nextSelected = Array.from(selectedKeys).map(k => frameMap.get(k)).filter(Boolean);
-                    } else {
-                        const exists = nextSelected.some(f => keyOf(f) === keyOf(frame));
-                        nextSelected = exists
-                            ? nextSelected.filter(f => keyOf(f) !== keyOf(frame))
-                            : [...nextSelected, frame];
-                    }
-
-                    frameSelectionRef.current[nodeId] = index;
-                    return { ...n, selectedKeyframes: nextSelected };
-                }));
-            };
-
-            const openFrameContextMenu = (e, nodeId, frame) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setFrameContextMenu({ visible: true, x: e.clientX, y: e.clientY, nodeId, frame });
-            };
-
-            const closeFrameContextMenu = () => {
-                setFrameContextMenu({ visible: false, x: 0, y: 0, nodeId: null, frame: null });
-            };
-
-            const sendFrameToChat = () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                const newFile = {
-                    name: `Frame-${(frame.time ?? 0).toFixed(2)}s.png`,
-                    type: 'image/png',
-                    content: frame.url,
-                    isImage: true,
-                    isVideo: false,
-                    isAudio: false,
-                    fromHistory: true,
-                    fileExt: 'png'
-                };
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                closeFrameContextMenu();
-            };
-
-            const sendFrameToCanvas = async () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-                let dims;
-                try {
-                    const real = await getImageDimensions(frame.url);
-                    if (real?.w && real?.h) dims = { w: real.w, h: real.h };
-                } catch (e) {}
-                addNode('input-image', world.x + 50, world.y + 50, null, frame.url, dims);
-                closeFrameContextMenu();
-            };
-
-            const sendFrameToPreview = () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                setNodes(prev => {
-                    // 优先使用当前选中的预览节点
-                    const selectedId = selectedNodeIdRef.current;
-                    const selectedIds = selectedNodeIdsRef.current;
-                    const previews = prev.filter(n => n.type === 'preview');
-                    if (!previews.length) return prev;
-
-                    // 先查找选中的预览节点
-                    let targetId = null;
-                    if (selectedId) {
-                        const selectedPreview = previews.find(p => p.id === selectedId);
-                        if (selectedPreview) targetId = selectedPreview.id;
-                    }
-                    if (!targetId && selectedIds && selectedIds.size > 0) {
-                        const selectedPreview = previews.find(p => selectedIds.has(p.id));
-                        if (selectedPreview) targetId = selectedPreview.id;
-                    }
-                    // 如果没有选中预览节点，则默认使用最后一个预览窗口
-                    if (!targetId) {
-                        targetId = previews[previews.length - 1].id;
-                    }
-
-                    return prev.map(n =>
-                        n.id === targetId
-                            ? { ...n, content: frame.url, previewType: 'image' }
-                            : n
-                    );
-                });
-                closeFrameContextMenu();
-            };
-
-            const applyFrameToSelectedNode = () => {
-                const { frame } = frameContextMenu;
-                if (!frame?.url) return;
-                const targetId = selectedNodeId;
-                const targetNode = nodesMap.get(targetId);
-                if (targetNode && targetNode.type === 'input-image') {
-                    setNodes(prev => prev.map(n => n.id === targetId ? { ...n, content: frame.url } : n));
-                } else {
-                    alert('请先选择一个"图片输入"节点');
-                }
-                closeFrameContextMenu();
-            };
-
-            const handleHistoryRightClick = (e, item, imageUrl = null, imageIndex = null) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // 如果提供了 imageUrl 和 imageIndex，说明是点击了多图中的某一张
-                // 否则使用 item.url 或 item.originalUrl（单图情况）
-                const selectedUrl = imageUrl || item.url || item.originalUrl;
-                const selectedIndex = imageIndex !== null ? imageIndex : (item.selectedMjImageIndex !== undefined ? item.selectedMjImageIndex : null);
-
-                // 创建一个修改后的item，使用选中的图片URL
-                const menuItem = {
-                    ...item,
-                    url: selectedUrl,
-                    selectedMjImageIndex: selectedIndex
-                };
-
-                const world = screenToWorld(e.clientX, e.clientY);
-                setHistoryContextMenu({ visible: true, x: e.clientX, y: e.clientY, worldX: world.x, worldY: world.y, item: menuItem });
-            };
-
-            const applyHistoryToSelectedNode = () => {
-                const item = historyContextMenu.item;
-                const targetId = selectedNodeId;
-                const targetNode = nodesMap.get(targetId);
-
-                if (targetNode && targetNode.type === 'input-image' && (item.url || item.originalUrl)) {
-                    setNodes(prev => prev.map(n => n.id === targetId ? { ...n, content: item.url || item.originalUrl } : n));
-                } else {
-                    alert('请先选择一个"图片输入"节点');
-                }
-                setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-            };
-
-            const sendHistoryToCanvas = async () => {
-                const item = historyContextMenu.item;
-                if (!item?.url && !item?.originalUrl) return;
-                const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-
-                // Fix: Mark video content so input-image node knows to display it properly
-                let content = item.url || item.originalUrl;
-                if (item.type === 'video' && !isVideoUrl(content)) {
-                     // Append helper param so isVideoUrl returns true
-                     content += (content.includes('?') ? '&' : '?') + 'force_video_display=true';
-                }
-
-                let dims;
-                if (item.type === 'image') {
-                    try {
-                        const real = await getImageDimensions(content);
-                        if (real?.w && real?.h) {
-                            dims = { w: real.w, h: real.h };
-                        }
-                    } catch (e) {
-                        console.error('SendHistoryToCanvas getImageDimensions error', e);
-                    }
-                }
-
-                addNode('input-image', world.x + 50, world.y + 50, null, content, dims);
-                setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-            };
-
-            const sendHistoryToChat = () => {
-                const item = historyContextMenu.item;
-                if (!item || !item.url) return;
-
-                // 确保正确识别图片和视频类型
-                const isImage = item.type === 'image';
-                const isVideo = item.type === 'video';
-                const fileExt = isImage ? 'png' : (isVideo ? 'mp4' : 'file');
-                const mimeType = isImage ? 'image/png' : (isVideo ? 'video/mp4' : 'application/octet-stream');
-
-                const newFile = {
-                    name: `Generated-${item.id}.${fileExt}`,
-                    type: mimeType,
-                    content: item.url,
-                    isImage,
-                    isVideo,
-                    isAudio: false,
-                    fromHistory: true,
-                    fileExt
-                };
-
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                setHistoryContextMenu({ visible: false, x: 0, y: 0, item: null });
-            };
-
-            const handlePreviewRightClick = (e, item) => {
-                if (!item?.url) return;
-                e.preventDefault();
-                e.stopPropagation();
-                setPreviewContextMenu({ visible: true, x: e.clientX, y: e.clientY, item });
-            };
-            const closePreviewContextMenu = () => setPreviewContextMenu({ visible: false, x: 0, y: 0, item: null });
-
-            const sendPreviewToChat = () => {
-                const item = previewContextMenu.item;
-                if (!item?.url) return;
-                const isImage = item.type !== 'video';
-                const isVideo = item.type === 'video';
-                const fileExt = isImage ? 'png' : 'mp4';
-                const mimeType = isImage ? 'image/png' : 'video/mp4';
-                const newFile = { name: `Preview-${Date.now()}.${fileExt}`, type: mimeType, content: item.url, isImage, isVideo, isAudio: false, fileExt };
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                closePreviewContextMenu();
-            };
-
-            const sendPreviewToCanvas = async () => {
-                const item = previewContextMenu.item;
-                if (!item?.url) return;
-                const world = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-                let dims = { w: 512, h: 512 };
-                try { dims = await getImageDimensions(item.url); } catch (e) { console.warn('Preview dims fail', e); }
-                addNode('input-image', world.x + 50, world.y + 50, null, item.url, dims);
-                closePreviewContextMenu();
-            };
-
-            // 图片输入节点右键菜单处理
-            const handleInputImageRightClick = (e, nodeId) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const node = nodesMap.get(nodeId);
-                if (!node || !node.content) return;
-                setInputImageContextMenu({ visible: true, x: e.clientX, y: e.clientY, nodeId });
-            };
-
-            const closeInputImageContextMenu = () => {
-                setInputImageContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
-            };
-
-            const sendInputImageToChat = () => {
-                const nodeId = inputImageContextMenu.nodeId;
-                const node = nodesMap.get(nodeId);
-                if (!node || !node.content) return;
-
-                const isImage = !isVideoUrl(node.content);
-                const isVideo = isVideoUrl(node.content);
-                const fileExt = isImage ? 'png' : 'mp4';
-                const mimeType = isImage ? 'image/png' : 'video/mp4';
-                const newFile = {
-                    name: `InputImage-${Date.now()}.${fileExt}`,
-                    type: mimeType,
-                    content: node.content,
-                    isImage,
-                    isVideo,
-                    isAudio: false,
-                    fileExt
-                };
-                setChatFiles(prev => [...prev, newFile]);
-                setIsChatOpen(true);
-                closeInputImageContextMenu();
-            };
-
-            // ... (rest of render logic unchanged) ...
-            // ConnectionLayer 组件：提取连接线渲染逻辑，使用 React.memo 优化
-            const ConnectionLayer = memo(({
-                connections,
-                nodesMap,
-                connectionsByNode,
-                connectingSource,
-                connectingTarget,
-                connectingInputType,
-                mousePos,
-                apiConfigsMap,
-                selectedNodeId,
-                onDisconnectConnection,
-                visibleNodes
-            }) => {
-                // 连接线虚拟化：只渲染可见节点的连接线
-                const visibleNodeIds = useMemo(() => {
-                    return new Set(visibleNodes.map(n => n.id));
-                }, [visibleNodes]);
-
-                const visibleConnections = useMemo(() => {
-                    return connections.filter(conn =>
-                        visibleNodeIds.has(conn.from) || visibleNodeIds.has(conn.to)
-                    );
-                }, [connections, visibleNodeIds]);
-
-                return (
-                    <div className="absolute inset-0 pointer-events-none overflow-visible w-full h-full">
-                        <svg className="absolute inset-0 overflow-visible w-full h-full">
-                            {visibleConnections.map((conn) => {
-                                // 使用 nodesMap 快速查找，O(1) 复杂度
-                                const fromNode = nodesMap.get(conn.from);
-                                const toNode = nodesMap.get(conn.to);
-                                if (!fromNode || !toNode) return null;
-
-                                // 检查连接线是否与选中节点相关
-                                const isRelatedToSelected = selectedNodeId && (
-                                    fromNode.id === selectedNodeId ||
-                                    toNode.id === selectedNodeId
-                                );
-                                // 设置透明度：选中节点相关为100%，其他为35%
-                                const opacity = isRelatedToSelected ? 1 : 0.35;
-
-                                const startX = fromNode.x + fromNode.width - 4;
-                                const startY = fromNode.y + fromNode.height / 2;
-                                const endX = toNode.x + 4;
-                                let endY = toNode.y + toNode.height / 2;
-
-                                // 处理image-compare节点的多个输入点
-                                if (toNode.type === 'image-compare') {
-                                    // 使用缓存的 connectionsByNode，避免重复 filter
-                                    const relevantConns = connectionsByNode.to.get(toNode.id) || [];
-                                    const idx = relevantConns.findIndex(c => c.id === conn.id);
-                                    if (idx === 0) endY = toNode.y + toNode.height * 0.33;
-                                    else if (idx >= 1) endY = toNode.y + toNode.height * 0.66;
-                                }
-
-                                // 处理Midjourney节点的oref和sref输入点
-                                // 检查inputType是否为oref或sref（注意：default连接时inputType可能是undefined）
-                                if (toNode.type === 'gen-image' && (conn.inputType === 'oref' || conn.inputType === 'sref')) {
-                                    const currentModel = apiConfigsMap.get(toNode.settings?.model);
-                                    const isMidjourney = currentModel && (currentModel.id.includes('mj') || currentModel.provider.toLowerCase().includes('midjourney'));
-
-                                    if (isMidjourney) {
-                                        // 使用基于节点世界坐标的计算，考虑实际DOM结构
-                                        // 节点结构：p-3(12px) + 计时器(如果有，约28px + mb-2=8px) + 标题(约16px + mb-2=8px) + 引用状态区域(如果有，约60px + mb-2=8px) + 提示词区域(约100px + mb-2=8px) + 指令区域
-                                        // 指令区域：gap-1.5(6px) + oref项(约16px) + gap-1.5(6px) + ow项(约16px + input高度) + gap-1.5(6px) + sref项(约16px)
-                                        const paddingTop = 12; // 节点顶部padding (p-3 = 12px)
-                                        const timerHeight = 28; // 计时器区域高度（px-2 py-1 + text-[10px] ≈ 28px）
-                                        const timerMarginBottom = 8; // 计时器下方margin (mb-2 = 8px)
-                                        const titleHeight = 16; // 标题高度 (text-xs ≈ 12px + line-height ≈ 16px，flex items-center)
-                                        const titleMarginBottom = 8; // 标题下方margin (mb-2 = 8px)
-                                        const refAreaHeight = 60; // 引用状态区域高度（p-2 + 内容，约60px）
-                                        const refAreaMarginBottom = 8; // 引用区域下方margin (mb-2 = 8px)
-                                        const promptAreaHeight = 100; // 提示词区域高度（p-3 + textarea，约100px）
-                                        const promptAreaMarginBottom = 8; // 提示词区域下方margin (mb-2 = 8px)
-                                        const instructionGap = 6; // 指令项之间的gap (gap-1.5 = 6px)
-                                        const instructionItemHeight = 16; // 每个指令项的实际高度（text-[10px] + flex items-center ≈ 16px）
-                                        const owInputHeight = 28; // ow输入框高度（px-2 py-1 + text-[10px] ≈ 28px）
-
-                                        // 检查是否有计时器（正在生成或已完成）
-                                        const hasTimer = false; // 计时器是动态的，这里简化处理，实际应该从节点状态判断
-
-                                        // 使用缓存的 connectionsByNode，避免重复 some 计算
-                                        const toNodeConns = connectionsByNode.to.get(toNode.id) || [];
-                                        const hasRefArea = toNodeConns.some(c => !c.inputType || c.inputType === 'default');
-
-                                        // 计算基础偏移（到指令区域开始的位置）
-                                        let baseOffset = paddingTop;
-                                        if (hasTimer) {
-                                            baseOffset += timerHeight + timerMarginBottom;
-                                        }
-                                        baseOffset += titleHeight + titleMarginBottom;
-                                        if (hasRefArea) {
-                                            baseOffset += refAreaHeight + refAreaMarginBottom;
-                                        }
-                                        baseOffset += promptAreaHeight + promptAreaMarginBottom;
-
-                                        if (conn.inputType === 'oref') {
-                                            // oref在第一个指令位置（第一个指令项的中心）
-                                            // 指令区域开始 + 第一个指令项的中心
-                                            endY = toNode.y + baseOffset + instructionItemHeight * 0.5;
-                                        } else if (conn.inputType === 'sref') {
-                                            // sref在第三个指令位置
-                                            // 指令区域开始 + oref项(16px) + gap(6px) + ow项(owInputHeight ≈ 28px) + gap(6px) + sref项的中心(8px)
-                                            endY = toNode.y + baseOffset + instructionItemHeight + instructionGap + owInputHeight + instructionGap + instructionItemHeight * 0.5;
-                                        }
-                                    }
-                                }
-
-                                const dist = Math.abs(endX - startX);
-                                const cp1X = startX + dist * 0.5;
-                                const cp2X = endX - dist * 0.5;
-                                const midX = (startX + endX) / 2;
-                                const midY = (startY + endY) / 2;
-
-                                return (
-                                    <g key={conn.id} className="connection-group" style={{ opacity }}>
-                                        {/* 透明路径用于点击检测连接线 */}
-                                        <path
-                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`}
-                                            stroke="transparent"
-                                            strokeWidth="20"
-                                            fill="none"
-                                            style={{pointerEvents: 'stroke'}}
-                                        />
-                                        {/* 优化后的连接线：单层、1px宽度、蚂蚁线效果 */}
-                                        <path
-                                            d={`M ${startX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${endX} ${endY}`}
-                                            stroke={isRelatedToSelected ? "#71717a" : "#a1a1aa"}
-                                            strokeWidth="1"
-                                            fill="none"
-                                            strokeDasharray="4,4"
-                                        />
-                                        {/* 删除按钮：使用更大的透明热区确保可点击，必须在最后渲染以覆盖透明 path */}
-                                        <g
-                                            className="connection-delete cursor-pointer"
-                                            style={{
-                                                opacity: isRelatedToSelected ? 1 : 0.35,
-                                                pointerEvents: 'auto',
-                                                cursor: 'pointer'
-                                            }}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                e.preventDefault();
-                                                onDisconnectConnection(conn.id);
-                                            }}
-                                            onMouseDown={(e) => {
-                                                // 阻止事件冒泡，防止触发画布拖动
-                                                e.stopPropagation();
-                                                e.preventDefault();
-                                                // 立即执行断开连接，不等待 onClick（修复点击无法断开的问题）
-                                                onDisconnectConnection(conn.id);
-                                            }}
-                                        >
-                                            {/* 大的透明点击热区（半径25），确保完全覆盖透明 path 的 stroke（宽度20） */}
-                                            <circle
-                                                cx={midX}
-                                                cy={midY}
-                                                r="25"
-                                                fill="transparent"
-                                                style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    onDisconnectConnection(conn.id);
-                                                }}
-                                                onMouseDown={(e) => {
-                                                    // 阻止事件冒泡，防止触发画布拖动
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    // 立即执行断开连接，不等待 onClick（修复点击无法断开的问题）
-                                                    onDisconnectConnection(conn.id);
-                                                }}
-                                            />
-                                            {/* 视觉元素 */}
-                                            <circle cx={midX} cy={midY} r="12" fill="#ef4444" opacity="0.8" style={{ pointerEvents: 'none' }} />
-                                            <circle cx={midX} cy={midY} r="8" fill="#ef4444" style={{ pointerEvents: 'none' }} />
-                                            <Unlink size={10} className="text-white" x={midX - 5} y={midY - 5} style={{ pointerEvents: 'none' }} />
-                                        </g>
-                                    </g>
-                                );
-                            })}
-                            {connectingSource && (() => {
-                                // 使用 nodesMap 快速查找
-                                const node = nodesMap.get(connectingSource);
-                                if (!node) return null;
-                                return <path d={`M ${node.x + node.width - 4} ${node.y + node.height / 2} C ${node.x + node.width + 100} ${node.y + node.height / 2}, ${mousePos.x - 100} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} stroke="#60a5fa" strokeWidth="2" fill="none" strokeDasharray="4,4" />;
-                            })()}
-                            {connectingTarget && (() => {
-                                // 使用 nodesMap 快速查找
-                                const node = nodesMap.get(connectingTarget);
-                                if (!node) return null;
-                            // 从输入端口向左拖拽，连接线从左侧开始
-                            const startX = node.x + 4;
-                            let startY = node.y + node.height / 2;
-
-                            // 处理Midjourney节点的oref和sref输入点
-                            if (node.type === 'gen-image' && connectingInputType) {
-                                const currentModel = apiConfigsMap.get(node.settings?.model);
-                                const isMidjourney = currentModel && (currentModel.id.includes('mj') || currentModel.provider.toLowerCase().includes('midjourney'));
-
-                                if (isMidjourney) {
-                                    // 使用与连接线渲染相同的计算逻辑
-                                    const paddingTop = 12;
-                                    const timerHeight = 28;
-                                    const timerMarginBottom = 8;
-                                    const titleHeight = 16; // 标题高度 (text-xs ≈ 12px + line-height ≈ 16px)
-                                    const titleMarginBottom = 8;
-                                    const refAreaHeight = 60;
-                                    const refAreaMarginBottom = 8;
-                                    const promptAreaHeight = 100;
-                                    const promptAreaMarginBottom = 8;
-                                    const instructionGap = 6;
-                                    const instructionItemHeight = 16; // 每个指令项的实际高度（text-[10px] + flex items-center ≈ 16px）
-                                    const owInputHeight = 28; // ow输入框高度（px-2 py-1 + text-[10px] ≈ 28px）
-
-                                    const hasTimer = false; // 计时器是动态的，这里简化处理
-                                    // 使用缓存的 connectionsByNode，避免重复 some 计算
-                                    const toNodeConns = connectionsByNode.to.get(node.id) || [];
-                                    const hasRefArea = toNodeConns.some(c => !c.inputType || c.inputType === 'default');
-
-                                    let baseOffset = paddingTop;
-                                    if (hasTimer) {
-                                        baseOffset += timerHeight + timerMarginBottom;
-                                    }
-                                    baseOffset += titleHeight + titleMarginBottom;
-                                    if (hasRefArea) {
-                                        baseOffset += refAreaHeight + refAreaMarginBottom;
-                                    }
-                                    baseOffset += promptAreaHeight + promptAreaMarginBottom;
-
-                                    if (connectingInputType === 'oref') {
-                                        startY = node.y + baseOffset + instructionItemHeight * 0.5;
-                                    } else if (connectingInputType === 'sref') {
-                                        // sref在第三个指令位置：oref项(16px) + gap(6px) + ow项(owInputHeight ≈ 28px) + gap(6px) + sref项的中心(8px)
-                                        startY = node.y + baseOffset + instructionItemHeight + instructionGap + owInputHeight + instructionGap + instructionItemHeight * 0.5;
-                                    }
-                                }
-                            }
-                            // 处理image-compare节点的多个输入点
-                            else if (node.type === 'image-compare') {
-                                // 这里可以根据鼠标位置判断是哪个输入点，暂时使用中间位置
-                                startY = node.y + node.height / 2;
-                            }
-
-                            return <path d={`M ${startX} ${startY} C ${startX - 100} ${startY}, ${mousePos.x + 100} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} stroke="#60a5fa" strokeWidth="2" fill="none" strokeDasharray="4,4" />;
-                        })()}
-                    </svg>
-                </div>
-            );
-            }, (prevProps, nextProps) => {
-                // 自定义对比函数：仅当 connections 数组、可见节点或相关选中状态变化时才重渲染
-                return (
-                    prevProps.connections === nextProps.connections &&
-                    prevProps.visibleNodes === nextProps.visibleNodes &&
-                    prevProps.selectedNodeId === nextProps.selectedNodeId &&
-                    prevProps.connectingSource === nextProps.connectingSource &&
-                    prevProps.connectingTarget === nextProps.connectingTarget &&
-                    prevProps.connectingInputType === nextProps.connectingInputType &&
-                    prevProps.mousePos.x === nextProps.mousePos.x &&
-                    prevProps.mousePos.y === nextProps.mousePos.y
-                );
+            const { handleSplitGridFromUrl } = useGridSplitActions({
+                screenToWorld,
+                selectedNodeIdsRef,
+                setNodes,
             });
 
-            // 使用 useMemo 优化连接线渲染函数，避免重复查找和计算
-            const renderConnections = useCallback(() => {
-                return (
-                    <ConnectionLayer
-                        connections={connections}
-                        nodesMap={nodesMap}
-                        connectionsByNode={connectionsByNode}
-                        connectingSource={connectingSource}
-                        connectingTarget={connectingTarget}
-                        connectingInputType={connectingInputType}
-                        mousePos={mousePos}
-                        apiConfigsMap={apiConfigsMap}
-                        selectedNodeId={selectedNodeId}
-                        onDisconnectConnection={disconnectConnection}
-                        visibleNodes={visibleNodes}
-                    />
-                );
-            }, [connections, nodesMap, connectionsByNode, connectingSource, connectingTarget, connectingInputType, mousePos, apiConfigsMap, selectedNodeId, disconnectConnection, visibleNodes]);
+            const { autoArrangeNodes } = useAutoArrangeNodes({
+                connectionsRef,
+                nodesRef,
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+                setNodes,
+            });
 
-            // 使用 useMemo 缓存节点的连接状态，避免每次渲染时重复计算
-            const nodeConnectedStatus = useMemo(() => {
-                const status = new Map(); // nodeId -> boolean
-                connections.forEach(conn => {
-                    if (!conn.inputType || conn.inputType === 'default') {
-                        status.set(conn.to, true);
-                    }
-                });
-                return status;
-            }, [connections]);
+            const {
+                handleAutoExtractKeyframes,
+                handleSmartExtractKeyframes,
+                handleVideoDrop,
+                handleVideoFileUpload,
+            } = useVideoInputActions({
+                nodesMap,
+                setNodes,
+            });
 
-            // 功能3：获取相邻节点（上游和下游）- 使用缓存的连接映射优化性能
-            const getAdjacentNodes = useCallback((nodeId) => {
-                const adjacent = new Set();
-                const fromConns = connectionsByNode.from.get(nodeId) || [];
-                const toConns = connectionsByNode.to.get(nodeId) || [];
-                fromConns.forEach(conn => adjacent.add(conn.to));
-                toConns.forEach(conn => adjacent.add(conn.from));
-                return adjacent;
-            }, [connectionsByNode]);
+            useClipboardNodes({
+                nodesRef,
+                connectionsRef,
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+                canvasRef,
+                view,
+                setNodes,
+                setConnections,
+                setSelectedNodeId,
+                setSelectedNodeIds,
+                getImageDimensions,
+                handleVideoFileUpload,
+            });
 
-            // 缓存相邻节点集合，避免在renderNode中重复计算
-            const adjacentNodesCache = useMemo(() => {
-                const cache = new Map();
-                if (selectedNodeId || selectedNodeIds.size > 0) {
-                    const selectedId = selectedNodeId || (selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null);
-                    if (selectedId) {
-                        cache.set(selectedId, getAdjacentNodes(selectedId));
-                    }
-                }
-                return cache;
-            }, [selectedNodeId, selectedNodeIds, getAdjacentNodes]);
+            const {
+                applyFrameToSelectedNode,
+                closeFrameContextMenu,
+                handleToggleKeyframe,
+                openFrameContextMenu,
+                sendFrameToCanvas,
+                sendFrameToChat,
+                sendFrameToPreview,
+            } = useFrameActions({
+                addNode,
+                frameContextMenu,
+                frameSelectionRef,
+                getImageDimensions,
+                nodesMap,
+                screenToWorld,
+                selectedNodeId,
+                selectedNodeIdRef,
+                selectedNodeIdsRef,
+                setChatFiles,
+                setFrameContextMenu,
+                setIsChatOpen,
+                setNodes,
+            });
+
+            const {
+                applyHistoryToSelectedNode,
+                closeInputImageContextMenu,
+                closePreviewContextMenu,
+                handleHistoryRightClick,
+                handleInputImageRightClick,
+                handlePreviewRightClick,
+                sendHistoryToCanvas,
+                sendHistoryToChat,
+                sendInputImageToChat,
+                sendPreviewToCanvas,
+                sendPreviewToChat,
+            } = useMediaContextActions({
+                addNode,
+                getImageDimensions,
+                historyContextMenu,
+                inputImageContextMenu,
+                isVideoUrl,
+                nodesMap,
+                previewContextMenu,
+                screenToWorld,
+                selectedNodeId,
+                setChatFiles,
+                setHistoryContextMenu,
+                setInputImageContextMenu,
+                setIsChatOpen,
+                setNodes,
+                setPreviewContextMenu,
+            });
 
             // NodeItem 组件：提取节点渲染逻辑，使用 React.memo 优化
             // 注意：由于 renderNode 的 JSX 内容非常长（约 2700 行），完整提取需要大量工作
@@ -7625,7 +4839,7 @@ import {
                         onMouseUp={(e) => handleNodeMouseUp(node.id, e)}
                         onDoubleClick={(e) => {
                             // 功能6：双击图片或视频节点显示预览弹窗
-                            if ((node.type === 'input-image' || node.type === 'video-input') && node.content) {
+                            if (isInputMediaNodeType(node.type) && node.content) {
                                 e.stopPropagation();
                                 setLightboxItem({ url: node.content, type: isVideoUrl(node.content) ? 'video' : 'image' });
                             }
@@ -7644,7 +4858,7 @@ import {
                         </button>
                         <div className="absolute bottom-1 right-1 w-4 h-4 z-[100] resize-handle flex items-end justify-end p-0.5" onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setResizingNodeId(node.id); }}><svg width="6" height="6" viewBox="0 0 8 8" fill="none" className="text-zinc-600"><path d="M8 0L8 8L0 8" stroke="currentColor" strokeWidth="2" /></svg></div>
 
-                        {node.type !== 'input-image' && node.type !== 'video-input' && node.type !== 'video-analyze' && (
+                        {!isInputMediaNodeType(node.type) && node.type !== 'video-analyze' && (
                             node.type === 'image-compare' ? (
                                 <>
                                     <div
@@ -9810,7 +7024,7 @@ import {
                                 </div>
                             )}
 
-                            {(node.type === 'generate-character-video' || node.type === 'generate-scene-video') && (
+                            {isCharacterSceneVideoNodeType(node.type) && (
                                 <div
                                     className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
                                         theme === 'dark'
@@ -10147,7 +7361,7 @@ import {
                                 </div>
                             )}
 
-                            {(node.type === 'generate-character-image' || node.type === 'generate-scene-image') && (
+                            {isCharacterSceneImageNodeType(node.type) && (
                                 <div
                                     className={`relative w-full h-full flex flex-col transition-colors pointer-events-auto ${
                                         theme === 'dark'
@@ -11589,7 +8803,7 @@ import {
                                 </div>
                             )}
 
-                            {node.type === 'preview' && (() => {
+                            {isPreviewNodeType(node.type) && (() => {
                                 // 获取预览内容：优先使用连接的图片，其次使用node.content
                                 const previewConnectedImages = connectedImages.length > 0 ? connectedImages : [];
                                 const hasContent = node.content || (node.previewMjImages && node.previewMjImages.length > 0) || previewConnectedImages.length > 0;
@@ -11936,7 +9150,7 @@ import {
                                 />
                             )}
 
-                            {(node.type === 'gen-image' || node.type === 'gen-video') && (() => {
+                            {isStandardGenerationNodeType(node.type) && (() => {
                                 // 查找当前节点对应的正在生成的历史记录
                                 const activeTask = history.find(h =>
                                     h.sourceNodeId === node.id &&

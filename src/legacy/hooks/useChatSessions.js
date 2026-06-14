@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { debounce } from '../support.jsx';
 
 const DEFAULT_CHAT_SESSIONS = [{ id: 'default', title: '新对话', messages: [] }];
@@ -38,6 +38,28 @@ export const useChatSessions = () => {
         debouncedSaveChatSessions(chatSessions);
     }, [chatSessions, debouncedSaveChatSessions]);
 
+    const createNewChat = useCallback(() => {
+        const newId = `chat-${Date.now()}`;
+        const newSession = { id: newId, title: '新对话', messages: [] };
+        setChatSessions((prev) => [newSession, ...prev]);
+        setCurrentChatId(newId);
+    }, []);
+
+    const deleteChatSession = useCallback((event, id) => {
+        event.stopPropagation();
+        const newSessions = chatSessions.filter((session) => session.id !== id);
+        if (newSessions.length === 0) {
+            setChatSessions(DEFAULT_CHAT_SESSIONS);
+            setCurrentChatId('default');
+            return;
+        }
+
+        setChatSessions(newSessions);
+        if (currentChatId === id) {
+            setCurrentChatId(newSessions[0].id);
+        }
+    }, [chatSessions, currentChatId]);
+
     return {
         chatSessions,
         setChatSessions,
@@ -58,6 +80,7 @@ export const useChatSessions = () => {
         setIsChatSending,
         chatSessionDropdownOpen,
         setChatSessionDropdownOpen,
+        createNewChat,
+        deleteChatSession,
     };
 };
-

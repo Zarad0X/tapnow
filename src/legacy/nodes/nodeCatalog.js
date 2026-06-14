@@ -46,6 +46,30 @@ export const getNodeLabel = (type) => NODE_LABELS[type] || type || '节点';
 
 export const getDefaultNodeSize = (type) => NODE_DEFAULT_SIZES[type] || FALLBACK_NODE_SIZE;
 
+export const isStandardGenerationNodeType = (type) => type === 'gen-image' || type === 'gen-video';
+
+export const isImageInputNodeType = (type) => type === 'input-image';
+
+export const isVideoInputNodeType = (type) => type === 'video-input';
+
+export const isPreviewNodeType = (type) => type === 'preview';
+
+export const isInputMediaNodeType = (type) => {
+    return isImageInputNodeType(type) || isVideoInputNodeType(type);
+};
+
+export const isDownloadableMediaNodeType = (type) => {
+    return isInputMediaNodeType(type) || isPreviewNodeType(type);
+};
+
+export const isCharacterSceneVideoNodeType = (type) => {
+    return type === 'generate-character-video' || type === 'generate-scene-video';
+};
+
+export const isCharacterSceneImageNodeType = (type) => {
+    return type === 'generate-character-image' || type === 'generate-scene-image';
+};
+
 export const createDefaultNodeSettings = (type, { apiConfigs = [], initialContent = '' } = {}) => {
     const firstChatModel = apiConfigs.find((config) => config.type === 'Chat')?.id || '';
 
@@ -60,8 +84,8 @@ export const createDefaultNodeSettings = (type, { apiConfigs = [], initialConten
     if (type === 'scene-description') return { sceneId: '', sceneName: '', description: '', prompt: '', duration: '15s', style: 'none', mode: 'video', imageModel: '', imageRatio: '16:9', imageResolution: '2k', referenceImages: [], chatModel: '' };
     if (type === 'create-character') return { name: '', startSecond: 1, endSecond: 3, isCreating: false, createProgress: 0, createError: null };
     if (type === 'create-scene') return { name: '', timeRange: '' };
-    if (type === 'generate-character-video' || type === 'generate-scene-video') return { model: 'sora-2', duration: '15s', ratio: '16:9', videoPrompt: '', referenceImages: [], sourceType: '', sourceId: '', isGenerating: false, progress: 0, error: null, videoUrl: '' };
-    if (type === 'generate-character-image' || type === 'generate-scene-image') return { model: 'nano-banana', ratio: 'Auto', resolution: 'Auto', prompt: '', referenceImages: [], chatModel: '', imageUrls: [], selectedImageIndex: null, isGenerating: false, progress: 0, error: null, imageUrl: '' };
+    if (isCharacterSceneVideoNodeType(type)) return { model: 'sora-2', duration: '15s', ratio: '16:9', videoPrompt: '', referenceImages: [], sourceType: '', sourceId: '', isGenerating: false, progress: 0, error: null, videoUrl: '' };
+    if (isCharacterSceneImageNodeType(type)) return { model: 'nano-banana', ratio: 'Auto', resolution: 'Auto', prompt: '', referenceImages: [], chatModel: '', imageUrls: [], selectedImageIndex: null, isGenerating: false, progress: 0, error: null, imageUrl: '' };
     if (type === 'local-save') return { serverUrl: 'http://127.0.0.1:9527', savePath: '', subfolder: '', autoSave: false, serverStatus: 'unknown', lastSaved: null, savedFiles: [] };
     return {};
 };
