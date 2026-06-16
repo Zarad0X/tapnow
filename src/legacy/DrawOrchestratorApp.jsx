@@ -244,6 +244,42 @@ const extractOpenRouterVideoUrl = (data) => {
     return '';
 };
 
+const getOpenRouterErrorMessage = (text, fallback) => {
+    if (!text) return fallback;
+    try {
+        const data = JSON.parse(text);
+        return data?.error?.message || data?.message || fallback;
+    } catch (error) {
+        const trimmed = text.trim();
+        if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+            return 'OpenRouter 返回了网页 HTML，通常是接口路径或鉴权方式不对';
+        }
+        return trimmed;
+    }
+};
+
+const resolveOpenRouterPlayableVideoUrl = async ({ baseUrl, jobId, apiKey, videoUrl = '' }) => {
+    const url = String(videoUrl || '');
+    if (url && !url.includes('openrouter.ai/api/')) return url;
+
+    const contentUrl = url || buildOpenRouterVideoUrl(baseUrl, jobId, '/content');
+    const resp = await fetch(contentUrl, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+    });
+
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(getOpenRouterErrorMessage(text, `HTTP ${resp.status}: ${resp.statusText}`));
+    }
+
+    const blob = await resp.blob();
+    if (!blob.size) {
+        throw new Error('OpenRouter 返回的视频文件为空');
+    }
+    return URL.createObjectURL(blob);
+};
+
         function DrawOrchestratorApp() {
             const [theme, setTheme] = useLocalStorage('draworchestrator_theme', 'dark', {
                 serialize: String,
@@ -1640,20 +1676,14 @@ const extractOpenRouterVideoUrl = (data) => {
                 .then(async resp => {
                     const text = await resp.text();
                     if (!resp.ok) {
-                        let message = text || `HTTP ${resp.status}: ${resp.statusText}`;
-                        try {
-                            const errorData = JSON.parse(text);
-                            message = errorData?.error?.message || errorData?.message || message;
-                        } catch (error) {
-                            // keep raw text
-                        }
+                        const message = getOpenRouterErrorMessage(text, `HTTP ${resp.status}: ${resp.statusText}`);
                         const error = new Error(message);
                         error.httpStatus = resp.status;
                         throw error;
                     }
                     return text;
                 })
-                .then((text) => {
+                .then(async (text) => {
                     let data;
                     try {
                         data = JSON.parse(text);
@@ -1667,13 +1697,54 @@ const extractOpenRouterVideoUrl = (data) => {
                     const status = data?.data?.status || data?.status || data?.data?.task_status || data?.task_status;
 
                     if (status === 'SUCCESS' || status === 'succeeded' || status === 'FINISHED' || status === 'completed') {
-                        const videoUrl = extractOpenRouterVideoUrl(data) ||
+                        let videoUrl = extractOpenRouterVideoUrl(data) ||
                             data?.data?.output ||
                             data?.output ||
                             data?.data?.video_url ||
                             data?.data?.url ||
                             data?.video_url ||
                             data?.url;
+                        const rawVideoUrl = videoUrl;
+                        if (isOpenRouterVideo) {
+                            try {
+                                videoUrl = await resolveOpenRouterPlayableVideoUrl({
+                                    baseUrl,
+                                    jobId,
+                                    apiKey,
+                                    videoUrl,
+                                });
+                            } catch (error) {
+                                console.error('[DrawOrchestrator] OpenRouter 视频下载失败:', error);
+                                setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: `OpenRouter 视频下载失败: ${error.message || '无法获取视频文件'}` } : hItem));
+                                const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                                if (storyboardTask) {
+                                    updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                                    storyboardTaskMapRef.current.delete(taskId);
+                                }
+                                const historyItem = historyMap.get(taskId);
+                                const sourceNodeIdForNode = historyItem?.sourceNodeId;
+                                if (sourceNodeIdForNode) {
+                                    requestAnimationFrame(() => {
+                                        setNodes(prevNodes => prevNodes.map(n => {
+                                            if (n.id !== sourceNodeIdForNode) return n;
+                                            if (isCharacterSceneVideoNodeType(n.type)) {
+                                                return {
+                                                    ...n,
+                                                    settings: {
+                                                        ...n.settings,
+                                                        isGenerating: false,
+                                                        error: `OpenRouter 视频下载失败: ${error.message || '无法获取视频文件'}`,
+                                                        progress: 0
+                                                    }
+                                                };
+                                            }
+                                            return n;
+                                        }));
+                                    });
+                                }
+                                return;
+                            }
+                        }
                         if (!videoUrl) {
                             setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: '未找到视频URL' } : hItem));
                             // 分镜表任务：解除 generating，避免一直转圈
@@ -1691,7 +1762,7 @@ const extractOpenRouterVideoUrl = (data) => {
                         const durationMs = endTime - (historyItem?.startTime || endTime);
                         // 使用 setHistory 的回调来确保获取最新的 historyItem
                         setHistory((prev) => {
-                            const updated = prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'completed', progress: 100, url: videoUrl, width: w, height: h, durationMs } : hItem);
+                            const updated = prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'completed', progress: 100, url: videoUrl, originalUrl: rawVideoUrl || hItem.originalUrl, width: w, height: h, durationMs } : hItem);
                             // 检查是否是分镜表的任务，如果是则回填到分镜表
                             const storyboardTask = storyboardTaskMapRef.current.get(taskId);
                             if (storyboardTask) {
@@ -3458,33 +3529,34 @@ const extractOpenRouterVideoUrl = (data) => {
 
                                 const text = await resp.text();
                                 if (!resp.ok) {
-                                    let message = text || `OpenRouter video error: ${resp.status}`;
-                                    try {
-                                        const errorData = JSON.parse(text);
-                                        message = errorData?.error?.message || errorData?.message || message;
-                                    } catch (error) {
-                                        // keep raw text
-                                    }
+                                    const message = getOpenRouterErrorMessage(text, `OpenRouter video error: ${resp.status}`);
                                     throw new Error(message);
                                 }
 
                                 const data = JSON.parse(text);
+                                const jobId = data?.id || data?.data?.id || data?.task_id || data?.data?.task_id;
                                 const immediateUrl = extractOpenRouterVideoUrl(data);
                                 if (immediateUrl) {
+                                    const playableUrl = await resolveOpenRouterPlayableVideoUrl({
+                                        baseUrl,
+                                        jobId,
+                                        apiKey,
+                                        videoUrl: immediateUrl,
+                                    });
                                     setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? {
                                         ...hItem,
                                         status: 'completed',
                                         progress: 100,
-                                        url: immediateUrl,
+                                        url: playableUrl,
+                                        originalUrl: immediateUrl,
                                         width: w,
                                         height: h,
                                         durationMs: Date.now() - (hItem.startTime || Date.now()),
                                     } : hItem));
-                                    updatePreviewFromTask(taskId, immediateUrl, 'video', actualSourceNodeId);
+                                    updatePreviewFromTask(taskId, playableUrl, 'video', actualSourceNodeId);
                                     return;
                                 }
 
-                                const jobId = data?.id || data?.data?.id || data?.task_id || data?.data?.task_id;
                                 if (!jobId) {
                                     throw new Error(`OpenRouter 未返回任务 ID: ${text.substring(0, 300)}`);
                                 }
