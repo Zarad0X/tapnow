@@ -8,7 +8,7 @@ out of this source tree to avoid committing opaque archives.
 Purpose: runs a local proxy for Jimeng/Dreamina APIs, usually on
 `http://localhost:5100`.
 
-tapnow sends the configured Jimeng session ID/API key to this service,
+draworchestrator sends the configured Jimeng session ID/API key to this service,
 and the service forwards requests to Jimeng.
 
 ## Local Connector

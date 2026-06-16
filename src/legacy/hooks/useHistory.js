@@ -3,7 +3,7 @@ import { debounce } from '../support.jsx';
 
 const loadHistory = () => {
     try {
-        const saved = localStorage.getItem('tapnow_history');
+        const saved = localStorage.getItem('draworchestrator_history');
         if (!saved) return [];
         const parsed = JSON.parse(saved);
         return parsed.map((item) => {
@@ -34,7 +34,7 @@ const reduceHistoryForStorage = (historyToSave) => historyToSave.map((item) => {
 
 const saveHistoryWithFallback = (historyToSave) => {
     try {
-        localStorage.setItem('tapnow_history', JSON.stringify(historyToSave));
+        localStorage.setItem('draworchestrator_history', JSON.stringify(historyToSave));
     } catch (error) {
         console.error('保存历史记录失败（可能超出存储配额）:', error);
         try {
@@ -47,7 +47,7 @@ const saveHistoryWithFallback = (historyToSave) => {
                 if (saved.mjImageInfo) delete saved.mjImageInfo;
                 return saved;
             });
-            localStorage.setItem('tapnow_history', JSON.stringify(reduced));
+            localStorage.setItem('draworchestrator_history', JSON.stringify(reduced));
         } catch (secondError) {
             console.error('清理后仍无法保存:', secondError);
             try {
@@ -59,7 +59,7 @@ const saveHistoryWithFallback = (historyToSave) => {
                     status: item.status,
                     modelName: item.modelName,
                 }));
-                localStorage.setItem('tapnow_history', JSON.stringify(minimal));
+                localStorage.setItem('draworchestrator_history', JSON.stringify(minimal));
             } catch (thirdError) {
                 console.error('最小化保存也失败:', thirdError);
             }
@@ -87,7 +87,7 @@ export const useHistory = () => {
         setHistory((prev) => {
             const filtered = prev.filter((item) => item.id !== id);
             try {
-                localStorage.setItem('tapnow_history', JSON.stringify(filtered));
+                localStorage.setItem('draworchestrator_history', JSON.stringify(filtered));
             } catch (error) {
                 console.error('立即保存历史记录失败:', error);
             }

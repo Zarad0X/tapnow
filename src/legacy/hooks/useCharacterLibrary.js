@@ -3,7 +3,7 @@ import { debounce } from '../support.jsx';
 
 const loadCharacterLibrary = () => {
     try {
-        const saved = localStorage.getItem('tapnow_characters');
+        const saved = localStorage.getItem('draworchestrator_characters');
         return saved ? JSON.parse(saved) : [];
     } catch (error) {
         console.error('加载角色库失败:', error);
@@ -16,7 +16,7 @@ export const useCharacterLibrary = () => {
 
     const debouncedSaveCharacters = useMemo(() => debounce((charactersToSave) => {
         try {
-            localStorage.setItem('tapnow_characters', JSON.stringify(charactersToSave));
+            localStorage.setItem('draworchestrator_characters', JSON.stringify(charactersToSave));
         } catch (error) {
             console.error('保存角色库失败:', error);
         }

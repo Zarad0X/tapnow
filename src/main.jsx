@@ -1,5 +1,5 @@
 import './styles/tailwind.css';
 import { createRoot } from 'react-dom/client';
-import TapnowApp from './legacy/TapnowApp.jsx';
+import DrawOrchestratorApp from './legacy/DrawOrchestratorApp.jsx';
 
-createRoot(document.getElementById('root')).render(<TapnowApp />);
+createRoot(document.getElementById('root')).render(<DrawOrchestratorApp />);

@@ -208,7 +208,7 @@ export const HistoryPanel = ({
                             value={localServerConfig.imageSavePath}
                             onChange={(event) => setLocalServerConfig((prev) => ({ ...prev, imageSavePath: event.target.value }))}
                             onBlur={(event) => updateLocalServerConfig({ image_save_path: event.target.value })}
-                            placeholder="例如: D:/Pictures/TapnowImages"
+                            placeholder="例如: D:/Pictures/DrawOrchestratorImages"
                             className={`w-full px-2 py-1.5 text-[11px] rounded border ${
                                 isDark
                                     ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
@@ -225,7 +225,7 @@ export const HistoryPanel = ({
                             value={localServerConfig.videoSavePath}
                             onChange={(event) => setLocalServerConfig((prev) => ({ ...prev, videoSavePath: event.target.value }))}
                             onBlur={(event) => updateLocalServerConfig({ video_save_path: event.target.value })}
-                            placeholder="例如: D:/Videos/TapnowVideos"
+                            placeholder="例如: D:/Videos/DrawOrchestratorVideos"
                             className={`w-full px-2 py-1.5 text-[11px] rounded border ${
                                 isDark
                                     ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'

@@ -9,7 +9,7 @@ import {
 const cloneConfigList = (configs) => configs.map((config) => ({ ...config }));
 
 const loadApiConfigs = () => {
-    const saved = localStorage.getItem('tapnow_api_configs');
+    const saved = localStorage.getItem('draworchestrator_api_configs');
     let configs = saved ? JSON.parse(saved) : cloneConfigList(DEFAULT_API_CONFIGS);
 
     const hasGpt52 = configs.some((c) => c.id === 'gpt-5-2');
@@ -40,7 +40,7 @@ const loadApiConfigs = () => {
 
     configs = configs.filter((c) => !DELETED_MODEL_IDS.includes(c.id));
 
-    const savedSessionId = localStorage.getItem('tapnow_jimeng_session_id');
+    const savedSessionId = localStorage.getItem('draworchestrator_jimeng_session_id');
     const sessionIdToUse = savedSessionId || '';
 
     const hasJimeng45 = configs.some((c) => c.id === 'jimeng-4.5');
@@ -95,7 +95,7 @@ export const useApiConfigs = () => {
     useEffect(() => {
         try {
             const filteredConfigs = apiConfigs.filter((c) => c.id !== 'jimeng-4.5');
-            localStorage.setItem('tapnow_api_configs', JSON.stringify(filteredConfigs));
+            localStorage.setItem('draworchestrator_api_configs', JSON.stringify(filteredConfigs));
         } catch (error) {
             console.error('保存 API 配置失败:', error);
         }

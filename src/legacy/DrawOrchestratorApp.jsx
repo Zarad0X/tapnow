@@ -194,8 +194,8 @@ import {
   resizeImageForVeo
 } from './utils/mediaProcessing.js';
 
-        function TapnowApp() {
-            const [theme, setTheme] = useLocalStorage('tapnow_theme', 'dark', {
+        function DrawOrchestratorApp() {
+            const [theme, setTheme] = useLocalStorage('draworchestrator_theme', 'dark', {
                 serialize: String,
                 deserialize: (value) => value || 'dark'
             });
@@ -214,7 +214,7 @@ import {
                 }
             }, [theme]);
 
-            const [isPerformanceMode, setPerformanceMode] = useLocalStorage('tapnow_performance_mode', false, {
+            const [isPerformanceMode, setPerformanceMode] = useLocalStorage('draworchestrator_performance_mode', false, {
                 serialize: String,
                 deserialize: (value) => value === 'true'
             });
@@ -233,16 +233,16 @@ import {
             const [selectedNodeId, setSelectedNodeId] = useState(null);
 
             const [apiConfigs, setApiConfigs] = useApiConfigs();
-            const [globalApiKey, setGlobalApiKey] = useState(() => localStorage.getItem('tapnow_global_key') || '');
+            const [globalApiKey, setGlobalApiKey] = useState(() => localStorage.getItem('draworchestrator_global_key') || '');
 
             // 即梦图生图使用本地文件设置（默认true，强制使用本地文件而不是URL）
-            const [jimengUseLocalFile, setJimengUseLocalFile] = useLocalStorage('tapnow_jimeng_use_local_file', true, {
+            const [jimengUseLocalFile, setJimengUseLocalFile] = useLocalStorage('draworchestrator_jimeng_use_local_file', true, {
                 serialize: String,
                 deserialize: (value) => value !== null ? value === 'true' : true
             });
 
             // 项目名称状态
-            const [projectName, setProjectName] = useLocalStorage('tapnow_project_name', '未命名项目', {
+            const [projectName, setProjectName] = useLocalStorage('draworchestrator_project_name', '未命名项目', {
                 serialize: String,
                 deserialize: (value) => value || '未命名项目'
             });
@@ -362,14 +362,14 @@ import {
             const nodeTimers = useNodeTimers(history);
 
             // 历史保存文件夹记忆
-            const [savedFolderHistory, setSavedFolderHistory] = useLocalStorage('tapnow_saved_folder_history', []);
+            const [savedFolderHistory, setSavedFolderHistory] = useLocalStorage('draworchestrator_saved_folder_history', []);
 
             // 框选节点右键菜单
             const [selectionContextMenu, setSelectionContextMenu] = useState({ visible: false, x: 0, y: 0 });
 
             // 性能模式：历史记录使用缩略图显示
             // 'off' = 关闭, 'normal' = 普通(150px/0.6), 'ultra' = 极致(80px/0.3)
-            const [historyPerformanceMode, setHistoryPerformanceMode] = useLocalStorage('tapnow_history_performance_mode', 'normal', {
+            const [historyPerformanceMode, setHistoryPerformanceMode] = useLocalStorage('draworchestrator_history_performance_mode', 'normal', {
                 serialize: String,
                 deserialize: (value) => {
                     if (value === 'true') return 'normal';
@@ -1192,7 +1192,7 @@ import {
                 // 找到对应的源节点ID
                 const sourceNodeId = resolveTaskSourceNodeId({ taskId, sourceNodeIdOverride, historyMap });
                 if (!sourceNodeId) {
-                    console.warn('[Tapnow] updatePreviewFromTask: 未找到 sourceNodeId for taskId:', taskId);
+                    console.warn('[DrawOrchestrator] updatePreviewFromTask: 未找到 sourceNodeId for taskId:', taskId);
                     return;
                 }
 
@@ -1211,7 +1211,7 @@ import {
 
                 // 使用 ref 获取最新的 connections 状态，避免闭包问题
                 const latestConnections = connectionsRef.current;
-                console.log('[Tapnow] updatePreviewFromTask: 更新预览窗口', { taskId, url, contentType, sourceNodeId, mjImages, connectionsCount: latestConnections.length });
+                console.log('[DrawOrchestrator] updatePreviewFromTask: 更新预览窗口', { taskId, url, contentType, sourceNodeId, mjImages, connectionsCount: latestConnections.length });
 
                 // 使用函数式更新，确保获取最新的 connections 状态
                 setNodes((prevNodes) => {
@@ -1222,7 +1222,7 @@ import {
                         sourceNodeId,
                     });
 
-                    console.log('[Tapnow] updatePreviewFromTask: 检查连接', {
+                    console.log('[DrawOrchestrator] updatePreviewFromTask: 检查连接', {
                         sourceNodeId,
                         allConnectionsFromSource: connectionsFromSource,
                         targetIds,
@@ -1230,7 +1230,7 @@ import {
                     });
 
                     if (!targetIds.length) {
-                        console.warn('[Tapnow] updatePreviewFromTask: 未找到连接到预览窗口的连接', {
+                        console.warn('[DrawOrchestrator] updatePreviewFromTask: 未找到连接到预览窗口的连接', {
                             sourceNodeId,
                             connectionsFromSource,
                             allConnections: latestConnections
@@ -1238,7 +1238,7 @@ import {
                         return prevNodes;
                     }
 
-                    console.log('[Tapnow] updatePreviewFromTask: 找到预览节点', {
+                    console.log('[DrawOrchestrator] updatePreviewFromTask: 找到预览节点', {
                         targetIds,
                         previewNodes: previewNodes.map(n => ({ id: n.id, type: n.type }))
                     });
@@ -1309,7 +1309,7 @@ import {
                     let data;
                     try { data = JSON.parse(text); } catch (err) { setTimeout(() => pollVeoJob(jobId, taskId, baseUrl, apiKey, w, h, attempt + 1), delayMs); return; }
 
-                    console.log('[Tapnow] Veo Poll:', data);
+                    console.log('[DrawOrchestrator] Veo Poll:', data);
                     const status = data?.data?.status || data?.status || data?.data?.task_status;
                     const progress = data?.data?.progress || data?.progress || '0%';
                     const failReason = data?.data?.fail_reason || data?.fail_reason || '';
@@ -1318,7 +1318,7 @@ import {
                     if (status === 'SUCCESS' || status === 'succeeded' || status === 'FINISHED' || status === 'completed') {
                         const videoUrl = data?.data?.output || data?.output || data?.data?.video_url || data?.video_url || data?.data?.data?.output;
                         if (!videoUrl) {
-                            console.warn('[Tapnow] Veo: 任务成功但未找到视频URL', data);
+                            console.warn('[DrawOrchestrator] Veo: 任务成功但未找到视频URL', data);
                             setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: '未找到视频URL' } : hItem));
                             // 分镜表任务：解除 generating，避免一直转圈
                             const storyboardTask = storyboardTaskMapRef.current.get(taskId);
@@ -1328,7 +1328,7 @@ import {
                             }
                             return;
                         }
-                        console.log('[Tapnow] Veo: 任务成功，视频URL:', videoUrl);
+                        console.log('[DrawOrchestrator] Veo: 任务成功，视频URL:', videoUrl);
                         const endTime = Date.now();
                         // 在更新 history 之前，先获取 sourceNodeId 和 ratio
                         // 使用函数式更新来确保获取最新的 historyItem
@@ -1338,7 +1338,7 @@ import {
                             const originalRatio = historyItem?.ratio;
                             const durationMs = endTime - (historyItem?.startTime || endTime);
 
-                            console.log('[Tapnow] Veo: 从历史记录获取信息', { taskId, originalRatio, sourceNodeId, historyItem });
+                            console.log('[DrawOrchestrator] Veo: 从历史记录获取信息', { taskId, originalRatio, sourceNodeId, historyItem });
 
                             // 对于 veo3.1，尝试从实际视频获取真实尺寸
                             let finalW = w, finalH = h;
@@ -1348,7 +1348,7 @@ import {
                                 try {
                                     const videoMeta = await getVideoMetadata(videoUrl);
                                     if (videoMeta && videoMeta.w > 0 && videoMeta.h > 0) {
-                                        console.log('[Tapnow] Veo: 获取到视频实际尺寸', { w: videoMeta.w, h: videoMeta.h, requestedRatio: originalRatio });
+                                        console.log('[DrawOrchestrator] Veo: 获取到视频实际尺寸', { w: videoMeta.w, h: videoMeta.h, requestedRatio: originalRatio });
                                         const actualW = videoMeta.w;
                                         const actualH = videoMeta.h;
 
@@ -1357,14 +1357,14 @@ import {
                                             const actualRatio = actualW / actualH;
                                             const expectedRatio = 16/9;
                                             if (Math.abs(actualRatio - expectedRatio) > 0.1) {
-                                                console.warn(`[Tapnow] Veo: 视频实际比例 ${actualRatio.toFixed(2)} 不匹配请求的 16:9 (${expectedRatio.toFixed(2)})，后端返回了错误的比例！`);
-                                                console.warn(`[Tapnow] Veo: 实际尺寸: ${actualW}x${actualH}, 请求比例: 16:9`);
-                                                console.warn(`[Tapnow] Veo: 强制使用请求的 16:9 比例，调整尺寸为: ${w}x${Math.round(w / (16/9))}`);
+                                                console.warn(`[DrawOrchestrator] Veo: 视频实际比例 ${actualRatio.toFixed(2)} 不匹配请求的 16:9 (${expectedRatio.toFixed(2)})，后端返回了错误的比例！`);
+                                                console.warn(`[DrawOrchestrator] Veo: 实际尺寸: ${actualW}x${actualH}, 请求比例: 16:9`);
+                                                console.warn(`[DrawOrchestrator] Veo: 强制使用请求的 16:9 比例，调整尺寸为: ${w}x${Math.round(w / (16/9))}`);
                                                 // 如果后端返回了错误的比例，强制使用请求的比例
                                                 finalW = w;
                                                 finalH = Math.round(w / (16/9));
                                             } else {
-                                                console.log(`[Tapnow] Veo: 视频实际比例匹配 16:9`);
+                                                console.log(`[DrawOrchestrator] Veo: 视频实际比例匹配 16:9`);
                                                 finalW = actualW;
                                                 finalH = actualH;
                                             }
@@ -1372,14 +1372,14 @@ import {
                                             const actualRatio = actualW / actualH;
                                             const expectedRatio = 9/16;
                                             if (Math.abs(actualRatio - expectedRatio) > 0.1) {
-                                                console.warn(`[Tapnow] Veo: 视频实际比例 ${actualRatio.toFixed(2)} 不匹配请求的 9:16 (${expectedRatio.toFixed(2)})，后端返回了错误的比例！`);
-                                                console.warn(`[Tapnow] Veo: 实际尺寸: ${actualW}x${actualH}, 请求比例: 9:16`);
-                                                console.warn(`[Tapnow] Veo: 强制使用请求的 9:16 比例，调整尺寸为: ${Math.round(h * (9/16))}x${h}`);
+                                                console.warn(`[DrawOrchestrator] Veo: 视频实际比例 ${actualRatio.toFixed(2)} 不匹配请求的 9:16 (${expectedRatio.toFixed(2)})，后端返回了错误的比例！`);
+                                                console.warn(`[DrawOrchestrator] Veo: 实际尺寸: ${actualW}x${actualH}, 请求比例: 9:16`);
+                                                console.warn(`[DrawOrchestrator] Veo: 强制使用请求的 9:16 比例，调整尺寸为: ${Math.round(h * (9/16))}x${h}`);
                                                 // 如果后端返回了错误的比例，强制使用请求的比例
                                                 finalW = Math.round(h * (9/16));
                                                 finalH = h;
                                             } else {
-                                                console.log(`[Tapnow] Veo: 视频实际比例匹配 9:16`);
+                                                console.log(`[DrawOrchestrator] Veo: 视频实际比例匹配 9:16`);
                                                 finalW = actualW;
                                                 finalH = actualH;
                                             }
@@ -1412,7 +1412,7 @@ import {
                                             // 更新预览窗口（非分镜表任务）
                                         if (sourceNodeId) {
                                             setTimeout(() => {
-                                                console.log('[Tapnow] Veo: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId });
+                                                console.log('[DrawOrchestrator] Veo: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId });
                                                 updatePreviewFromTask(taskId, videoUrl, 'video', sourceNodeId);
                                                 // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                                 setNodes(prevNodes => prevNodes.map(n => {
@@ -1437,7 +1437,7 @@ import {
                                         }
                                     }
                                 } catch (e) {
-                                    console.warn('[Tapnow] Veo: 无法获取视频实际尺寸，使用请求尺寸', e);
+                                    console.warn('[DrawOrchestrator] Veo: 无法获取视频实际尺寸，使用请求尺寸', e);
                                     // 如果无法获取实际尺寸，使用请求的尺寸并根据 aspect_ratio 调整
                                     let fallbackW = w, fallbackH = h;
                                     if (originalRatio === '16:9') {
@@ -1475,7 +1475,7 @@ import {
                                         // 更新预览窗口（非分镜表任务）
                                     if (sourceNodeId) {
                                         setTimeout(() => {
-                                            console.log('[Tapnow] Veo: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId });
+                                            console.log('[DrawOrchestrator] Veo: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId });
                                             updatePreviewFromTask(taskId, videoUrl, 'video', sourceNodeId);
                                             // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                             setNodes(prevNodes => prevNodes.map(n => {
@@ -1518,7 +1518,7 @@ import {
                                 errorMsg = failReason || errorMsg;
                             }
                         }
-                        console.error('[Tapnow] Veo: 任务失败', { status, failReason, errorMsg });
+                        console.error('[DrawOrchestrator] Veo: 任务失败', { status, failReason, errorMsg });
                         setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg } : hItem));
                         // 分镜表任务：解除 generating，避免一直转圈
                         {
@@ -1533,7 +1533,7 @@ import {
 
                     // 处理 NOT_START 状态：可能是任务还在队列中，继续等待
                     if (status === 'NOT_START' || status === 'PENDING' || status === 'QUEUED') {
-                        console.log(`[Tapnow] Veo: 任务状态 ${status}，进度 ${progress}，继续等待...`);
+                        console.log(`[DrawOrchestrator] Veo: 任务状态 ${status}，进度 ${progress}，继续等待...`);
                         // 对于 NOT_START 状态，进度更新更慢一些，避免频繁更新
                         const currentProgress = parseInt(progress) || 0;
                         setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? {
@@ -1548,7 +1548,7 @@ import {
 
                     // 其他状态（如 PROCESSING、GENERATING 等）：继续轮询
                     const currentProgress = parseInt(progress) || Math.min(95, (attempt * 2) + 10);
-                    console.log(`[Tapnow] Veo: 任务状态 ${status}，进度 ${progress}，继续轮询...`);
+                    console.log(`[DrawOrchestrator] Veo: 任务状态 ${status}，进度 ${progress}，继续轮询...`);
                     setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? { ...hItem, status: 'generating', progress: currentProgress } : hItem));
                     setTimeout(() => pollVeoJob(jobId, taskId, baseUrl, apiKey, w, h, attempt + 1), delayMs);
                 })
@@ -1595,12 +1595,12 @@ import {
                     try {
                         data = JSON.parse(text);
                     } catch (err) {
-                        console.error('[Tapnow] Sora/Grok Poll JSON 解析失败:', err, text);
+                        console.error('[DrawOrchestrator] Sora/Grok Poll JSON 解析失败:', err, text);
                         setTimeout(() => pollSoraJob(jobId, taskId, baseUrl, apiKey, w, h, modelId, attempt + 1), delayMs);
                         return;
                     }
 
-                    console.log('[Tapnow] Sora/Grok Poll:', data);
+                    console.log('[DrawOrchestrator] Sora/Grok Poll:', data);
                     const status = data?.data?.status || data?.status || data?.data?.task_status || data?.task_status;
 
                     if (status === 'SUCCESS' || status === 'succeeded' || status === 'FINISHED' || status === 'completed') {
@@ -1638,7 +1638,7 @@ import {
                             const updatedItem = updated.find(h => h.id === taskId);
                             if (updatedItem?.sourceNodeId) {
                                 setTimeout(() => {
-                                    console.log('[Tapnow] Sora: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId: updatedItem.sourceNodeId });
+                                    console.log('[DrawOrchestrator] Sora: 准备更新预览窗口', { taskId, videoUrl, sourceNodeId: updatedItem.sourceNodeId });
                                     updatePreviewFromTask(taskId, videoUrl, 'video', updatedItem.sourceNodeId);
                                     // 同步回填到“生成角色/场景视频”节点本身（用于节点内预览与右键发送到画布）
                                     setNodes(prevNodes => prevNodes.map(n => {
@@ -1660,7 +1660,7 @@ import {
                                     }));
                                 }, 0);
                             } else {
-                                console.warn('[Tapnow] Sora: 未找到 sourceNodeId', { taskId, updatedItem });
+                                console.warn('[DrawOrchestrator] Sora: 未找到 sourceNodeId', { taskId, updatedItem });
                                 }
                             }
                             return updated;
@@ -1732,7 +1732,7 @@ import {
                     setTimeout(() => pollSoraJob(jobId, taskId, baseUrl, apiKey, w, h, modelId, attempt + 1), delayMs);
                 })
                 .catch(err => {
-                    console.error('[Tapnow] Sora/Grok Poll 请求失败:', err);
+                    console.error('[DrawOrchestrator] Sora/Grok Poll 请求失败:', err);
                     // 如果是网络错误，继续重试；如果是其他错误，标记为失败
                     if (attempt < maxAttempts - 5) {
                         // 前75次尝试继续重试
@@ -2124,7 +2124,7 @@ import {
                         return;
                     }
 
-                    console.log('[Tapnow] Midjourney Poll:', data);
+                    console.log('[DrawOrchestrator] Midjourney Poll:', data);
 
                     const status = data?.status || '';
                     const progress = data?.progress || '0%';
@@ -2177,11 +2177,11 @@ import {
                                     const sourceNodeIdForPreview = hItem.sourceNodeId;
                                     if (sourceNodeIdForPreview) {
                                         setTimeout(() => {
-                                            console.log('[Tapnow] Midjourney: 准备更新预览窗口', { taskId, imageUrl, sourceNodeId: sourceNodeIdForPreview });
+                                            console.log('[DrawOrchestrator] Midjourney: 准备更新预览窗口', { taskId, imageUrl, sourceNodeId: sourceNodeIdForPreview });
                                             updatePreviewFromTask(taskId, imageUrl, 'image', sourceNodeIdForPreview);
                                         }, 0);
                                     } else {
-                                        console.warn('[Tapnow] Midjourney: 未找到 sourceNodeId，无法更新预览窗口', { taskId, hItem });
+                                        console.warn('[DrawOrchestrator] Midjourney: 未找到 sourceNodeId，无法更新预览窗口', { taskId, hItem });
                                     }
 
                                     // 延迟切割，确保UI先更新显示原图，避免白屏
@@ -2250,7 +2250,7 @@ import {
                                 newProgress = Math.min(95, (hItem.progress || 5) + 2);
                             }
 
-                                console.log(`[Tapnow] Midjourney Poll Status Update: Task ${taskId}, Status: ${newStatus}, Progress: ${newProgress}%, ImageUrl: ${imageUrl ? 'Yes' : 'No'}`);
+                                console.log(`[DrawOrchestrator] Midjourney Poll Status Update: Task ${taskId}, Status: ${newStatus}, Progress: ${newProgress}%, ImageUrl: ${imageUrl ? 'Yes' : 'No'}`);
 
                             const updatedItem = {
                                 ...hItem,
@@ -2269,7 +2269,7 @@ import {
                             if ((status === 'SUCCESS' || status === 'FINISHED') && imageUrl && (!hItem.apiConfig?.modelId?.includes('mj') || hItem.apiConfig?.modelId === 'mj-zoom')) {
                                 // 直接传入 sourceNodeId，避免依赖可能未更新的 history 状态
                                 if (hItem.sourceNodeId) {
-                                    console.log('[Tapnow] 图片生成: 准备更新节点', { taskId, imageUrl, sourceNodeId: hItem.sourceNodeId, modelId: hItem.apiConfig?.modelId });
+                                    console.log('[DrawOrchestrator] 图片生成: 准备更新节点', { taskId, imageUrl, sourceNodeId: hItem.sourceNodeId, modelId: hItem.apiConfig?.modelId });
                                     // 如果是拓展图片任务，更新拓展图片节点；否则更新预览窗口
                                     if (hItem.apiConfig?.modelId === 'mj-zoom') {
                                         setNodes((prev) => prev.map((n) =>
@@ -2281,7 +2281,7 @@ import {
                                         updatePreviewFromTask(taskId, imageUrl, 'image', hItem.sourceNodeId);
                                     }
                                 } else {
-                                    console.warn('[Tapnow] 图片生成: 未找到 sourceNodeId', { taskId, hItem });
+                                    console.warn('[DrawOrchestrator] 图片生成: 未找到 sourceNodeId', { taskId, hItem });
                                 }
 
                                 // 计算并保存用时
@@ -2308,7 +2308,7 @@ import {
                     setTimeout(() => pollMidjourneyJob(jobId, taskId, baseUrl, apiKey, mjMode, w, h, attempt + 1), delayMs);
                 })
                 .catch((err) => {
-                    console.error(`[Tapnow] Midjourney Poll Fetch Error for task ${taskId}:`, err);
+                    console.error(`[DrawOrchestrator] Midjourney Poll Fetch Error for task ${taskId}:`, err);
                     setHistory((prev) => prev.map((hItem) =>
                         hItem.id === taskId
                             ? { ...hItem, status: 'failed', errorMsg: `轮询请求失败: ${err.message}` }
@@ -3476,11 +3476,11 @@ import {
                                 const updatedItem = updated.find(h => h.id === taskId);
                                 if (updatedItem?.sourceNodeId) {
                                     setTimeout(() => {
-                                        console.log('[Tapnow] 视频立即返回: 准备更新预览窗口', { taskId, immediateUrl, sourceNodeId: updatedItem.sourceNodeId });
+                                        console.log('[DrawOrchestrator] 视频立即返回: 准备更新预览窗口', { taskId, immediateUrl, sourceNodeId: updatedItem.sourceNodeId });
                                         updatePreviewFromTask(taskId, immediateUrl, 'video', updatedItem.sourceNodeId);
                                     }, 0);
                                 } else {
-                                    console.warn('[Tapnow] 视频立即返回: 未找到 sourceNodeId', { taskId, updatedItem });
+                                    console.warn('[DrawOrchestrator] 视频立即返回: 未找到 sourceNodeId', { taskId, updatedItem });
                                     }
                                 }
                                 return updated;
@@ -6781,7 +6781,7 @@ import {
 
                                                                         // 保存到 localStorage
                                                                         try {
-                                                                            localStorage.setItem('tapnow_characters', JSON.stringify(updated));
+                                                                            localStorage.setItem('draworchestrator_characters', JSON.stringify(updated));
                                                                         } catch (err) {
                                                                             console.error('保存角色库失败:', err);
                                                                         }
@@ -6893,7 +6893,7 @@ import {
 
                                                                     const baseUrl = (soraConfig.url || DEFAULT_BASE_URL).replace(/\/+$/, '');
                                                                     // 创建场景：完全复用“创建角色”的请求方式（同 endpoint / 同 payload / 同错误处理）
-                                                                    // 仅前端 UI 显示为“创建场景”，并将结果落到 tapnow_scenes
+                                                                    // 仅前端 UI 显示为“创建场景”，并将结果落到 draworchestrator_scenes
                                                                     const endpoint = (createCharacterEndpoint && createCharacterEndpoint.trim())
                                                                         ? createCharacterEndpoint.trim()
                                                                         : `${baseUrl}/sora/v1/characters`;
@@ -6968,7 +6968,7 @@ import {
                                                                         const updated = [...characterLibrary, newCharacter];
                                                                         setCharacterLibrary(updated);
                                                                         try {
-                                                                            localStorage.setItem('tapnow_characters', JSON.stringify(updated));
+                                                                            localStorage.setItem('draworchestrator_characters', JSON.stringify(updated));
                                                                         } catch (err) {
                                                                             console.error('保存角色库失败:', err);
                                                                         }
@@ -7341,7 +7341,7 @@ import {
                                                                         timestamp: Date.now()
                                                                     }];
                                                                     try {
-                                                                        localStorage.setItem('tapnow_history', JSON.stringify(newHistory));
+                                                                        localStorage.setItem('draworchestrator_history', JSON.stringify(newHistory));
                                                                     } catch (e) {
                                                                         console.error('保存历史记录失败:', e);
                                                                     }
@@ -10099,7 +10099,7 @@ import {
                                     theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'
                                 }`}
                             >
-                                tapnow
+                                draworchestrator
                             </span>
                             {/* 功能4：项目名称编辑 */}
                             {isEditingProjectName ? (
@@ -10111,14 +10111,14 @@ import {
                                     onBlur={() => {
                                         setIsEditingProjectName(false);
                                         try {
-                                            localStorage.setItem('tapnow_project_name', projectName);
+                                            localStorage.setItem('draworchestrator_project_name', projectName);
                                         } catch (e) {}
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             setIsEditingProjectName(false);
                                             try {
-                                                localStorage.setItem('tapnow_project_name', projectName);
+                                                localStorage.setItem('draworchestrator_project_name', projectName);
                                             } catch (e) {}
                                         }
                                     }}
@@ -10554,4 +10554,4 @@ import {
             );
         }
 
-export default TapnowApp;
+export default DrawOrchestratorApp;

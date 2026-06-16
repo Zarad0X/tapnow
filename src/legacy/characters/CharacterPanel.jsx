@@ -43,7 +43,7 @@ export const CharacterPanel = ({
         const updated = characters.filter((item) => item.id !== character.id);
         setCharacters(updated);
         try {
-            localStorage.setItem('tapnow_characters', JSON.stringify(updated));
+            localStorage.setItem('draworchestrator_characters', JSON.stringify(updated));
         } catch (error) {
             console.error('保存角色库失败:', error);
         }

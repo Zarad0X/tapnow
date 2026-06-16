@@ -89,7 +89,7 @@ export const BatchHistoryModal = ({
         setHistory((prev) => {
             const filtered = prev.filter((item) => !selectedIds.has(item.id));
             try {
-                localStorage.setItem('tapnow_history', JSON.stringify(filtered));
+                localStorage.setItem('draworchestrator_history', JSON.stringify(filtered));
             } catch (error) {
                 console.error('立即保存历史记录失败:', error);
             }
@@ -174,7 +174,7 @@ export const BatchHistoryModal = ({
                 return item;
             });
             try {
-                localStorage.setItem('tapnow_history', JSON.stringify(updated));
+                localStorage.setItem('draworchestrator_history', JSON.stringify(updated));
             } catch (error) {
                 console.error('保存历史记录失败:', error);
             }

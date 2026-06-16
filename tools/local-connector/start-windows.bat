@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-title tapnow 本地接收器
+title draworchestrator 本地接收器
 echo.
 echo ========================================
-echo   tapnow 本地接收器
+echo   draworchestrator 本地接收器
 echo ========================================
 echo.
 
@@ -18,6 +18,6 @@ if errorlevel 1 (
 
 REM 启动服务器
 cd /d "%~dp0"
-python tapnow-local-server.py
+python draworchestrator-local-server.py
 
 pause

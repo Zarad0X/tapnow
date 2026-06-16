@@ -104,7 +104,7 @@ export const saveVideoToLocalCache = async ({ itemId, videoUrl, category = 'hist
 };
 
 export const checkLocalCache = async ({ itemId, category = 'history', serverUrl = LOCAL_CACHE_SERVER_URL }) => {
-    const url = `${serverUrl}/file/.tapnow_cache/${category}/${itemId}.jpg`;
+    const url = `${serverUrl}/file/.draworchestrator_cache/${category}/${itemId}.jpg`;
     const res = await fetch(url, { method: 'HEAD' });
     return res.ok ? url : null;
 };

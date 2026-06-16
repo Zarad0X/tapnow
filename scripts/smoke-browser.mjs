@@ -84,7 +84,7 @@ try {
     console.log(JSON.stringify(result, null, 2));
 
     if (events.length > 0) throw new Error('Browser console/request errors detected');
-    if (title !== 'tapnow') throw new Error(`Unexpected title: ${title}`);
+    if (title !== 'draworchestrator') throw new Error(`Unexpected title: ${title}`);
     if (buttonCount === 0 || rootHtmlLength < 1000) throw new Error('App did not render expected interactive UI');
 } catch (error) {
     console.error(error.message);

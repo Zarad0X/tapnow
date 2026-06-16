@@ -47,9 +47,9 @@ export const ApiSettingsModal = ({
         }
 
         const trimmed = newValue.trim();
-        const savedSessionId = localStorage.getItem('tapnow_jimeng_session_id');
+        const savedSessionId = localStorage.getItem('draworchestrator_jimeng_session_id');
         if (!savedSessionId || savedSessionId !== trimmed) {
-            localStorage.setItem('tapnow_jimeng_session_id', trimmed);
+            localStorage.setItem('draworchestrator_jimeng_session_id', trimmed);
             setApiConfigs((prev) => prev.map((config) => (
                 (config.id.includes('jimeng') || config.provider?.includes('Jimeng')) && config.key !== trimmed
                     ? { ...config, key: trimmed }
@@ -95,7 +95,7 @@ export const ApiSettingsModal = ({
                                 onChange={(event) => {
                                     const newValue = event.target.checked;
                                     setJimengUseLocalFile(newValue);
-                                    localStorage.setItem('tapnow_jimeng_use_local_file', String(newValue));
+                                    localStorage.setItem('draworchestrator_jimeng_use_local_file', String(newValue));
                                 }}
                                 className="sr-only peer"
                             />

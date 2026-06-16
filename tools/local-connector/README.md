@@ -1,9 +1,9 @@
-# Tapnow Local Connector
+# DrawOrchestrator Local Connector
 
 This helper lets the browser app save generated media to local disk.
 
 It starts a small HTTP server bound to `127.0.0.1`, defaulting to port `9527`.
-tapnow uses it for:
+draworchestrator uses it for:
 
 - local cache checks
 - image/video save workflows
@@ -14,19 +14,19 @@ tapnow uses it for:
 ## Run
 
 ```bash
-python3 tools/local-connector/tapnow-local-server.py
+python3 tools/local-connector/draworchestrator-local-server.py
 ```
 
 Default save directory:
 
 ```text
-~/Downloads/tapnow
+~/Downloads/draworchestrator
 ```
 
 You can choose a test directory while experimenting:
 
 ```bash
-python3 tools/local-connector/tapnow-local-server.py --dir /tmp/tapnow-studio
+python3 tools/local-connector/draworchestrator-local-server.py --dir /tmp/draworchestrator-studio
 ```
 
 ## Endpoints

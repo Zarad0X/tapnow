@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-tapnow 本地接收器
+draworchestrator 本地接收器
 用于接收浏览器发送的文件保存请求，实现本地文件操作
 
 使用方法：
-1. 运行此脚本：python tapnow-local-server.py
-2. 在 tapnow 中使用"保存到本地"节点
+1. 运行此脚本：python draworchestrator-local-server.py
+2. 在 draworchestrator 中使用"保存到本地"节点
 3. 文件将保存到指定的本地路径
 
 端口：9527（可通过命令行参数修改）
@@ -34,7 +34,7 @@ except ImportError:
 
 # 默认配置
 DEFAULT_PORT = 9527
-DEFAULT_SAVE_PATH = os.path.expanduser("~/Downloads/tapnow")
+DEFAULT_SAVE_PATH = os.path.expanduser("~/Downloads/draworchestrator")
 
 # 全局配置
 config = {
@@ -107,7 +107,7 @@ def is_video_file(filename):
     ext = os.path.splitext(filename)[1].lower()
     return ext in ['.mp4', '.mov', '.webm', '.avi', '.mkv']
 
-class TapnowHandler(BaseHTTPRequestHandler):
+class DrawOrchestratorHandler(BaseHTTPRequestHandler):
     """HTTP请求处理器"""
     
     def log_message(self, format, *args):
@@ -554,8 +554,8 @@ class TapnowHandler(BaseHTTPRequestHandler):
                 self.send_json_response({"success": False, "error": "缺少ID或内容"}, 400)
                 return
             
-            # 缩略图保存在 .tapnow_cache 子目录
-            cache_dir = os.path.join(config["save_path"], '.tapnow_cache', category)
+            # 缩略图保存在 .draworchestrator_cache 子目录
+            cache_dir = os.path.join(config["save_path"], '.draworchestrator_cache', category)
             ensure_dir(cache_dir)
             
             # 文件名使用 item_id
@@ -571,7 +571,7 @@ class TapnowHandler(BaseHTTPRequestHandler):
                 f.write(file_data)
             
             # 返回可访问的URL
-            rel_path = f".tapnow_cache/{category}/{filename}"
+            rel_path = f".draworchestrator_cache/{category}/{filename}"
             local_url = f"http://127.0.0.1:{config['port']}/file/{rel_path}"
             
             log(f"缩略图已保存: {filepath}")
@@ -610,8 +610,8 @@ class TapnowHandler(BaseHTTPRequestHandler):
                 # 图片使用图片保存路径
                 cache_dir = os.path.join(config["image_save_path"], category)
             else:
-                # 默认使用 .tapnow_cache 子目录
-                cache_dir = os.path.join(config["save_path"], '.tapnow_cache', category)
+                # 默认使用 .draworchestrator_cache 子目录
+                cache_dir = os.path.join(config["save_path"], '.draworchestrator_cache', category)
             
             ensure_dir(cache_dir)
             
@@ -647,7 +647,7 @@ class TapnowHandler(BaseHTTPRequestHandler):
                 elif file_type == 'image' and config["image_save_path"]:
                     rel_path = f"history/{rel_path}"
                 else:
-                    rel_path = f".tapnow_cache/{category}/{rel_path}"
+                    rel_path = f".draworchestrator_cache/{category}/{rel_path}"
             local_url = f"http://127.0.0.1:{config['port']}/file/{rel_path}"
             
             log(f"缓存文件已保存: {filepath} ({len(file_data)} bytes)")
@@ -849,10 +849,10 @@ def run_server(port, save_path):
     ensure_dir(config["save_path"])
     
     server_address = ('127.0.0.1', port)
-    httpd = HTTPServer(server_address, TapnowHandler)
+    httpd = HTTPServer(server_address, DrawOrchestratorHandler)
     
     print("=" * 50)
-    print("  tapnow 本地接收器")
+    print("  draworchestrator 本地接收器")
     print("=" * 50)
     print(f"  服务地址: http://127.0.0.1:{port}")
     print(f"  保存路径: {config['save_path']}")
@@ -882,7 +882,7 @@ def run_server(port, save_path):
         httpd.shutdown()
 
 def main():
-    parser = argparse.ArgumentParser(description='tapnow 本地接收器')
+    parser = argparse.ArgumentParser(description='draworchestrator 本地接收器')
     parser.add_argument('-p', '--port', type=int, default=DEFAULT_PORT,
                         help=f'监听端口 (默认: {DEFAULT_PORT})')
     parser.add_argument('-d', '--dir', type=str, default=DEFAULT_SAVE_PATH,

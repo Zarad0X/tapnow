@@ -1,10 +1,10 @@
-# Tapnow Demo Pack
+# DrawOrchestrator Demo Pack
 
-This folder contains a ready-to-load software engineering demo project for Tapnow.
+This folder contains a ready-to-load software engineering demo project for DrawOrchestrator.
 
 ## Files
 
-- `tapnow-demo-project.json`: import this from Tapnow with the left sidebar "load project" button.
+- `draworchestrator-demo-project.json`: import this from DrawOrchestrator with the left sidebar "load project" button.
 - `demo-script.md`: a short Chinese presentation script for a 3-5 minute demo.
 - `generate-demo-project.mjs`: regenerates the demo JSON with embedded demo assets.
 - `validate-demo-project.mjs`: checks that the demo JSON has the required nodes and links.
@@ -32,9 +32,9 @@ http://127.0.0.1:8765/
 
 ## Demo Flow
 
-1. Open Tapnow.
+1. Open DrawOrchestrator.
 2. Click the left sidebar load-project icon.
-3. Choose `demo/tapnow-demo-project.json`.
+3. Choose `demo/draworchestrator-demo-project.json`.
 4. Show the prepared workflow:
    - story input
    - character and scene extraction
@@ -49,7 +49,7 @@ Avoid live video generation during a class demo. The generated results are alrea
 
 ## Optional Live Video API Demo
 
-This is the simplest real API demo path. It runs outside the browser so the API key is not exposed to Tapnow's frontend and CORS cannot break the demo.
+This is the simplest real API demo path. It runs outside the browser so the API key is not exposed to DrawOrchestrator's frontend and CORS cannot break the demo.
 
 1. Create a Runway developer API key and add credits.
 2. Export the key:
@@ -76,4 +76,4 @@ The script prints the generated video URL and downloads an MP4 copy into:
 demo/live-output/
 ```
 
-During a live presentation, show the terminal task ID, the completed video URL, and the saved MP4. Then open Tapnow and paste the video URL into a video input node or use it as evidence that the workflow can call a real video API.
+During a live presentation, show the terminal task ID, the completed video URL, and the saved MP4. Then open DrawOrchestrator and paste the video URL into a video input node or use it as evidence that the workflow can call a real video API.

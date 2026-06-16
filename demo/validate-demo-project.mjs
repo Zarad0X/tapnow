@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectFile = path.join(__dirname, 'tapnow-demo-project.json');
+const projectFile = path.join(__dirname, 'draworchestrator-demo-project.json');
 const project = JSON.parse(fs.readFileSync(projectFile, 'utf8'));
 
 const requiredNodeTypes = [

@@ -5,7 +5,7 @@ const DEFAULT_CHAT_SESSIONS = [{ id: 'default', title: '新对话', messages: []
 
 const loadChatSessions = () => {
     try {
-        const saved = localStorage.getItem('tapnow_chat_sessions');
+        const saved = localStorage.getItem('draworchestrator_chat_sessions');
         return saved ? JSON.parse(saved) : DEFAULT_CHAT_SESSIONS;
     } catch (error) {
         return DEFAULT_CHAT_SESSIONS;
@@ -30,7 +30,7 @@ export const useChatSessions = () => {
 
     const debouncedSaveChatSessions = useMemo(() => debounce((sessions) => {
         try {
-            localStorage.setItem('tapnow_chat_sessions', JSON.stringify(sessions));
+            localStorage.setItem('draworchestrator_chat_sessions', JSON.stringify(sessions));
         } catch (error) {}
     }, 1000), []);
 

@@ -15,7 +15,7 @@ const outputDir = path.join(__dirname, 'live-output');
 
 const printHelp = () => {
     console.log(`
-Tapnow live video API demo using Runway.
+DrawOrchestrator live video API demo using Runway.
 
 Required:
   RUNWAYML_API_SECRET=key_...
@@ -26,7 +26,7 @@ Examples:
   npm run demo:runway -- --image "https://example.com/input.png" --prompt "Animate this scene with slow camera movement"
 
 Options:
-  --prompt <text>       Prompt text. Defaults to a short Tapnow-friendly prompt.
+  --prompt <text>       Prompt text. Defaults to a short DrawOrchestrator-friendly prompt.
   --image <url/data>    Optional prompt image URL or data URI for image-to-video.
   --ratio <ratio>       Output ratio, default ${DEFAULT_RATIO}.
   --duration <seconds>  Output duration, default ${DEFAULT_DURATION}.
@@ -83,12 +83,12 @@ const main = async () => {
         return;
     }
 
-    const prompt = readArg('--prompt', process.env.TAPNOW_LIVE_PROMPT || DEFAULT_PROMPT);
-    const promptImage = readArg('--image', process.env.TAPNOW_LIVE_IMAGE || '');
-    const ratio = readArg('--ratio', process.env.TAPNOW_LIVE_RATIO || DEFAULT_RATIO);
-    const duration = Number(readArg('--duration', process.env.TAPNOW_LIVE_DURATION || DEFAULT_DURATION));
-    const model = readArg('--model', process.env.TAPNOW_LIVE_MODEL || DEFAULT_MODEL);
-    const timeoutSeconds = Number(readArg('--timeout', process.env.TAPNOW_LIVE_TIMEOUT || DEFAULT_TIMEOUT_MS / 1000));
+    const prompt = readArg('--prompt', process.env.DRAWORCHESTRATOR_LIVE_PROMPT || DEFAULT_PROMPT);
+    const promptImage = readArg('--image', process.env.DRAWORCHESTRATOR_LIVE_IMAGE || '');
+    const ratio = readArg('--ratio', process.env.DRAWORCHESTRATOR_LIVE_RATIO || DEFAULT_RATIO);
+    const duration = Number(readArg('--duration', process.env.DRAWORCHESTRATOR_LIVE_DURATION || DEFAULT_DURATION));
+    const model = readArg('--model', process.env.DRAWORCHESTRATOR_LIVE_MODEL || DEFAULT_MODEL);
+    const timeoutSeconds = Number(readArg('--timeout', process.env.DRAWORCHESTRATOR_LIVE_TIMEOUT || DEFAULT_TIMEOUT_MS / 1000));
 
     const client = new RunwayML();
     const payload = {
@@ -102,7 +102,7 @@ const main = async () => {
         payload.promptImage = promptImage;
     }
 
-    console.log('[Tapnow live demo] Starting Runway video generation...');
+    console.log('[DrawOrchestrator live demo] Starting Runway video generation...');
     console.log({
         model: payload.model,
         ratio: payload.ratio,
@@ -113,8 +113,8 @@ const main = async () => {
 
     const taskRequest = client.imageToVideo.create(payload);
     const startedTask = await taskRequest;
-    console.log(`[Tapnow live demo] Task created: ${startedTask.id}`);
-    console.log('[Tapnow live demo] Waiting for output...');
+    console.log(`[DrawOrchestrator live demo] Task created: ${startedTask.id}`);
+    console.log('[DrawOrchestrator live demo] Waiting for output...');
 
     const completedTask = await taskRequest.waitForTaskOutput({
         timeout: Number.isFinite(timeoutSeconds) && timeoutSeconds > 0
@@ -132,20 +132,20 @@ const main = async () => {
     const targetPath = path.join(outputDir, filename);
     const size = await downloadFile(outputUrl, targetPath);
 
-    console.log('[Tapnow live demo] Done.');
+    console.log('[DrawOrchestrator live demo] Done.');
     console.log(`Video URL: ${outputUrl}`);
     console.log(`Saved MP4: ${targetPath}`);
     console.log(`Size: ${(size / 1024 / 1024).toFixed(2)} MB`);
     console.log('');
-    console.log('Tapnow usage: open the app, add a 视频输入 node, and paste the Video URL or use the saved MP4 as demo evidence.');
+    console.log('DrawOrchestrator usage: open the app, add a 视频输入 node, and paste the Video URL or use the saved MP4 as demo evidence.');
 };
 
 main().catch((error) => {
     if (error?.taskDetails) {
-        console.error('[Tapnow live demo] Runway task failed:');
+        console.error('[DrawOrchestrator live demo] Runway task failed:');
         console.error(JSON.stringify(error.taskDetails, null, 2));
     } else {
-        console.error('[Tapnow live demo] Failed:');
+        console.error('[DrawOrchestrator live demo] Failed:');
         console.error(error?.stack || error?.message || error);
     }
     process.exitCode = 1;

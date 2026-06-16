@@ -130,7 +130,7 @@ export const useLocalCacheServer = ({
 
                 const imageUrl = item.url || item.originalUrl || item.mjOriginalUrl;
                 const filenameFromUrl = imageUrl ? getFilenameFromUrl(imageUrl) : null;
-                const baseDir = localServerConfig.imageSavePath ? 'history' : '.tapnow_cache/history';
+                const baseDir = localServerConfig.imageSavePath ? 'history' : '.draworchestrator_cache/history';
                 let foundLocal = false;
                 const filenamesToCheck = [filenameFromUrl, item.id].filter(Boolean);
 
@@ -196,7 +196,7 @@ export const useLocalCacheServer = ({
                     try {
                         const basePath = localServerConfig.videoSavePath
                             ? `history/${filename}.mp4`
-                            : `.tapnow_cache/history/${filename}.mp4`;
+                            : `.draworchestrator_cache/history/${filename}.mp4`;
                         const checkUrl = `${localCacheServerUrl}/file/${basePath}`;
                         const checkRes = await fetch(checkUrl, { method: 'HEAD' });
                         if (checkRes.ok) {

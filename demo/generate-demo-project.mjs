@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const outFile = path.join(__dirname, 'tapnow-demo-project.json');
+const outFile = path.join(__dirname, 'draworchestrator-demo-project.json');
 
 const svgDataUrl = (title, subtitle, colors) => {
     const [bg, accent, ink] = colors;
@@ -314,7 +314,7 @@ const nodes = [
         height: 390,
         settings: {
             serverUrl: 'http://127.0.0.1:9527',
-            savePath: '~/Downloads/tapnow-demo',
+            savePath: '~/Downloads/draworchestrator-demo',
             subfolder: 'software-engineering-demo',
             autoSave: false,
             serverStatus: 'unknown',
@@ -437,7 +437,7 @@ const characterLibrary = [
 
 const project = {
     version: '2.5.7',
-    projectName: 'Tapnow 软件工程演示 Demo',
+    projectName: 'DrawOrchestrator 软件工程演示 Demo',
     nodes,
     connections,
     history,

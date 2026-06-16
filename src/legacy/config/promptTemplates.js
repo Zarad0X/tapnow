@@ -1,4 +1,4 @@
-export const PROMPT_LIBRARY_KEY = 'tapnow_prompt_library';
+export const PROMPT_LIBRARY_KEY = 'draworchestrator_prompt_library';
 
 export const GRID_PROMPT_TEXT = `基于我上传的这张参考图，生成一张九宫格（3x3 grid）布局的分镜脚本。请严格保持角色与参考图一致（Keep character strictly consistent），但在9个格子中展示该角色不同的动作、表情和拍摄角度（如正面、侧面、背面、特写等）。要求风格高度统一，形成一张完整的角色动态表（Character Sheet）。`;
 

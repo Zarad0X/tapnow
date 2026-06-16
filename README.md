@@ -1,6 +1,6 @@
-# tapnow
+# draworchestrator
 
-tapnow is a browser application for visual AI workflow prototyping.
+draworchestrator is a browser application for visual AI workflow prototyping.
 
 The app runs as a Vite/React project.
 
@@ -31,7 +31,7 @@ npm run build
 ```text
 index.html                    Vite HTML entry
 src/main.jsx                  React entry point
-src/legacy/TapnowApp.jsx      Main tapnow app shell and workflow logic
+src/legacy/DrawOrchestratorApp.jsx      Main draworchestrator app shell and workflow logic
 src/legacy/support.jsx        Shared app constants, helpers, and UI pieces
 src/shared/icons.jsx          Tree-shaken Lucide icon adapter
 src/shared/markdown.js        Sanitized Markdown rendering helper
