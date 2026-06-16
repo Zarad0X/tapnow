@@ -141,7 +141,7 @@ assert(getDefaultNodeSize('storyboard-node').w === 600, 'storyboard node default
 assert(getNodeLabel('generate-scene-image') === '生成场景图片', 'node labels should be cataloged');
 assert(createDefaultNodeSettings('extract-characters-scenes', { apiConfigs: DEFAULT_API_CONFIGS }).model, 'extract node should pick a chat model');
 
-assert(getDefaultDurationForModel('sora-2-pro') === '15s', 'storyboard duration helper should keep sora pro default');
+assert(getDefaultDurationForModel('sora-2-pro') === '4s', 'storyboard duration helper should keep OpenRouter Sora pro default');
 assert(getDefaultDurationsForModel('veo3').join(',') === '8s', 'storyboard duration helper should keep veo durations constrained');
 assert(getStylePrefix('realistic') === '写实风格', 'style prefix helper should keep realistic style label');
 assert(getStylePrefix('unknown') === '动漫风格', 'style prefix helper should keep anime fallback');

@@ -54,6 +54,7 @@ import {
   VIRTUAL_CANVAS_WIDTH,
   VIRTUAL_CANVAS_HEIGHT,
   DEFAULT_BASE_URL,
+  OPENROUTER_API_BASE_URL,
   RATIOS,
   GROK_VIDEO_RATIOS,
   VIDEO_RES_OPTIONS,
@@ -193,6 +194,54 @@ import {
   processMaskForInpainting,
   resizeImageForVeo
 } from './utils/mediaProcessing.js';
+
+const OPENROUTER_SORA_2_PRO_DURATIONS = [4, 8, 12, 16, 20];
+
+const isOpenRouterBaseUrl = (baseUrl = '') => String(baseUrl).includes('openrouter.ai');
+
+const resolveOpenRouterApiBaseUrl = (baseUrl = OPENROUTER_API_BASE_URL) => {
+    const cleanBaseUrl = String(baseUrl || OPENROUTER_API_BASE_URL).replace(/\/+$/, '');
+    return cleanBaseUrl.endsWith('/api/v1') ? cleanBaseUrl : `${cleanBaseUrl}/api/v1`;
+};
+
+const buildOpenRouterVideoUrl = (baseUrl, jobId = '', suffix = '') => {
+    const encodedJobId = jobId ? `/${encodeURIComponent(jobId)}` : '';
+    return `${resolveOpenRouterApiBaseUrl(baseUrl)}/videos${encodedJobId}${suffix}`;
+};
+
+const normalizeOpenRouterSoraDuration = (duration, modelId = '') => {
+    const requested = parseDurationSeconds(duration, modelId === 'sora-2-pro' ? 4 : 8);
+    if (modelId !== 'sora-2-pro') return requested;
+    if (OPENROUTER_SORA_2_PRO_DURATIONS.includes(requested)) return requested;
+    return OPENROUTER_SORA_2_PRO_DURATIONS.reduce((best, current) => (
+        Math.abs(current - requested) < Math.abs(best - requested) ? current : best
+    ), 4);
+};
+
+const normalizeOpenRouterResolution = (resolution = '') => {
+    const normalized = String(resolution || '').toLowerCase();
+    if (normalized.includes('1080')) return '1080p';
+    return '720p';
+};
+
+const resolveOpenRouterModelName = (modelId, config = {}) => {
+    const configured = String(config?.modelName || '').trim();
+    if (configured.includes('/')) return configured;
+    if (configured) return `openai/${configured}`;
+    return modelId === 'sora-2-pro' ? 'openai/sora-2-pro' : 'openai/sora-2';
+};
+
+const extractOpenRouterVideoUrl = (data) => {
+    if (Array.isArray(data?.unsigned_urls) && data.unsigned_urls[0]) return data.unsigned_urls[0];
+    if (Array.isArray(data?.signed_urls) && data.signed_urls[0]) return data.signed_urls[0];
+    if (Array.isArray(data?.data?.unsigned_urls) && data.data.unsigned_urls[0]) return data.data.unsigned_urls[0];
+    if (Array.isArray(data?.data?.signed_urls) && data.data.signed_urls[0]) return data.data.signed_urls[0];
+    if (Array.isArray(data?.output) && data.output[0]) return data.output[0];
+    if (typeof data?.output === 'string') return data.output;
+    if (typeof data?.url === 'string') return data.url;
+    if (typeof data?.video_url === 'string') return data.video_url;
+    return '';
+};
 
         function DrawOrchestratorApp() {
             const [theme, setTheme] = useLocalStorage('draworchestrator_theme', 'dark', {
@@ -1556,8 +1605,9 @@ import {
             };
 
             const pollSoraJob = (jobId, taskId, baseUrl, apiKey, w, h, modelId = '', attempt = 0) => {
-                // Sora 2 Pro 需要更长的等待时间（30分钟），其他模型保持原有设置（约6.5分钟）
-                const maxAttempts = modelId === 'sora-2-pro' ? 360 : 80;
+                const isOpenRouterVideo = isOpenRouterBaseUrl(baseUrl);
+                // Sora 2 Pro / OpenRouter 可能排队较久，给 30 分钟窗口；其他模型保持原有设置（约6.5分钟）
+                const maxAttempts = (modelId === 'sora-2-pro' || isOpenRouterVideo) ? 360 : 80;
                 const delayMs = 5000;
 
                 if (attempt > maxAttempts) {
@@ -1578,17 +1628,29 @@ import {
 
                 const pollEndpoint = modelId?.includes('grok')
                     ? `${baseUrl}/v2/videos/generations/${encodeURIComponent(jobId)}`
-                    : `${baseUrl}/v1/videos/${encodeURIComponent(jobId)}`;
+                    : isOpenRouterVideo
+                        ? buildOpenRouterVideoUrl(baseUrl, jobId)
+                        : `${baseUrl}/v1/videos/${encodeURIComponent(jobId)}`;
 
                 fetch(pollEndpoint, {
                     method: 'GET',
                     headers: { Authorization: `Bearer ${apiKey}` },
                 })
-                .then(resp => {
+                .then(async resp => {
+                    const text = await resp.text();
                     if (!resp.ok) {
-                        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                        let message = text || `HTTP ${resp.status}: ${resp.statusText}`;
+                        try {
+                            const errorData = JSON.parse(text);
+                            message = errorData?.error?.message || errorData?.message || message;
+                        } catch (error) {
+                            // keep raw text
+                        }
+                        const error = new Error(message);
+                        error.httpStatus = resp.status;
+                        throw error;
                     }
-                    return resp.text();
+                    return text;
                 })
                 .then((text) => {
                     let data;
@@ -1600,11 +1662,17 @@ import {
                         return;
                     }
 
-                    console.log('[DrawOrchestrator] Sora/Grok Poll:', data);
+                    console.log('[DrawOrchestrator] Sora/Grok/OpenRouter Poll:', data);
                     const status = data?.data?.status || data?.status || data?.data?.task_status || data?.task_status;
 
                     if (status === 'SUCCESS' || status === 'succeeded' || status === 'FINISHED' || status === 'completed') {
-                        const videoUrl = data?.data?.output || data?.output || data?.data?.video_url || data?.data?.url || data?.video_url || data?.url;
+                        const videoUrl = extractOpenRouterVideoUrl(data) ||
+                            data?.data?.output ||
+                            data?.output ||
+                            data?.data?.video_url ||
+                            data?.data?.url ||
+                            data?.video_url ||
+                            data?.url;
                         if (!videoUrl) {
                             setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: '未找到视频URL' } : hItem));
                             // 分镜表任务：解除 generating，避免一直转圈
@@ -1668,8 +1736,9 @@ import {
                         return;
                     }
 
-                    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
-                        setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: `任务失败: ${status}` } : hItem));
+                    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED' || status === 'failed' || status === 'cancelled') {
+                        const errorMsg = data?.error?.message || data?.message || `任务失败: ${status}`;
+                        setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg } : hItem));
                         // 分镜表任务：解除 generating，避免一直转圈
                         {
                             const storyboardTask = storyboardTaskMapRef.current.get(taskId);
@@ -1733,6 +1802,15 @@ import {
                 })
                 .catch(err => {
                     console.error('[DrawOrchestrator] Sora/Grok Poll 请求失败:', err);
+                    if (isOpenRouterVideo && err.httpStatus >= 400 && err.httpStatus < 500) {
+                        setHistory(prev => prev.map(hItem => hItem.id === taskId ? { ...hItem, status: 'failed', errorMsg: `OpenRouter 轮询失败: ${err.message || '请求错误'}` } : hItem));
+                        const storyboardTask = storyboardTaskMapRef.current.get(taskId);
+                        if (storyboardTask) {
+                            updateShot(storyboardTask.nodeId, storyboardTask.shotId, { status: 'draft' });
+                            storyboardTaskMapRef.current.delete(taskId);
+                        }
+                        return;
+                    }
                     // 如果是网络错误，继续重试；如果是其他错误，标记为失败
                     if (attempt < maxAttempts - 5) {
                         // 前75次尝试继续重试
@@ -2448,6 +2526,9 @@ import {
                 // 优先使用 options 中的 duration，其次使用节点设置，最后使用默认值
                 let duration = options.duration ? options.duration.replace('s', '') : (node?.settings?.duration?.replace('s', '') || '5');
                 if (modelId.includes('veo')) duration = '8';
+                if (type === 'video' && isOpenRouterBaseUrl(baseUrl) && modelId.includes('sora')) {
+                    duration = String(normalizeOpenRouterSoraDuration(duration, modelId));
+                }
 
                 const taskId = Date.now().toString();
 
@@ -3344,6 +3425,79 @@ import {
 
                             return; // 阻断后续代码执行
                         }
+
+                            if (modelId.includes('sora') && isOpenRouterBaseUrl(baseUrl)) {
+                                endpoint = buildOpenRouterVideoUrl(baseUrl);
+                                const finalPrompt = denormalizePromptForSoraRequest(prompt);
+                                const openRouterDuration = normalizeOpenRouterSoraDuration(durationValueNum, modelId);
+                                const openRouterPayload = {
+                                    model: resolveOpenRouterModelName(modelId, config),
+                                    prompt: finalPrompt,
+                                    aspect_ratio: ratio && ratio !== 'Auto' ? ratio : '16:9',
+                                    duration: openRouterDuration,
+                                    resolution: normalizeOpenRouterResolution(resolution),
+                                };
+
+                                console.log('[OpenRouter Sora] Starting video generation', {
+                                    endpoint,
+                                    model: openRouterPayload.model,
+                                    aspect_ratio: openRouterPayload.aspect_ratio,
+                                    duration: openRouterPayload.duration,
+                                    resolution: openRouterPayload.resolution,
+                                });
+
+                                const resp = await fetch(endpoint, {
+                                    method: 'POST',
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify(openRouterPayload),
+                                });
+
+                                const text = await resp.text();
+                                if (!resp.ok) {
+                                    let message = text || `OpenRouter video error: ${resp.status}`;
+                                    try {
+                                        const errorData = JSON.parse(text);
+                                        message = errorData?.error?.message || errorData?.message || message;
+                                    } catch (error) {
+                                        // keep raw text
+                                    }
+                                    throw new Error(message);
+                                }
+
+                                const data = JSON.parse(text);
+                                const immediateUrl = extractOpenRouterVideoUrl(data);
+                                if (immediateUrl) {
+                                    setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? {
+                                        ...hItem,
+                                        status: 'completed',
+                                        progress: 100,
+                                        url: immediateUrl,
+                                        width: w,
+                                        height: h,
+                                        durationMs: Date.now() - (hItem.startTime || Date.now()),
+                                    } : hItem));
+                                    updatePreviewFromTask(taskId, immediateUrl, 'video', actualSourceNodeId);
+                                    return;
+                                }
+
+                                const jobId = data?.id || data?.data?.id || data?.task_id || data?.data?.task_id;
+                                if (!jobId) {
+                                    throw new Error(`OpenRouter 未返回任务 ID: ${text.substring(0, 300)}`);
+                                }
+
+                                setHistory((prev) => prev.map((hItem) => hItem.id === taskId ? {
+                                    ...hItem,
+                                    status: 'generating',
+                                    progress: 10,
+                                    remoteTaskId: jobId,
+                                    errorMsg: 'OpenRouter 已提交，等待生成...',
+                                } : hItem));
+                                pollSoraJob(jobId, taskId, baseUrl, apiKey, w, h, modelId);
+                                return;
+                            }
 
                         // Generic Video Logic (Sora/Kling/etc) - Force Multipart for Image Input with correct field names
                         if (sourceImage) {

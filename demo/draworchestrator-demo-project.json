@@ -236,9 +236,9 @@
               "霓虹"
             ],
             "status": "completed",
-            "model": "sora-2",
+            "model": "sora-2-pro",
             "ratio": "16:9",
-            "duration": "5s",
+            "duration": "4s",
             "videoUrl": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
           },
           {
@@ -255,9 +255,9 @@
               "芯片发光"
             ],
             "status": "draft",
-            "model": "sora-2",
+            "model": "sora-2-pro",
             "ratio": "16:9",
-            "duration": "5s"
+            "duration": "4s"
           },
           {
             "id": "shot-3",
@@ -304,8 +304,8 @@
       "height": 440,
       "content": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
       "settings": {
-        "model": "sora-2",
-        "duration": "5s",
+        "model": "sora-2-pro",
+        "duration": "4s",
         "ratio": "16:9",
         "videoPrompt": "A fast cinematic chase through a rainy cyberpunk market, neon reflections, drones overhead, glowing chip in hand."
       }
@@ -452,7 +452,7 @@
       "url": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
       "status": "completed",
       "progress": 100,
-      "modelName": "Sora 2",
+      "modelName": "Sora 2 Pro",
       "time": "09:22",
       "sourceNodeId": "demo-gen-video",
       "width": 1280,
@@ -469,14 +469,14 @@
           "id": "msg-1",
           "role": "user",
           "content": "请把这个故事拆成一个 3 镜头演示分镜，并说明每个节点在工作流里的作用。",
-          "timestamp": 1781601095894,
+          "timestamp": 1781602587225,
           "files": []
         },
         {
           "id": "msg-2",
           "role": "assistant",
           "content": "可以。建议演示顺序：故事输入 -> 角色/场景提取 -> 视频拆解 -> 分镜表 -> 图像/视频生成 -> 预览与本地保存。现场生成只演示轻量模型，长视频结果使用预置历史记录。",
-          "timestamp": 1781601125894,
+          "timestamp": 1781602617225,
           "files": []
         }
       ]
@@ -490,10 +490,10 @@
       "avatar": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221280%22%20height%3D%22720%22%20viewBox%3D%220%200%201280%20720%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23312e81%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23be123c%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3Cpattern%20id%3D%22grid%22%20width%3D%2280%22%20height%3D%2280%22%20patternUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M%2080%200%20L%200%200%200%2080%22%20fill%3D%22none%22%20stroke%3D%22%23bfdbfe%22%20stroke-opacity%3D%220.16%22%20stroke-width%3D%222%22%2F%3E%0A%20%20%20%20%3C%2Fpattern%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%221280%22%20height%3D%22720%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Crect%20width%3D%221280%22%20height%3D%22720%22%20fill%3D%22url(%23grid)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%221010%22%20cy%3D%22190%22%20r%3D%22118%22%20fill%3D%22%23bfdbfe%22%20fill-opacity%3D%220.13%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22230%22%20cy%3D%22560%22%20r%3D%22160%22%20fill%3D%22%23bfdbfe%22%20fill-opacity%3D%220.11%22%2F%3E%0A%20%20%3Crect%20x%3D%22112%22%20y%3D%2296%22%20width%3D%221056%22%20height%3D%22528%22%20rx%3D%2236%22%20fill%3D%22rgba(255%2C255%2C255%2C0.14)%22%20stroke%3D%22rgba(255%2C255%2C255%2C0.34)%22%20stroke-width%3D%222%22%2F%3E%0A%20%20%3Ctext%20x%3D%22150%22%20y%3D%22250%22%20font-family%3D%22Inter%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2272%22%20font-weight%3D%22800%22%20fill%3D%22white%22%3EA%20Qing%3C%2Ftext%3E%0A%20%20%3Ctext%20x%3D%22154%22%20y%3D%22330%22%20font-family%3D%22Inter%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2232%22%20font-weight%3D%22500%22%20fill%3D%22white%22%20opacity%3D%220.86%22%3ECharacter%20reference%20sheet%3C%2Ftext%3E%0A%20%20%3Crect%20x%3D%22154%22%20y%3D%22390%22%20width%3D%22410%22%20height%3D%2216%22%20rx%3D%228%22%20fill%3D%22white%22%20opacity%3D%220.68%22%2F%3E%0A%20%20%3Crect%20x%3D%22154%22%20y%3D%22430%22%20width%3D%22720%22%20height%3D%2212%22%20rx%3D%226%22%20fill%3D%22white%22%20opacity%3D%220.42%22%2F%3E%0A%20%20%3Crect%20x%3D%22154%22%20y%3D%22462%22%20width%3D%22610%22%20height%3D%2212%22%20rx%3D%226%22%20fill%3D%22white%22%20opacity%3D%220.32%22%2F%3E%0A%3C%2Fsvg%3E",
       "profile_picture_url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221280%22%20height%3D%22720%22%20viewBox%3D%220%200%201280%20720%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23312e81%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23be123c%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3Cpattern%20id%3D%22grid%22%20width%3D%2280%22%20height%3D%2280%22%20patternUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M%2080%200%20L%200%200%200%2080%22%20fill%3D%22none%22%20stroke%3D%22%23bfdbfe%22%20stroke-opacity%3D%220.16%22%20stroke-width%3D%222%22%2F%3E%0A%20%20%20%20%3C%2Fpattern%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%221280%22%20height%3D%22720%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Crect%20width%3D%221280%22%20height%3D%22720%22%20fill%3D%22url(%23grid)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%221010%22%20cy%3D%22190%22%20r%3D%22118%22%20fill%3D%22%23bfdbfe%22%20fill-opacity%3D%220.13%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22230%22%20cy%3D%22560%22%20r%3D%22160%22%20fill%3D%22%23bfdbfe%22%20fill-opacity%3D%220.11%22%2F%3E%0A%20%20%3Crect%20x%3D%22112%22%20y%3D%2296%22%20width%3D%221056%22%20height%3D%22528%22%20rx%3D%2236%22%20fill%3D%22rgba(255%2C255%2C255%2C0.14)%22%20stroke%3D%22rgba(255%2C255%2C255%2C0.34)%22%20stroke-width%3D%222%22%2F%3E%0A%20%20%3Ctext%20x%3D%22150%22%20y%3D%22250%22%20font-family%3D%22Inter%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2272%22%20font-weight%3D%22800%22%20fill%3D%22white%22%3EA%20Qing%3C%2Ftext%3E%0A%20%20%3Ctext%20x%3D%22154%22%20y%3D%22330%22%20font-family%3D%22Inter%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2232%22%20font-weight%3D%22500%22%20fill%3D%22white%22%20opacity%3D%220.86%22%3ECharacter%20reference%20sheet%3C%2Ftext%3E%0A%20%20%3Crect%20x%3D%22154%22%20y%3D%22390%22%20width%3D%22410%22%20height%3D%2216%22%20rx%3D%228%22%20fill%3D%22white%22%20opacity%3D%220.68%22%2F%3E%0A%20%20%3Crect%20x%3D%22154%22%20y%3D%22430%22%20width%3D%22720%22%20height%3D%2212%22%20rx%3D%226%22%20fill%3D%22white%22%20opacity%3D%220.42%22%2F%3E%0A%20%20%3Crect%20x%3D%22154%22%20y%3D%22462%22%20width%3D%22610%22%20height%3D%2212%22%20rx%3D%226%22%20fill%3D%22white%22%20opacity%3D%220.32%22%2F%3E%0A%3C%2Fsvg%3E",
       "source": "demo",
-      "created_at": "2026-06-16T09:12:35.894Z",
+      "created_at": "2026-06-16T09:37:27.225Z",
       "description": "银色短发的年轻飞行员，可在 Sora prompt 中用 @aqing_demo 引用。"
     }
   ],
-  "timestamp": "2026-06-16T09:12:35.899Z",
+  "timestamp": "2026-06-16T09:37:27.226Z",
   "view": { "x": 920, "y": 560, "zoom": 0.62 }
 }

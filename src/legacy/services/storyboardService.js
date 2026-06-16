@@ -13,7 +13,7 @@ const findCameraTag = (tags) => {
 
 export const getDefaultDurationForModel = (modelId) => {
     if (!modelId) return '5s';
-    if (modelId === 'sora-2-pro') return '15s';
+    if (modelId === 'sora-2-pro') return '4s';
     if (modelId.includes('sora-2') || modelId === 'sora-2') return '15s';
     if (modelId.includes('veo') || modelId === 'google-veo3') return '8s';
     if (modelId.includes('grok') || modelId === 'grok-3') return '8s';
@@ -22,7 +22,7 @@ export const getDefaultDurationForModel = (modelId) => {
 
 export const getDefaultDurationsForModel = (modelId) => {
     if (!modelId) return ['5s', '10s', '8s'];
-    if (modelId === 'sora-2-pro') return ['15s', '25s'];
+    if (modelId === 'sora-2-pro') return ['4s', '8s', '12s', '16s', '20s'];
     if (modelId.includes('sora-2') || modelId === 'sora-2') return ['5s', '10s', '15s'];
     if (modelId.includes('veo') || modelId === 'google-veo3') return ['8s'];
     if (modelId.includes('grok') || modelId === 'grok-3') return ['8s', '5s'];

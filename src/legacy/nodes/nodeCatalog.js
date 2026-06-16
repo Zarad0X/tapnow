@@ -74,7 +74,7 @@ export const createDefaultNodeSettings = (type, { apiConfigs = [], initialConten
     const firstChatModel = apiConfigs.find((config) => config.type === 'Chat')?.id || '';
 
     if (type === 'gen-image') return { model: 'nano-banana', ratio: 'Auto', resolution: 'Auto', prompt: '' };
-    if (type === 'gen-video') return { model: 'sora-2', duration: '5s', ratio: '16:9', videoPrompt: '' };
+    if (type === 'gen-video') return { model: 'sora-2-pro', duration: '4s', ratio: '16:9', videoPrompt: '' };
     if (type === 'video-analyze') return { model: 'gemini-3-pro', segmentDuration: 3, analysisMode: 'manual', voiceoverResults: [], analysisResults: [] };
     if (type === 'storyboard-node') return { projectTitle: '未命名分镜', shots: [] };
     if (type === 'text-node') return { text: initialContent || '' };

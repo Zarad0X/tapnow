@@ -3,6 +3,7 @@ import {
     DEFAULT_API_CONFIGS,
     DEFAULT_BASE_URL,
     JIMENG_API_BASE_URL,
+    OPENROUTER_API_BASE_URL,
     DELETED_MODEL_IDS,
 } from '../config/modelConfig.js';
 
@@ -27,7 +28,7 @@ const loadApiConfigs = () => {
         const sora2Index = configs.findIndex((c) => c.id === 'sora-2');
         const insertIndex = sora2Index >= 0 ? sora2Index + 1 : configs.findIndex((c) => c.type === 'Video' && c.id === 'google-veo3');
         const finalIndex = insertIndex >= 0 ? insertIndex : configs.length;
-        configs.splice(finalIndex, 0, { id: 'sora-2-pro', provider: 'Sora 2 Pro', modelName: 'sora-2-pro', type: 'Video', key: '', url: DEFAULT_BASE_URL, durations: ['15s', '25s'] });
+        configs.splice(finalIndex, 0, { id: 'sora-2-pro', provider: 'Sora 2 Pro', modelName: 'openai/sora-2-pro', type: 'Video', key: '', url: OPENROUTER_API_BASE_URL, durations: ['4s', '8s', '12s', '16s', '20s'] });
     }
 
     const hasGptImage15 = configs.some((c) => c.id === 'gpt-image-1.5');
@@ -78,6 +79,23 @@ const loadApiConfigs = () => {
         const insertIndex = firstVideoIndex >= 0 ? firstVideoIndex : configs.length;
         configs.splice(insertIndex, 0, { id: 'grok-3', provider: 'Grok3 Video', modelName: 'grok-video-3', type: 'Video', key: '', url: 'https://ai.t8star.cn', durations: ['8s', '5s'] });
     }
+
+    configs = configs.map((config) => {
+        if (config.id !== 'sora-2-pro') return config;
+
+        const isDefaultProxy = !config.url || config.url === DEFAULT_BASE_URL;
+        const isOpenRouter = String(config.url || '').includes('openrouter.ai');
+        return {
+            ...config,
+            modelName: isOpenRouter || config.modelName === 'sora-2-pro'
+                ? 'openai/sora-2-pro'
+                : config.modelName,
+            url: isDefaultProxy ? OPENROUTER_API_BASE_URL : config.url,
+            durations: isOpenRouter || isDefaultProxy
+                ? ['4s', '8s', '12s', '16s', '20s']
+                : (config.durations || ['15s', '25s']),
+        };
+    });
 
     return configs;
 };

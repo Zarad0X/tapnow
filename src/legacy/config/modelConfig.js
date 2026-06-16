@@ -1,4 +1,5 @@
 export const DEFAULT_BASE_URL = 'https://ai.comfly.chat';
+export const OPENROUTER_API_BASE_URL = 'https://openrouter.ai/api/v1';
 
 export const JIMENG_API_BASE_URL = 'http://localhost:5100';
 export const JIMENG_SESSION_ID = '7a16459fbd65d9c87b4ea44d3318f5fa';
@@ -21,7 +22,7 @@ export const DEFAULT_API_CONFIGS = [
     { id: 'jimeng-3.1', provider: 'Jimeng 3.1', modelName: 'jimeng-3.1', type: 'Image', key: '', url: JIMENG_API_BASE_URL },
 
     { id: 'sora-2', provider: 'Sora 2', modelName: 'sora-2', type: 'Video', key: '', url: DEFAULT_BASE_URL, durations: ['5s', '10s', '15s'] },
-    { id: 'sora-2-pro', provider: 'Sora 2 Pro', modelName: 'sora-2-pro', type: 'Video', key: '', url: DEFAULT_BASE_URL, durations: ['15s', '25s'] },
+    { id: 'sora-2-pro', provider: 'Sora 2 Pro', modelName: 'openai/sora-2-pro', type: 'Video', key: '', url: OPENROUTER_API_BASE_URL, durations: ['4s', '8s', '12s', '16s', '20s'] },
     { id: 'google-veo3', provider: 'Google Veo 3', modelName: 'veo3.1-components', type: 'Video', key: '', url: 'https://ai.t8star.cn', durations: ['8s'] },
     { id: 'google-veo3.1', provider: 'Google Veo 3.1', modelName: 'veo3.1', type: 'Video', key: '', url: 'https://ai.t8star.cn', durations: ['8s'] },
     { id: 'grok-3', provider: 'Grok3 Video', modelName: 'grok-video-3', type: 'Video', key: '', url: 'https://ai.t8star.cn', durations: ['8s', '5s'] },

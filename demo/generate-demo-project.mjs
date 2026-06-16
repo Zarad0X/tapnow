@@ -227,9 +227,9 @@ const nodes = [
                     camera: 'low angle push in',
                     tags: ['赛博朋克', '雨夜', '霓虹'],
                     status: 'completed',
-                    model: 'sora-2',
+                    model: 'sora-2-pro',
                     ratio: '16:9',
-                    duration: '5s',
+                    duration: '4s',
                     videoUrl
                 },
                 {
@@ -242,9 +242,9 @@ const nodes = [
                     camera: 'fast tracking shot',
                     tags: ['动作', '跟拍', '芯片发光'],
                     status: 'draft',
-                    model: 'sora-2',
+                    model: 'sora-2-pro',
                     ratio: '16:9',
-                    duration: '5s'
+                    duration: '4s'
                 },
                 {
                     id: 'shot-3',
@@ -287,8 +287,8 @@ const nodes = [
         height: 440,
         content: videoUrl,
         settings: {
-            model: 'sora-2',
-            duration: '5s',
+            model: 'sora-2-pro',
+            duration: '4s',
             ratio: '16:9',
             videoPrompt: 'A fast cinematic chase through a rainy cyberpunk market, neon reflections, drones overhead, glowing chip in hand.'
         }
@@ -390,7 +390,7 @@ const history = [
         url: videoUrl,
         status: 'completed',
         progress: 100,
-        modelName: 'Sora 2',
+        modelName: 'Sora 2 Pro',
         time: '09:22',
         sourceNodeId: 'demo-gen-video',
         width: 1280,
