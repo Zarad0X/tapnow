@@ -11,6 +11,7 @@
 tmp/
 logs/
 dist/
+demo/live-output/
 node_modules/
 .vite/
 
