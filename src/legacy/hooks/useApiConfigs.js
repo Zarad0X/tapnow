@@ -9,6 +9,14 @@ import {
 
 const cloneConfigList = (configs) => configs.map((config) => ({ ...config }));
 
+const normalizeOpenRouterBaseUrl = (url) => {
+    const cleanUrl = String(url || '').replace(/\/+$/, '');
+    if (!cleanUrl.includes('openrouter.ai')) return url;
+    if (cleanUrl.endsWith('/api/v1')) return cleanUrl;
+    if (cleanUrl.endsWith('/api')) return `${cleanUrl}/v1`;
+    return `${cleanUrl}/api/v1`;
+};
+
 const loadApiConfigs = () => {
     const saved = localStorage.getItem('draworchestrator_api_configs');
     let configs = saved ? JSON.parse(saved) : cloneConfigList(DEFAULT_API_CONFIGS);
@@ -90,7 +98,7 @@ const loadApiConfigs = () => {
             modelName: isOpenRouter || config.modelName === 'sora-2-pro'
                 ? 'openai/sora-2-pro'
                 : config.modelName,
-            url: isDefaultProxy ? OPENROUTER_API_BASE_URL : config.url,
+            url: isDefaultProxy ? OPENROUTER_API_BASE_URL : normalizeOpenRouterBaseUrl(config.url),
             durations: isOpenRouter || isDefaultProxy
                 ? ['4s', '8s', '12s', '16s', '20s']
                 : (config.durations || ['15s', '25s']),

@@ -201,6 +201,7 @@ const isOpenRouterBaseUrl = (baseUrl = '') => String(baseUrl).includes('openrout
 
 const resolveOpenRouterApiBaseUrl = (baseUrl = OPENROUTER_API_BASE_URL) => {
     const cleanBaseUrl = String(baseUrl || OPENROUTER_API_BASE_URL).replace(/\/+$/, '');
+    if (cleanBaseUrl.endsWith('/api')) return `${cleanBaseUrl}/v1`;
     return cleanBaseUrl.endsWith('/api/v1') ? cleanBaseUrl : `${cleanBaseUrl}/api/v1`;
 };
 
